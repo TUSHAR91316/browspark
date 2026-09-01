@@ -1,0 +1,48 @@
+---
+title: "Tabs and sharing"
+description: "Which tabs an agent can see, how a target tab is chosen, and what attaching means."
+---
+
+## Shared tabs
+
+An agent can only reach tabs you share. Sharing happens in the dashboard's [Tabs page](/dashboard/tabs): share individual tabs, or switch on **Share everything** to include every current and future tab. **Stop** on a tab revokes access immediately and detaches the debugger. The shared list lives in `chrome.storage.session`, so it resets when the browser restarts; Share everything is persistent.
+
+Tabs from every Chrome window count. `browser_tabs` and `browser_status` list them with their `windowId`.
+
+## Tabs the agent opens
+
+`browser_tabs {action: "new", url}` and `browser_fetch` open ordinary tabs in your **current window**, next to your own. They are shared automatically and recorded as owned by the agent that opened them. There is no dedicated agent window. Close them with `browser_tabs {action: "close"}` or yourself; `browser_fetch` closes its tab when it is done unless `keepTab` is set.
+
+## Choosing the target tab
+
+Every tool takes an optional `tabId`. When it is omitted the companion resolves in this order:
+
+1. The calling agent's most recently opened usable tab.
+2. A tab opened by an agent that has since disconnected.
+3. The only usable shared tab, if there is exactly one.
+4. Otherwise the call fails and lists the usable tabs, asking for an explicit `tabId`.
+
+"Usable" means shared and not a browser-internal page. `chrome://newtab` is usable for `browser_navigate` so an empty tab can be pointed at a website; other `chrome://`, extension and Web Store pages are reported as unsupported. Developer-mode tabs are always usable.
+
+## Attaching and the yellow bar
+
+The extension attaches Chrome's debugger to a tab the first time a command targets it. Chrome then shows its own "Browspark started debugging this browser" bar; the extension cannot hide it. After **30 seconds without a command** the extension detaches and the bar disappears. Exceptions:
+
+- A running `devtools_session` keeps the tab attached so console and network collection is not interrupted.
+- An explicit hold from a long-running operation (traces, profiles, waits) does the same.
+
+Change the idle timeout by setting `idleDetachMs` in the extension's `chrome.storage.local` (open the service worker console from `chrome://extensions` and run `chrome.storage.local.set({idleDetachMs: 120000})`).
+
+To hide the bar entirely start the browser with `--silent-debugger-extension-api`, for example on macOS after quitting it:
+
+```bash
+open -a "Google Chrome" --args --silent-debugger-extension-api
+```
+
+## Activation
+
+Chrome drops input events and screenshots for background tabs. Before `browser_click`, `browser_fill`, `browser_key`, `browser_scroll` and `browser_screenshot`, the extension activates the target tab within its window. If you are working in the same window you will see it switch; put the agent's tabs in another window if that bothers you.
+
+## Watching in DevTools
+
+You can open DevTools (F12) on a shared tab while the agent works. Chrome allows both at once; the console, network and debugger panels show what the agent's tools are doing. What Chrome does not allow is the agent driving the DevTools window itself, so asking it to "open the device toolbar" or "press Cmd+Shift+C" cannot work; the equivalent tools are `devtools_emulation` and `devtools_elements`.

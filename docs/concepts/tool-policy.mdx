@@ -1,0 +1,34 @@
+---
+title: "Tool policy"
+description: "Switch individual tools off from the dashboard and control whether a developer browser may open."
+---
+
+## Disabling tools
+
+The dashboard's [Tools page](/dashboard/tools) lists all 43 tools with a switch each. A disabled tool stays visible to the agent but every call returns an error:
+
+```text
+The browser_upload tool is switched off in the Browspark dashboard. Tell the user to turn it on under the Tools page of the extension, then try again.
+```
+
+So the agent knows exactly what to ask for instead of guessing at workarounds. Typical uses: block `browser_upload` and `browser_download` on a shared machine, block `devtools_cdp` and `devtools_evaluate` when you do not want arbitrary code run, or keep only the read-only tools for a research agent.
+
+The extension sends the disabled list to the companion whenever it connects or the list changes. The companion writes it to `~/.browspark/tools.json` so the policy applies from the first call after a restart, before the extension has reconnected.
+
+The catalog itself comes from the companion on connect (`tools.catalog` event with name, description and companion version). If the dashboard shows no tools, the companion has not connected yet.
+
+## Developer browser policy
+
+**Settings → Developer browser** has three positions:
+
+| Setting | Behaviour |
+|---|---|
+| Only when needed (default) | `browser_session launch` succeeds only within ten minutes of a tool reporting that an operation needs developer mode. |
+| Always | Launches are always allowed. |
+| Never | Launches are refused with a message asking the agent to work in your tabs or ask you to change the setting. |
+
+The setting travels with the same `tools.policy` message as the disabled list.
+
+## Emergency stop
+
+**Settings → Emergency stop** detaches the debugger from every tab, clears the shared list, switches Share everything off and disconnects from the companion. The agent's next call fails with a "not connected" status and pairing instructions. **Resume** reconnects with the stored token but shares nothing until you share again.

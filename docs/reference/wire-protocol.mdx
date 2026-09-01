@@ -1,0 +1,63 @@
+---
+title: "Wire protocol"
+description: "The JSON messages between the companion and the extension over the local WebSocket."
+---
+
+Defined in `shared/protocol.ts` (protocol version 1). Transport: a WebSocket from the extension's service worker to `ws://127.0.0.1:<port>`. The first message must be `hello` with the pairing token; anything else, or a frame that is not a JSON object, closes the socket.
+
+## Message shapes
+
+```ts
+interface Req { id: number; method: ReqMethod; params?: unknown }   // companion → extension
+interface Res { id: number; result?: unknown; error?: string }       // extension → companion
+interface Evt { event: EvtName; params?: unknown }                   // either direction
+```
+
+## Requests (companion → extension)
+
+| Method | Params | Result |
+|---|---|---|
+| `tabs.list` | | `TabInfo[]` for every window |
+| `tabs.create` | `{url, active?}` | The new tab, opened in the current window and shared automatically |
+| `tabs.close` | `{tabId}` | |
+| `tabs.activate` | `{tabId}` | Brings the tab to the front of its window |
+| `tabs.hold` | `{tabId, hold}` | Keep the debugger attached past the idle timeout (inspection sessions, long operations) |
+| `tabs.prepare` | `{tabId}` | Attach and activate before input or screenshots |
+| `window.size` | `{tabId, width?, height?}` | Read or set the window size |
+| `downloads.list` | | The browser's download items |
+| `tools.catalog` | `{tools: ToolInfo[], version}` | Stores the catalog for the Tools page |
+| `cdp` | `{tabId, method, params?, sessionId?, client?}` | Result of the DevTools Protocol command. `client` names the agent for the activity log |
+
+## Events
+
+| Event | Direction | Params |
+|---|---|---|
+| `hello` | extension → companion | `{token, version, extensionVersion, browser?, userAgent?}` |
+| `tabs` | extension → companion | `TabInfo[]` whenever tabs or sharing change |
+| `cdp.event` | extension → companion | `{tabId, method, params, sessionId?}` for every protocol event on an attached tab |
+| `detached` | extension → companion | `{tabId, reason}` when Chrome or the idle timer detaches |
+| `tools.policy` | extension → companion | `{disabled: string[], haveCatalog?: boolean, devMode?: 'auto' \| 'always' \| 'never'}` |
+| `ping` | extension → companion | Keep-alive every 20 seconds |
+
+## `TabInfo`
+
+```ts
+interface TabInfo {
+  id: number; url: string; title: string;
+  shared: boolean; attached: boolean; windowId: number;
+  agent?: boolean;        // opened by an agent, shared automatically
+  favIconUrl?: string;
+  unsupported?: string;   // 'browser-internal page' | 'Chrome Web Store'
+}
+```
+
+`unsupportedReason(url)` marks `chrome:`, `chrome-extension:`, `devtools:`, `edge:`, `brave:`, `about:` (except `about:blank`) and `view-source:` URLs and the Chrome Web Store. `isNewTab(url)` recognises the New Tab page, which may be shared and navigated but not inspected.
+
+## HTTP routes on the same port
+
+| Route | Purpose |
+|---|---|
+| `GET /` | `browspark companion` health text |
+| `POST/GET/DELETE /mcp` | MCP over Streamable HTTP, token required |
+| `GET /live/:tabId?token=` | Live view page |
+| `GET /live-ws?tab=&token=` | Live view WebSocket: `frame`, `hello`, `error` messages out; `mouse` and `key` messages in |

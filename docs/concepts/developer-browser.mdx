@@ -1,0 +1,65 @@
+---
+title: "Developer browser"
+description: "Named contexts, persistent profiles, proxies, extensions, headless runs, live view and the CDP endpoint."
+---
+
+The developer browser is a Chrome the companion launches and controls directly. It exists for capabilities Chrome withholds from extensions; see [Modes](/concepts/modes) for when it is allowed to start.
+
+## Contexts
+
+Every developer browser is a **context** with a name. `browser_session` actions:
+
+| Action | Effect |
+|---|---|
+| `launch` | Start the context (default name `default`). Options: `url`, `headless`, `devtools`, `proxy`, `extensions`, `args`, `chromePath`, `downloadDir`. |
+| `status` | Version, pid, port, tab count, profile and download directories for every running context. |
+| `close` | Stop one context, or all with `all: true`. Profiles are kept. |
+| `contexts` | List saved profiles, running or not. |
+| `delete` | Remove a stopped context's profile directory. |
+
+Contexts run in parallel and are independent browsers: separate cookies, storage, extensions and windows. Use them for "work" versus "personal" logins, for a clean profile next to a populated one, or to run several scrapers behind different proxies at the same time. Tab ids are unique across contexts, so `browser_tabs` shows all of them in one list with their context name.
+
+## Profiles
+
+Profiles persist between launches:
+
+| Context | Directory |
+|---|---|
+| `default` | `~/.browspark/profile` (override with `BROWSPARK_PROFILE`) |
+| any other name | `~/.browspark/profiles/<name>` (parent overridable with `BROWSPARK_PROFILES`) |
+
+Log in once and the session is there next time. `delete` wipes it.
+
+## Launch options
+
+- **`headless: true`** runs without a window. Watch and control it through the [live view](#live-view).
+- **`devtools`** opens Chrome DevTools on every tab (default on unless headless) so you can follow the agent in the standard panels.
+- **`proxy`** takes `http://host:port` or `socks5://host:port` and applies to the whole context.
+- **`extensions`** loads unpacked extension directories. They are loaded through the protocol after launch, which is what current Chrome versions require.
+- **`args`** appends raw Chrome switches.
+- **`chromePath`** or `BROWSPARK_CHROME` picks the executable when auto-detection finds the wrong browser.
+- **`downloadDir`** overrides `~/.browspark/downloads/<context>`; `browser_download` reports files landing there.
+
+## Live view
+
+Every running context prints a live-view URL in `browser_status`:
+
+```text
+http://127.0.0.1:9223/live/<tabId>?token=<pairing token>
+```
+
+Open it in any browser to see a JPEG screencast of that tab with click-through mouse and keyboard control. Click the image to type into it, press Escape to release. It is the way to watch a headless run or to intervene, for example to solve a login step yourself.
+
+## CDP endpoint
+
+`browser_status` and the `launch` result also print the browser's WebSocket endpoint. Playwright and Puppeteer can attach to it:
+
+```ts
+const browser = await chromium.connectOverCDP('ws://127.0.0.1:PORT/devtools/browser/…');
+```
+
+Your script and the agent then share the same browser and tabs.
+
+## Cleanup
+
+The companion closes every developer browser it launched when it exits (Ctrl-C, stdin closing, SIGTERM). `browser_session {action: "close", all: true}` does it on demand.

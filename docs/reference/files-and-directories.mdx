@@ -1,0 +1,54 @@
+---
+title: "Files and directories"
+description: "Everything Browspark writes to disk and what each file is for."
+---
+
+## `~/.browspark/`
+
+| Path | Written by | Contents |
+|---|---|---|
+| `token` | companion, first start | Pairing token, mode `0600`. Delete to rotate. |
+| `tools.json` | companion, when the dashboard changes the policy | `{"disabled": ["browser_upload", …]}`. Loaded on start so disabled tools stay disabled before the extension reconnects. |
+| `profile/` | Chrome | Persistent profile of the `default` developer context. |
+| `profiles/<name>/` | Chrome | Profiles of named developer contexts. `browser_session delete` removes one. |
+| `downloads/<context>/` | Chrome | Downloads made in a developer context. |
+| `artifacts/` | companion | Exports, see below. |
+
+## Artifacts
+
+Files are named by kind and id. Formats are Chrome's own so each opens in DevTools or the usual tools.
+
+| Kind | Extension | Opens in |
+|---|---|---|
+| Performance trace | `.json` | DevTools Performance panel, Perfetto UI |
+| CPU profile | `.cpuprofile` | DevTools Performance / JavaScript Profiler |
+| Heap snapshot | `.heapsnapshot` | DevTools Memory panel |
+| Allocation sampling | `.heapprofile` | DevTools Memory panel |
+| Network export | `.har` | DevTools Network, HAR viewers |
+| Lighthouse | `.html`, `.json` | Browser, Lighthouse viewer |
+| Recorder flow | `.json` | `devtools_recorder` |
+| Playwright export | `.spec.ts` | Playwright |
+| PDF | `.pdf` | Any viewer |
+
+Tools that accept `path` write there as well as, or instead of, the artifacts directory (the tool page says which).
+
+## Extension storage
+
+| Storage | Keys | Lifetime |
+|---|---|---|
+| `chrome.storage.local` | `token`, `port`, `shareAll`, `stopped`, `activityLog`, `devMode`, `disabledTools`, `toolCatalog`, `idleDetachMs` | Persistent per browser profile |
+| `chrome.storage.session` | `shared` (tab ids shared individually) | Until the browser restarts |
+| `localStorage` of the dashboard page | theme, last selected setup client, expanded rows | Persistent, UI conveniences only |
+
+The activity log itself is held in the service worker's memory only.
+
+## Repository layout
+
+| Folder | Contents |
+|---|---|
+| `companion/src/` | MCP server: `index.ts` (transports, relay, HTTP), `bridge.ts` (WebSocket and HTTP routes), `session.ts` (tab routing, contexts), `cdp.ts` (developer browsers), `page.ts` (snapshots, input, reading), `tools.ts` (browser tools), `live.ts`, `artifacts.ts`, `context.ts` (tool wrapper, policy, per-agent state), `devtools/` (one module per DevTools panel) |
+| `companion/test/` | Unit tests, e2e scenarios, the harness, the capability and docs generators |
+| `extension/` | `manifest.json`, `app.html`, `app.css`, `assets/`, `src/background.ts` (service worker), `src/app.ts` (dashboard), `src/state.ts` |
+| `shared/` | `protocol.ts`, the wire protocol |
+| `test-apps/` | Deterministic pages, API, service worker and source-mapped script used by the tests |
+| `docs/` | This site |

@@ -1,0 +1,35 @@
+---
+title: "Privacy and security"
+description: "What leaves your machine (nothing), what the agent can reach, and how access is bounded."
+---
+
+## Local only
+
+- The companion binds to `127.0.0.1`. There is no cloud component, no telemetry and no account.
+- The extension talks only to that port and only after presenting the pairing token.
+- Messages from the extension to the companion are validated; malformed frames are rejected and the socket closed.
+
+## Access is opt-in per tab
+
+The agent reaches exactly the tabs you share, plus tabs it opened itself in your window. `chrome://` pages, extension pages and the Web Store are never automatable. Emergency stop revokes everything at once.
+
+## What the agent can see in a shared tab
+
+Everything the page can: DOM, cookies for the page origin, local and session storage, network requests and their bodies while a `devtools_session` is running, and JavaScript evaluation in the page. Treat a shared tab as fully visible to the agent. Do not share tabs you would not paste into the chat.
+
+## Restricting what the agent does
+
+- [Disable tools](/concepts/tool-policy) you do not want used.
+- [Domain policies](/tools/browser/browser_policy) limit where a tab, or every tab the agent opens, may navigate and load resources from.
+- Set the developer browser to **Never** if the agent should not get a second browser.
+- The activity log is off by default and keeps nothing; on, it holds the last 200 commands in memory only, never on disk. See [Activity](/dashboard/activity).
+
+## Secrets
+
+- The pairing token is in `~/.browspark/token` with mode `0600` and in the extension's local storage. It appears in the HTTP endpoint URL and live-view URLs; treat those like passwords.
+- Recorder exports and HAR files can contain form values, cookies and headers. They are written to `~/.browspark/artifacts` or the path you give.
+- Developer-context profiles under `~/.browspark/` hold logins like any Chrome profile.
+
+## The debugger permission
+
+Chrome grants the extension the `debugger` permission at install time. The extension attaches only to shared tabs, only when a command arrives, and detaches after 30 seconds of inactivity. The yellow bar Chrome shows is the honest signal that a tab is attached.

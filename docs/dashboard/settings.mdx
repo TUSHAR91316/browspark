@@ -1,0 +1,36 @@
+---
+title: "Settings page"
+description: "Pairing, port, HTTP endpoint, developer-browser policy, activity log, appearance and the emergency stop."
+---
+
+## Companion
+
+| Setting | Notes |
+|---|---|
+| Pairing token | Printed by `browser_status` while unpaired, or read from `~/.browspark/token`. Stored only in this browser profile. Leaving the field empty on save keeps the stored token. |
+| Bridge port | Where the companion listens on localhost. Change it when you run the companion with `--port`; the Overview setup snippets follow. Default `9223`. |
+| Connection | Live status with the connection age, or the last error, plus **Connect** / **Disconnect**. |
+
+## Other clients
+
+Shows the [HTTP endpoint](/connect/http-and-gemini) with a copy button once paired:
+
+```text
+http://127.0.0.1:9223/mcp?token=…
+```
+
+## Developer browser
+
+Whether the agent may open a separate Chrome. **Only when needed** (default), **Always**, or **Never**. See [Tool policy](/concepts/tool-policy#developer-browser-policy).
+
+## Privacy
+
+**Activity log** switch. Off by default; see [Activity](/dashboard/activity).
+
+## Emergency stop
+
+Detaches the debugger from every tab, clears the shared list, switches Share everything off and disconnects. Nothing is retried on resume. **Resume** reconnects; share tabs again afterwards.
+
+## Appearance
+
+The sidebar's theme control switches between system, light and dark. The choice is stored per browser profile. Every page has full light and dark palettes; screenshots in these docs show both.

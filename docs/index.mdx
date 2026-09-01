@@ -1,0 +1,48 @@
+---
+title: "Introduction"
+description: "Browspark lets AI agents operate and debug websites in your own Chrome, with the user in control of what is shared."
+---
+
+Browspark is a local [Model Context Protocol](https://modelcontextprotocol.io) server plus a Chrome extension. Any MCP client, such as Claude Code, Codex, OpenCode, Cursor, Kilo, Antigravity or Gemini, gets a set of `browser_*` and `devtools_*` tools that work on the tabs you share from the extension's dashboard. Nothing leaves your machine: the companion listens on `127.0.0.1` only.
+
+<img src="/images/dashboard-overview-dark.png" alt="The Browspark dashboard, dark theme" />
+
+## What an agent can do
+
+<CardGroup cols={2}>
+  <Card title="Operate websites" icon="globe" href="/guides/automate-a-website">
+    Navigate, read an accessible snapshot with stable element refs, click, fill, select, upload, press keys, scroll, wait, handle dialogs and take screenshots, all inside tabs that keep your logins.
+  </Card>
+  <Card title="Read and extract" icon="file-lines" href="/guides/read-and-extract">
+    Turn a page or a URL into clean markdown, pull tables, links and structured records, print to PDF, and call tools that pages expose through WebMCP.
+  </Card>
+  <Card title="Debug like DevTools" icon="bug" href="/guides/debug-a-web-app">
+    Console, network with mocks and throttling, sources with source maps, breakpoints and stepping, elements and styles, storage, service workers, emulation, accessibility and security.
+  </Card>
+  <Card title="Profile and audit" icon="gauge-high" href="/guides/performance-and-memory">
+    Performance traces with Web Vitals, CPU profiles, heap snapshots and leak checks, code coverage, and Lighthouse reports in Chrome's own file formats.
+  </Card>
+</CardGroup>
+
+## Two ways to reach a browser
+
+| Mode | What it is | When it is used |
+|---|---|---|
+| **Extension mode** | Tabs in your own Chrome, driven through the extension's debugger permission. Only tabs you share are reachable. | Everyday work. Keeps your sessions and cookies, stays in your current window. |
+| **Developer mode** | A separate Chrome the companion launches with its own persistent profile, talked to over the DevTools Protocol directly. | Only for things Chrome blocks for extensions: heap snapshots, Lighthouse, raw protocol commands. |
+
+The dashboard decides whether the agent may open a developer browser at all. See [Modes](/concepts/modes).
+
+## Where to go next
+
+<Steps>
+  <Step title="Install">
+    [Install the companion and load the extension](/get-started/installation). Two commands and one Chrome dialog.
+  </Step>
+  <Step title="Connect your agent">
+    [Add Browspark to your MCP client](/connect/agents), or use the [HTTP endpoint](/connect/http-and-gemini) for clients that take a URL.
+  </Step>
+  <Step title="Pair and share">
+    Paste the pairing token into the dashboard, share a tab, and ask the agent to open a website.
+  </Step>
+</Steps>

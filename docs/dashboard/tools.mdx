@@ -1,0 +1,16 @@
+---
+title: "Tools page"
+description: "Every tool the companion exposes, with a switch to turn it off."
+---
+
+The Tools page lists the companion's tool catalog grouped into **Browser automation** (`browser_*`) and **Developer tools** (`devtools_*`). Each row has the tool name, an expandable description (the same text the agent sees) and a switch.
+
+- **Search** filters by name or description.
+- **All / On / Off** segments narrow the list.
+- **Enable all** and **Disable all** act on every listed tool; with a search or filter active they become **Enable matching** and **Disable matching**.
+
+Switching a tool off takes effect on the agent's next call, without restarting anything. The agent receives a message telling it the tool is off and to ask you to enable it under this page. Details and the persistence rules are in [Tool policy](/concepts/tool-policy).
+
+<Note>
+The list is empty until the companion has connected once and sent its catalog. If it stays empty while connected, the running service worker is older than the companion; reload the extension.
+</Note>

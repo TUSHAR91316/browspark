@@ -1,0 +1,161 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "Browspark",
+  "description": "Local MCP server and Chrome extension that let AI agents operate and debug websites in your browser.",
+  "colors": {
+    "primary": "#1f8a5f",
+    "light": "#4dab9a",
+    "dark": "#166b49"
+  },
+  "logo": {
+    "light": "/images/logo.png",
+    "dark": "/images/logo.png"
+  },
+  "favicon": "/images/logo.png",
+  "appearance": {
+    "default": "system"
+  },
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get started",
+            "pages": [
+              "index",
+              "get-started/quickstart",
+              "get-started/installation",
+              "get-started/how-it-works"
+            ]
+          },
+          {
+            "group": "Connect an agent",
+            "pages": [
+              "connect/agents",
+              "connect/http-and-gemini",
+              "connect/multiple-agents"
+            ]
+          },
+          {
+            "group": "Concepts",
+            "pages": [
+              "concepts/modes",
+              "concepts/tabs-and-sharing",
+              "concepts/snapshots-and-refs",
+              "concepts/developer-browser",
+              "concepts/tool-policy",
+              "concepts/privacy-and-security"
+            ]
+          },
+          {
+            "group": "Dashboard",
+            "pages": [
+              "dashboard/overview",
+              "dashboard/tabs",
+              "dashboard/tools",
+              "dashboard/activity",
+              "dashboard/settings"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/automate-a-website",
+              "guides/read-and-extract",
+              "guides/debug-a-web-app",
+              "guides/network-mocking",
+              "guides/performance-and-memory",
+              "guides/record-and-export",
+              "guides/downloads-pdf-and-policies",
+              "guides/troubleshooting"
+            ]
+          },
+          {
+            "group": "Reference",
+            "pages": [
+              "reference/cli-and-environment",
+              "reference/files-and-directories",
+              "reference/capability-matrix",
+              "reference/wire-protocol",
+              "reference/development"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Tools",
+        "groups": [
+          {
+            "group": "Browser automation",
+            "pages": [
+              "tools/overview",
+              "tools/browser/browser_status",
+              "tools/browser/browser_session",
+              "tools/browser/browser_tabs",
+              "tools/browser/browser_navigate",
+              "tools/browser/browser_snapshot",
+              "tools/browser/browser_read",
+              "tools/browser/browser_fetch",
+              "tools/browser/browser_policy",
+              "tools/browser/browser_download",
+              "tools/browser/browser_pdf",
+              "tools/browser/browser_webmcp",
+              "tools/browser/browser_extract",
+              "tools/browser/browser_click",
+              "tools/browser/browser_fill",
+              "tools/browser/browser_select",
+              "tools/browser/browser_upload",
+              "tools/browser/browser_key",
+              "tools/browser/browser_scroll",
+              "tools/browser/browser_screenshot",
+              "tools/browser/browser_wait",
+              "tools/browser/browser_dialog",
+              "tools/browser/browser_batch"
+            ]
+          },
+          {
+            "group": "Developer tools",
+            "pages": [
+              "tools/devtools/devtools_session",
+              "tools/devtools/devtools_events",
+              "tools/devtools/devtools_capabilities",
+              "tools/devtools/devtools_cdp",
+              "tools/devtools/devtools_console",
+              "tools/devtools/devtools_evaluate",
+              "tools/devtools/devtools_network",
+              "tools/devtools/devtools_sources",
+              "tools/devtools/devtools_debugger",
+              "tools/devtools/devtools_elements",
+              "tools/devtools/devtools_performance",
+              "tools/devtools/devtools_profile",
+              "tools/devtools/devtools_memory",
+              "tools/devtools/devtools_coverage",
+              "tools/devtools/devtools_storage",
+              "tools/devtools/devtools_workers",
+              "tools/devtools/devtools_emulation",
+              "tools/devtools/devtools_accessibility",
+              "tools/devtools/devtools_security",
+              "tools/devtools/devtools_lighthouse",
+              "tools/devtools/devtools_recorder"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "GitHub",
+        "href": "https://github.com/uncaughterrs/browsermcp"
+      }
+    ]
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/uncaughterrs/browsermcp"
+    }
+  }
+}

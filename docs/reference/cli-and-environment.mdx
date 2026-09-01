@@ -1,0 +1,62 @@
+---
+title: "CLI and environment"
+description: "Flags, environment variables, scripts and what the companion prints."
+---
+
+## Entry point
+
+```bash
+bunx browspark-mcp@latest [--port <n>] [--http-only]
+```
+
+or the compiled `dist/browspark` with the same flags.
+
+| Flag | Effect |
+|---|---|
+| `--port <n>` | Listen on this port instead of `9223` for the extension bridge, the HTTP MCP endpoint and the live view. |
+| `--http-only` | Do not connect MCP over stdio and do not exit when stdin closes. For URL-based clients when no stdio client is running. |
+
+## Environment variables
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `BROWSPARK_PORT` | `9223` | Same as `--port`. |
+| `BROWSPARK_CHROME` | auto-detected | Browser executable for developer mode. |
+| `BROWSPARK_PROFILE` | `~/.browspark/profile` | Profile directory of the `default` developer context. |
+| `BROWSPARK_PROFILES` | `~/.browspark/profiles` | Parent directory of named developer contexts. |
+| `BROWSPARK_ARTIFACTS` | `~/.browspark/artifacts` | Output directory for traces, profiles, snapshots, HAR, PDFs, reports and flows. |
+
+Recorder exports read flow parameters from environment variables named after the parameter in upper case (`{{email}}` → `EMAIL`).
+
+## Package scripts
+
+| Script | What it does |
+|---|---|
+| `bun run build` | Bundle the extension's service worker and dashboard into `extension/dist/`. |
+| `bun run package` | Build and zip the extension to `dist/browspark-extension.zip`. |
+| `bun run compile` | Single-file companion binary at `dist/browspark`. |
+| `bun run start` | Run the companion from source. |
+| `bun run typecheck` | Type-check companion and extension. |
+| `bun test` | Unit and bridge tests (no browser). |
+| `bun run test:e2e` | Launch throwaway Chromes and run every acceptance scenario. |
+| `bun run capabilities` | Regenerate the [capability matrix](/reference/capability-matrix) by probing both modes. |
+| `bun run docs:tools` | Regenerate the tool reference pages and their navigation from the tool registrations. |
+
+## What the companion prints
+
+Everything goes to stderr, because stdout is the MCP stdio channel.
+
+```text
+browspark: ready on ws://127.0.0.1:9223 (pairing token a1b2c3d4); MCP over HTTP at http://127.0.0.1:9223/mcp?token=a1b2c3d4
+browspark: extension connected
+browspark: 2 tool(s) disabled from the dashboard; developer browser: auto
+browspark: agent connected: claude-code
+browspark: http client session 5f1e9c0a
+browspark: relaying stdio to the companion already running on port 9223
+browspark: agent disconnected: claude-code
+browspark: extension disconnected
+```
+
+## Exit behaviour
+
+The companion exits when stdin closes (the stdio client went away), on `SIGINT` or `SIGTERM`. On exit it closes the bridge and every developer browser it launched. Relays exit when their stdin closes or when the owner they relay to stops answering.

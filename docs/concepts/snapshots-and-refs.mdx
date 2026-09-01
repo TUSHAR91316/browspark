@@ -1,0 +1,44 @@
+---
+title: "Snapshots and refs"
+description: "How the agent sees a page and addresses elements without CSS selectors."
+---
+
+`browser_snapshot` returns the page's accessibility tree as indented text. Every interactive or labelled element carries a ref:
+
+```text
+- document "Example Domain"
+  - heading "Example Domain" [ref=e1]
+  - paragraph
+    - text "This domain is for use in illustrative examples in documents."
+  - link "More information..." [ref=e2]
+  - textbox "Search" (focused) [ref=e3]
+  - button "Submit" (disabled) [ref=e4]
+```
+
+The line shows the role, the accessible name, state hints such as `(checked)`, `(disabled)`, `(expanded)` or `(focused)`, and the ref.
+
+## Refs are stable handles
+
+A ref like `e12` points at a live DOM node, not at a position or a selector. The page keeps the mapping in `window.__bmcp`, keyed by the element itself, so re-snapshotting an unchanged page yields the same refs and the agent can keep using ones it already knows. Refs stay valid until the DOM changes:
+
+- If the node is removed, any tool using its ref fails with `Stale ref e12: element was removed from the page; run browser_snapshot again`.
+- After a navigation the registry is gone; the agent must snapshot again.
+
+## What is included
+
+- Elements without a layout box (for example `display: contents` wrappers) are traversed so their children still appear; hidden elements and their subtrees are skipped.
+- Elements inside open shadow roots and same-origin iframes are included.
+- `diff: true` returns only the lines that changed since the previous snapshot of that tab, which keeps long pages cheap to re-read after a click.
+
+## Using refs elsewhere
+
+Refs are accepted by every element-targeting tool:
+
+| Tool | Use of the ref |
+|---|---|
+| `browser_click`, `browser_fill`, `browser_select`, `browser_upload`, `browser_scroll` | The element to act on (or, for scroll, whose scrollable ancestor to move) |
+| `browser_read`, `browser_screenshot` | Scope to one element |
+| `browser_wait` | Wait for the element to be visible, hidden or enabled |
+| `devtools_elements`, `devtools_accessibility`, `devtools_debugger dom` | Inspect styles, listeners, the accessibility node, or set DOM breakpoints |
+
+`devtools_elements {action: "search"}` goes the other way: it takes a CSS selector, XPath or text and returns refs that the automation tools can then use.

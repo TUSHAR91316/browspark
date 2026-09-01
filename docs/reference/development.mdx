@@ -1,0 +1,51 @@
+---
+title: "Development"
+description: "Building, testing, regenerating docs, and how the code is organised."
+---
+
+Bun is the only toolchain: install, run, bundle and test. There is no Node, npm or esbuild step anywhere.
+
+## Commands
+
+```bash
+bun install
+bun run build            # extension bundles → extension/dist/
+bun run typecheck        # tsc for companion and extension
+bun test                 # unit + bridge tests, no browser
+bun run test:e2e         # launches throwaway Chromes; every acceptance scenario
+E2E_LIGHTHOUSE=1 bun run test:e2e   # also a real Lighthouse audit
+bun run capabilities     # probe both modes, rewrite docs/reference/capability-matrix.mdx
+bun run docs:tools       # rewrite docs/tools/** and the Tools navigation
+bun run package          # dist/browspark-extension.zip
+bun run compile          # dist/browspark
+```
+
+Tests run with `--timeout 120000` because the e2e suite launches real browsers. The harness kills every Chrome it started in a `finally` block; if a test crashes hard, `pgrep -fl remote-debugging-port` shows leftovers.
+
+## Test fixtures
+
+`test-apps/` is served by `test-apps/server.ts` and provides deterministic pages: a form page, a debug page with console noise, exceptions, timers and a source-mapped script, an iframe page, a second page for navigation, a service worker, a manifest, a JSON API with configurable latency, a download endpoint and a WebSocket echo. The e2e suites drive the real companion through the MCP client against these pages in both modes.
+
+## Adding a tool
+
+1. Register it with `tool(ctx, name, description, zodShape, handler)` in the right module under `companion/src/tools.ts` or `companion/src/devtools/`. The wrapper handles the per-agent context, the disabled-tool policy and result normalisation.
+2. Write the description for the agent: what it does, when to use it, what to call instead. Descriptions are the agent's only manual.
+3. Add an example to `companion/test/docs-examples.ts` and run `bun run docs:tools`; the generator validates every example against the schema and fails on mismatch.
+4. Cover it in `companion/test/e2e.test.ts` or `devtools.e2e.test.ts`.
+
+## Docs site
+
+The docs are a [Mintlify](https://mintlify.com) site in `docs/`. Hand-written pages are MDX; `docs/tools/**` is generated. Preview locally with:
+
+```bash
+cd docs && bunx mint dev
+```
+
+and check links with `bunx mint broken-links`. Deploy by connecting the repository in the Mintlify dashboard with `docs` as the docs path.
+
+## Conventions
+
+- TypeScript with erasable syntax only (no parameter properties, no enums), so Bun runs the source directly.
+- One zod (v4) across the project; the MCP SDK's nested copy is deduplicated by the lockfile.
+- Conventional commit messages.
+- UI in the extension is vanilla HTML, CSS and TypeScript with design tokens for light and dark themes; no framework.

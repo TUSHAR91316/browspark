@@ -1,0 +1,69 @@
+---
+title: "Tools overview"
+description: "All 43 tools by group, with the mode each needs."
+---
+
+Every page in this section is generated from the companion's tool registrations by `bun run docs:tools`, so parameter names, types, enums and defaults match the running code. Each example is validated against the tool's schema when the docs are generated.
+
+Conventions shared by all tools:
+
+- `tabId` is optional everywhere. Without it the companion uses the calling agent's own tab or the only usable tab; see [Tabs and sharing](/concepts/tabs-and-sharing#choosing-the-target-tab).
+- `ref` values come from `browser_snapshot` or `devtools_elements search`; see [Snapshots and refs](/concepts/snapshots-and-refs).
+- Search tools take `query` with optional `regex: true`, and paginate with `offset` and `limit` (default 50).
+- Long results are clipped; ask for a narrower `query`, a specific `id`, or a higher `limit`.
+- Files are written to `~/.browspark/artifacts` unless a `path` is given.
+
+## Browser automation
+
+| Tool | Purpose |
+|---|---|
+| [browser_status](/tools/browser/browser_status) | Connection state, pairing instructions, usable tabs, open dialogs |
+| [browser_session](/tools/browser/browser_session) | Launch, close, list and delete developer-browser contexts |
+| [browser_tabs](/tools/browser/browser_tabs) | List, open, close, activate tabs across all windows |
+| [browser_navigate](/tools/browser/browser_navigate) | Go to a URL, reload, back, forward |
+| [browser_snapshot](/tools/browser/browser_snapshot) | Accessible tree with refs, optionally as a diff |
+| [browser_read](/tools/browser/browser_read) | Text, markdown, links, tables or HTML of the page or a ref |
+| [browser_fetch](/tools/browser/browser_fetch) | Load a URL in a temporary tab and return its main content |
+| [browser_extract](/tools/browser/browser_extract) | Structured records from repeated elements |
+| [browser_click](/tools/browser/browser_click) | Click, hover, drag |
+| [browser_fill](/tools/browser/browser_fill) | Replace the text of an input, textarea or contenteditable |
+| [browser_select](/tools/browser/browser_select) | Choose options in a select |
+| [browser_upload](/tools/browser/browser_upload) | Set files on a file input |
+| [browser_key](/tools/browser/browser_key) | Press keys or type text |
+| [browser_scroll](/tools/browser/browser_scroll) | Scroll the page or a ref's container |
+| [browser_screenshot](/tools/browser/browser_screenshot) | Viewport, full page or element image |
+| [browser_wait](/tools/browser/browser_wait) | Wait for text, URL or element state |
+| [browser_dialog](/tools/browser/browser_dialog) | Accept or dismiss JavaScript dialogs |
+| [browser_batch](/tools/browser/browser_batch) | Several calls in one round trip |
+| [browser_policy](/tools/browser/browser_policy) | Allow or block domains per tab or by default |
+| [browser_download](/tools/browser/browser_download) | List downloads or wait for one |
+| [browser_pdf](/tools/browser/browser_pdf) | Print to PDF |
+| [browser_webmcp](/tools/browser/browser_webmcp) | List and invoke WebMCP tools a page exposes |
+
+## Developer tools
+
+| Tool | Purpose | Mode |
+|---|---|---|
+| [devtools_session](/tools/devtools/devtools_session) | Start, stop, clear an inspection session | both |
+| [devtools_events](/tools/devtools/devtools_events) | Read or wait for collected events | both |
+| [devtools_capabilities](/tools/devtools/devtools_capabilities) | Probe which protocol domains work for a tab | both |
+| [devtools_cdp](/tools/devtools/devtools_cdp) | Raw DevTools Protocol command | developer |
+| [devtools_console](/tools/devtools/devtools_console) | Search, inspect and wait on console output | both |
+| [devtools_evaluate](/tools/devtools/devtools_evaluate) | Run JavaScript in the page, a frame or a paused call frame | both |
+| [devtools_network](/tools/devtools/devtools_network) | Search requests, bodies, frames, HAR, throttle, block, mock, replay | both |
+| [devtools_sources](/tools/devtools/devtools_sources) | Scripts, stylesheets, source maps, overrides | both |
+| [devtools_debugger](/tools/devtools/devtools_debugger) | Breakpoints, stepping, scopes, watches | both |
+| [devtools_elements](/tools/devtools/devtools_elements) | DOM search, HTML and attribute edits, styles, box model, listeners, overlays | both |
+| [devtools_performance](/tools/devtools/devtools_performance) | Traces, Web Vitals, runtime metrics | both |
+| [devtools_profile](/tools/devtools/devtools_profile) | CPU sampling profiles | both |
+| [devtools_memory](/tools/devtools/devtools_memory) | Heap usage and growth (both); snapshots, diffs, retainers, allocation sampling (developer) | mixed |
+| [devtools_coverage](/tools/devtools/devtools_coverage) | JavaScript and CSS coverage | both |
+| [devtools_storage](/tools/devtools/devtools_storage) | Cookies, web storage, IndexedDB, Cache Storage, quota, clearing | both |
+| [devtools_workers](/tools/devtools/devtools_workers) | Service workers and the web app manifest | mostly both |
+| [devtools_emulation](/tools/devtools/devtools_emulation) | Devices, throttling, geolocation, media, locale, vision, animations | both |
+| [devtools_accessibility](/tools/devtools/devtools_accessibility) | Accessibility tree, audit, browser-reported issues | both |
+| [devtools_security](/tools/devtools/devtools_security) | Connection state, certificate, mixed content | both |
+| [devtools_lighthouse](/tools/devtools/devtools_lighthouse) | Lighthouse audit with reports | developer |
+| [devtools_recorder](/tools/devtools/devtools_recorder) | Record, parameterise, replay, export to Playwright | both |
+
+The exact per-domain picture is in the [capability matrix](/reference/capability-matrix).

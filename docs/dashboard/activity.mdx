@@ -1,0 +1,23 @@
+---
+title: "Activity page"
+description: "A live log of what agents did, when the activity log is switched on."
+---
+
+The activity log is **off by default**. Off means off: the extension keeps no record of commands, and the Overview page hides its Operations and Errors counters.
+
+Switch it on under **Settings → Privacy → Activity log**. From then on the extension keeps the last 200 commands **in memory**, never on disk, and the Activity page shows them newest first:
+
+| Column | Content |
+|---|---|
+| Time | When the command completed. |
+| Agent | The MCP client name that issued it (for example `claude-code`, `codex`, `gemini`). |
+| Tab | Title of the target tab. |
+| Command | The DevTools Protocol method or bridge request, such as `Input.dispatchMouseEvent` or `tabs.create`. |
+| Latency | Round-trip time in milliseconds. |
+| Result | OK, or the error text. |
+
+Turning the log off clears it immediately. Restarting the browser also clears it because the service worker starts fresh.
+
+<Tip>
+The log shows protocol methods, not MCP tool names, because one tool call can fan out into several commands. For a tool-level view read the companion's stderr, which logs each agent connecting and disconnecting, or ask the agent what it did.
+</Tip>

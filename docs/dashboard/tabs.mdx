@@ -1,0 +1,30 @@
+---
+title: "Tabs page"
+description: "Share and unshare tabs across every window, or share everything."
+---
+
+<img src="/images/dashboard-tabs-light.png" alt="Tabs page, light theme" />
+
+Every open tab from every Chrome window is listed with its favicon, title, URL and window. Each row shows badges for its state:
+
+| Badge | Meaning |
+|---|---|
+| Shared | The agent may use this tab. |
+| Attached | The debugger is currently attached; Chrome shows its bar on this tab. |
+| Agent | Opened by an agent and shared automatically. Hover for the agent's name. |
+| Inspecting | A `devtools_session` is collecting data on this tab. |
+| Unsupported | A `chrome://`, extension or Web Store page. Chrome refuses to attach to these. |
+
+## Sharing
+
+- **Share** / **Stop** per row. Stop detaches immediately.
+- **Share everything** at the top shares all current and future tabs, including ones you open later. Switching it off unshares every tab that was not shared individually.
+- Shared state for individual tabs is per browser session; Share everything persists across restarts.
+
+Chrome keeps tab ids stable while a tab exists, so the `tabId` the agent uses matches the number here (visible in the row's tooltip).
+
+## Tips
+
+- Open the page the agent should work on, share only that tab, and keep everything else private.
+- Give the agent its own window if the activation before clicks and screenshots gets in your way: tabs it opens land in whatever window is current at that moment.
+- A tab on `chrome://newtab` can be shared; the agent can navigate it to a website but cannot inspect the New Tab page itself.
