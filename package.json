@@ -1,0 +1,30 @@
+{
+  "name": "browsermcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "browsermcp": "companion/src/index.ts"
+  },
+  "scripts": {
+    "build": "bun build extension/src/background.ts extension/src/app.ts --outdir extension/dist --target browser",
+    "typecheck": "tsc --noEmit -p companion && tsc --noEmit -p extension",
+    "test": "bun test --timeout 120000",
+    "start": "bun companion/src/index.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.20.0",
+    "ws": "^8.18.0",
+    "zod": "^4.6.2",
+    "lighthouse": "^12.8.0"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.1.0",
+    "@types/ws": "^8.18.0",
+    "typescript": "^5.9.0",
+    "@types/node": "^24.0.0"
+  },
+  "allowScripts": {
+    "esbuild@0.25.12": true
+  }
+}
