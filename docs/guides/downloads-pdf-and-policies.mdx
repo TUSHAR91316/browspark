@@ -1,0 +1,30 @@
+---
+title: "Downloads, PDFs and domain policies"
+description: "Collect files the browser downloads, print pages to PDF, and fence where tabs may go."
+---
+
+## Downloads
+
+`browser_download {action: "list"}` reports downloads: in extension mode the browser's own download list (filtered to the agent's tabs unless Share everything is on), in developer mode the files in the context's download directory (`~/.browspark/downloads/<context>` unless overridden at launch).
+
+`{action: "wait", urlContains, timeoutMs}` blocks until a matching download completes and returns its path, which is what you want right after clicking an "Export CSV" button.
+
+## PDF
+
+`browser_pdf` prints the current page like Print → Save as PDF: `format` (`A4`, `Letter`, `Legal`), `landscape`, `printBackground`, `scale`, and `path` to write somewhere other than the artifacts directory. Returns the file path.
+
+## Domain policies
+
+`browser_policy` restricts where a tab may navigate and load resources from. `allow` is an allow-list (everything else is blocked); `block` is a deny-list. Subdomains match, non-HTTP schemes always pass, and blocked navigations fail with `ERR_BLOCKED_BY_CLIENT`.
+
+```json
+{ "action": "set", "tabId": 1234, "allow": ["example.com", "cdn.example.net"] }
+```
+
+With `default: true` the policy applies to every tab the agent opens from now on, which is the way to keep a scraping run on the sites you intend:
+
+```json
+{ "action": "set", "default": true, "block": ["doubleclick.net", "google-analytics.com"] }
+```
+
+`status` shows the active policy; `clear` removes it. Policies are enforced through Chrome's Fetch domain so they cover subresources, not just top-level navigation.

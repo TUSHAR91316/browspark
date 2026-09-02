@@ -1,0 +1,72 @@
+---
+title: "Debug a web app"
+description: "Inspection sessions, console and network search, source maps, breakpoints, elements, storage and workers."
+---
+
+The developer tools mirror Chrome DevTools panel by panel. They work on your shared tabs in extension mode; only heap snapshots, Lighthouse and raw protocol commands need the [developer browser](/concepts/developer-browser).
+
+## Start an inspection session
+
+```json
+{ "tool": "devtools_session", "args": { "action": "start", "tabId": 1234, "bodies": true } }
+```
+
+While a session is active the companion collects console messages, exceptions, network requests (with bodies when `bodies` is on, capped by `maxBodyBytes`), loaded scripts, navigations, issues, service worker events and debugger pauses, **across reloads**. The tab stays attached for the duration. `status` shows what is collected and which agents share the session; `clear` drops data; `stop` removes every breakpoint, mock, override, blocked URL and emulation the session set and detaches.
+
+`devtools_events` reads the raw event stream with paging (`afterId`) or blocks (`wait: true`) until an event matching `method` or `text` arrives, for example to wait for a failed request or a breakpoint hit.
+
+## Console
+
+`devtools_console` searches everything logged since the session started:
+
+- Filter by `query` (text or `regex`), `level`, `kind` (`console`, `exception`, browser `log`), source `url`, frame, context, and `since`/`until`.
+- `get` returns one message with its full stack trace.
+- `inspect` expands an object that was logged, by message `id` or `objectId`, to `depth`.
+- `wait` blocks until a matching message appears.
+
+`devtools_evaluate` runs JavaScript in the page, a frame, an execution context or, while paused, a call frame. Objects come back as previews with an `objectId` you can inspect further.
+
+## Network
+
+`devtools_network` is the Network panel:
+
+| Action | What it does |
+|---|---|
+| `search` | Filter by URL, headers, body or post data, `method`, `status`, `domain`, `type`, `minDurationMs`, `failed`, time window |
+| `get` | Headers, timing breakdown, initiator stack, redirect chain and security details of one request |
+| `body` | Response body, JSON pretty-printed, fetched on demand if it was not captured |
+| `frames` | WebSocket frames or server-sent events for a connection |
+| `har` | Export a HAR artifact |
+| `throttle`, `cache`, `block`, `mock`, `replay` | Covered in [Network mocking](/guides/network-mocking) |
+
+## Sources and source maps
+
+`devtools_sources` lists scripts, stylesheets, documents, frames and execution contexts, gets file contents (`original: true` returns the original source through the source map), searches across sources by filename, text or regex, and maps positions between original and generated code. `override` serves your own body for a URL after reload, until the session stops.
+
+## Debugger
+
+`devtools_debugger` sets breakpoints by URL, script id, or **original source file and line** through the source map, with optional `condition` or `logMessage` (a logpoint). It also handles exception breakpoints (`none`, `uncaught`, `all`), DOM breakpoints on a ref or selector, event listener breakpoints and XHR breakpoints on a URL substring.
+
+When the page pauses, whether from a breakpoint, an exception or a `browser_click` that hit one, the tools report it. Then:
+
+- `stack` shows sync and async frames mapped to original sources.
+- `scope`, `variables`, `evaluate` and `watch` read state in a frame; `setVariable` changes it.
+- `stepInto`, `stepOver`, `stepOut`, `continueTo` and `resume` move on. `blackbox` ignores library scripts while stepping.
+
+## Elements and styles
+
+`devtools_elements` targets an element by ref, CSS selector or node id. `search` returns refs for selectors, XPath or text. Then: `describe`, `html` (get or set outerHTML), `attributes`, `classes`, `styles` (matched rules and inline styles; set a `property`/`value`, or edit a rule's text), `computed`, `box`, `listeners` with source locations, `pseudo` to force `:hover` and friends, `highlight`/`hide` overlays, and `overlays` for layout shift regions, paint rectangles, FPS and grid.
+
+## Storage and workers
+
+`devtools_storage` covers cookies, local and session storage, IndexedDB (databases, stores, records, put, clear, delete), Cache Storage, quota usage and targeted clearing by type for an origin. `devtools_workers` lists service worker registrations and versions, updates, unregisters, bypasses them, forces update on navigation, reads the web app manifest with installability errors, and (developer mode) starts, stops, skips waiting and evaluates inside a worker.
+
+## Emulation, accessibility, security
+
+- `devtools_emulation`: device presets (`iphone-14`, `iphone-se`, `pixel-7`, `ipad`, `desktop`) or custom viewports, CPU and network throttling, geolocation, colour scheme, reduced motion, forced colours, contrast, print media, locale and timezone, vision deficiencies, animation playback rate. `status` lists what is active; `reset` or stopping the session undoes it all.
+- `devtools_accessibility`: the accessibility tree for the page or a subtree, one node's full properties, a quick audit (missing alt text, labels and names, duplicate ids) and every issue Chrome reported with affected node refs.
+- `devtools_security`: connection state and certificate, mixed content, and security-related issues.
+
+## Watching alongside
+
+Open DevTools on the shared tab yourself. Chrome allows the agent and the DevTools window at the same time, and you will see the agent's breakpoints, network filters and emulation reflected in the standard panels.

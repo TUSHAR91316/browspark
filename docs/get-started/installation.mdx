@@ -1,0 +1,94 @@
+---
+title: "Installation"
+description: "Every install option in detail: source, packaged extension, compiled companion, and browser choices."
+---
+
+## Requirements
+
+| Requirement | Notes |
+|---|---|
+| Bun 1.x | Runtime, package manager, bundler and test runner. Nothing else is needed; there is no Node or npm step. |
+| Chromium-based browser | Chrome, Brave, Edge or Chromium for extension mode. Developer mode finds Chrome automatically or uses `BROWSPARK_CHROME`. |
+| An MCP client | Claude Code, Codex, OpenCode, Cursor, Kilo, Antigravity, Gemini, or anything that speaks MCP over stdio or Streamable HTTP. |
+
+## The companion
+
+The companion is the MCP server. It is published on npm as `browspark-mcp` (alias `browspark`) and runs with a single command, no clone or install step:
+
+```bash
+bunx browspark-mcp@latest
+```
+
+From a clone of the repo, `bun companion/src/index.ts` runs the same code from source.
+
+Started by an MCP client it speaks MCP over stdio. On every start it also opens `127.0.0.1:9223` for the extension's WebSocket bridge, the [HTTP MCP endpoint](/connect/http-and-gemini) and the [live view](/concepts/developer-browser#live-view). If that port is already taken by another companion, the new process becomes a relay to the existing one instead of failing. See [Multiple agents](/connect/multiple-agents).
+
+### Single-file build
+
+Clients that run MCP servers in a sandbox without access to your source tree (Gemini's local command option, some IDE sandboxes) can use a compiled binary:
+
+```bash
+bun run compile
+# → dist/browspark
+```
+
+The binary has no dependencies and takes the same flags as the source entry point.
+
+### Flags and environment
+
+| Flag or variable | Default | Effect |
+|---|---|---|
+| `--port <n>` / `BROWSPARK_PORT` | `9223` | Bridge, HTTP and live-view port. Set the same port in the dashboard's Settings. |
+| `--http-only` | off | Do not open the stdio transport. Use when no client launches the companion and you only want the HTTP endpoint. |
+| `BROWSPARK_CHROME` | auto-detected | Browser executable for developer mode. |
+| `BROWSPARK_PROFILE` | `~/.browspark/profile` | Profile directory of the default developer context. |
+| `BROWSPARK_PROFILES` | `~/.browspark/profiles` | Parent directory for named developer contexts. |
+| `BROWSPARK_ARTIFACTS` | `~/.browspark/artifacts` | Where traces, profiles, snapshots, HAR files, PDFs and reports are written. |
+
+The full list is in the [CLI and environment reference](/reference/cli-and-environment).
+
+## The extension
+
+<Tabs>
+  <Tab title="Unpacked from source">
+    ```bash
+    bun run build
+    ```
+    Then `chrome://extensions` → **Developer mode** → **Load unpacked** → the `extension/` folder. Reload the extension after every `bun run build`.
+  </Tab>
+  <Tab title="Packaged zip">
+    ```bash
+    bun run package
+    # → dist/browspark-extension.zip
+    ```
+    Unzip it anywhere and load that folder unpacked. Useful for installing on another machine or in a second browser.
+  </Tab>
+</Tabs>
+
+The extension asks for five permissions: `debugger` (drive tabs), `tabs` (list and open them), `storage` (settings and the shared list), `alarms` (idle detach timer) and `downloads` (report downloads). It has no host permissions and injects nothing into pages on its own.
+
+<Warning>
+Only one browser profile should hold the extension at a time. If you move it from Chrome to Brave, remove it from Chrome first. Both would otherwise connect to the same companion and the agent would see tabs from whichever connected last.
+</Warning>
+
+## Pairing
+
+The companion creates a random token in `~/.browspark/token` (mode `0600`) on first start. The extension must present it to connect. Get it from any of these places:
+
+- Ask the agent to run `browser_status`; while unpaired the output includes the token and port.
+- The companion prints it on stderr at startup: `browspark: ready on ws://127.0.0.1:9223 (pairing token …)`.
+- `cat ~/.browspark/token`.
+
+Enter it under **Settings → Companion → Pairing token** and click **Connect**. The extension stores the token in its own `chrome.storage.local`, so it survives browser restarts. Delete the file to rotate the token; the dashboard then needs the new one.
+
+## Updating
+
+The companion updates itself: `bunx browspark-mcp@latest` resolves the newest version each time the client starts it. For the extension:
+
+```bash
+git pull
+bun install
+bun run build
+```
+
+Then reload the extension on `chrome://extensions`. The dashboard shows a banner when the extension files on disk are newer than the running service worker, and it shows the companion's version next to the connection status so you can tell when the two are out of step.

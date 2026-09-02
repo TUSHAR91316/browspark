@@ -1,0 +1,71 @@
+---
+title: "Automate a website"
+description: "The snapshot → act → verify loop, with the tools an agent uses for each step."
+---
+
+This is the loop every browser task follows. Names in `code` are the tools; the prompts are what you would say to the agent.
+
+## 1. Get a tab
+
+> Open the login page of app.example.com in my browser.
+
+The agent calls `browser_status` if it has not yet, then `browser_tabs {action: "new", url}`. The tab opens in your current window and becomes the agent's default target. If you already had the page open and shared, it uses that tab instead.
+
+## 2. Look
+
+`browser_snapshot` returns the accessible tree with refs:
+
+```text
+- heading "Sign in" [ref=e1]
+- textbox "Email" [ref=e2]
+- textbox "Password" [ref=e3]
+- checkbox "Remember me" [ref=e4]
+- button "Sign in" [ref=e5]
+- link "Forgot password?" [ref=e6]
+```
+
+For long pages the agent uses `diff: true` on later snapshots to read only what changed, or `browser_read {what: "text", ref}` to read one region.
+
+## 3. Act
+
+| Intent | Tool call |
+|---|---|
+| Type into a field | `browser_fill {ref: "e2", text: "jane@example.com"}` replaces the field's content |
+| Toggle a checkbox, press a button, follow a link | `browser_click {ref}` with real mouse events; `hover: true` for menus, `dragTo` for drag and drop |
+| Pick from a `<select>` | `browser_select {ref, values: ["Germany"]}` by value or visible label |
+| Attach a file | `browser_upload {ref, files: ["/path/on/this/machine.pdf"]}` |
+| Keyboard | `browser_key {key: "Enter"}`, chords like `"Shift+Tab"`, or `{text: "…"}` to type into the focused element |
+| Scroll | `browser_scroll {direction: "down", amount: 800}` or scoped to a ref's scroll container |
+
+Several steps can go in one `browser_batch` to save round trips:
+
+```json
+{
+  "steps": [
+    { "tool": "browser_fill", "args": { "ref": "e2", "text": "jane@example.com" } },
+    { "tool": "browser_fill", "args": { "ref": "e3", "text": "hunter2" } },
+    { "tool": "browser_click", "args": { "ref": "e5" } },
+    { "tool": "browser_wait", "args": { "url": "/dashboard" } }
+  ]
+}
+```
+
+The batch stops at the first error and returns everything collected so far.
+
+## 4. Verify
+
+- `browser_wait` polls for text to appear or disappear, the URL to contain a string, or a ref to become visible, hidden or enabled. Default timeout 15 seconds.
+- `browser_screenshot` for the viewport, `fullPage: true`, or one `ref`. PNG by default, JPEG with `quality`.
+- `browser_snapshot {diff: true}` shows what the last action changed.
+
+## Interruptions
+
+- A click that triggers `alert`, `confirm`, `prompt` or `beforeunload` returns at once and reports the dialog. `browser_dialog {accept, promptText}` resolves it; `browser_status` lists open dialogs.
+- A click that hits a breakpoint set through `devtools_debugger` also returns at once and says the page is paused, so the agent can inspect and resume.
+- Navigations wait for the load event, including back and forward restored from the back-forward cache and same-document navigations.
+
+## Things that do not work by design
+
+- Browser shortcuts through `browser_key` (open DevTools, switch tabs, reload). Keys go to the page only. Use `browser_navigate {action: "reload"}` and the `devtools_*` tools.
+- Automating `chrome://` pages, extension pages or the Chrome Web Store.
+- Reaching a tab you have not shared.

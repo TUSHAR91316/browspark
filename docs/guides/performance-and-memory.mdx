@@ -1,0 +1,46 @@
+---
+title: "Performance and memory"
+description: "Traces with Web Vitals, CPU profiles, heap snapshots and leak detection, coverage, and Lighthouse."
+---
+
+Artifacts land in `~/.browspark/artifacts` (or `BROWSPARK_ARTIFACTS`) in Chrome's own formats, so every file opens in DevTools.
+
+## Traces
+
+```json
+{ "tool": "devtools_performance", "args": { "action": "start", "reload": true } }
+{ "tool": "devtools_performance", "args": { "action": "stop" } }
+```
+
+`stop` saves a `.json` trace (DevTools Performance panel, Perfetto) and returns a summary: time by category, long tasks with their heaviest children, script time by URL, observed LCP, FCP and CLS, and user timings. `search` finds events by name or argument, `compare` diffs two recordings, `vitals` reads live Web Vitals observed in the page since the session started (LCP, CLS, INP, FID, FCP, TTFB, long tasks), and `metrics` returns Chrome runtime metrics.
+
+<Note>Traces are browser-wide; activity from other tabs can appear in the raw file. The summary is filtered to the target tab where possible.</Note>
+
+## CPU profiles
+
+`devtools_profile start` / `stop` records a sampling profile (`.cpuprofile`). `stop` and `analyze` return the most expensive functions by self time (bottom-up) and the hot paths (call tree).
+
+## Memory
+
+| Action | Mode | Result |
+|---|---|---|
+| `usage` | both | Current heap size |
+| `growth` | both | Samples heap usage for `seconds`, optionally forcing GC first, and reports the trend |
+| `snapshot` | developer | `.heapsnapshot` artifact plus objects by class with sizes and the detached DOM node count |
+| `compare` | developer | Growth by class between two snapshots |
+| `retainers` | developer | What holds instances of `className` |
+| `sampling` | developer | Allocation sampling profile (`.heapprofile`) with the top allocating functions |
+
+Chrome does not expose the heap profiler to extensions. A typical leak hunt: `growth` in your own tab to confirm the symptom, then launch the developer browser, reproduce, and use `snapshot` → `compare` → `retainers`.
+
+## Coverage
+
+`devtools_coverage start` (optionally `reload: true`) then `stop` reports used and unused bytes per JavaScript and CSS file. `detail` lists the unused ranges of one file with line numbers and snippets.
+
+## Lighthouse
+
+```json
+{ "tool": "devtools_lighthouse", "args": { "url": "https://example.com", "device": "mobile", "categories": ["performance", "accessibility", "best-practices", "seo"] } }
+```
+
+Runs the official Lighthouse CLI against the developer browser and returns category scores, key metrics and failing audits, plus HTML and JSON reports as artifacts. Developer mode only; Lighthouse opens its own tab there.

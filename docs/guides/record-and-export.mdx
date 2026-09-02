@@ -1,0 +1,43 @@
+---
+title: "Record and export to Playwright"
+description: "Record a flow, add assertions and parameters, replay it, and export a Playwright test."
+---
+
+`devtools_recorder` records what an agent does on a tab and turns it into a replayable flow. Recordings are per agent, so two agents recording at once do not mix.
+
+<Steps>
+  <Step title="Start recording">
+    ```json
+    { "action": "start", "tabId": 1234, "name": "checkout" }
+    ```
+    Every `browser_navigate`, `browser_click`, `browser_fill`, `browser_select`, `browser_key` and `browser_wait` on that tab is captured with a stable selector for the element: a unique `id`, then `data-testid`, `data-test`, `name` or `aria-label`, and only as a last resort an `nth-of-type` path.
+  </Step>
+  <Step title="Add checks along the way">
+    ```json
+    { "action": "add_assertion", "flowId": "checkout", "assertion": { "text": "Order confirmed", "timeoutMs": 10000 } }
+    { "action": "add_checkpoint", "flowId": "checkout", "label": "after-payment" }
+    ```
+    Assertions are `browser_wait` checks (`text`, `textGone`, `url`, `selector` with `state`). Checkpoints mark places a replay can stop at.
+  </Step>
+  <Step title="Stop and parameterise">
+    ```json
+    { "action": "stop", "flowId": "checkout" }
+    { "action": "parameterize", "flowId": "checkout", "stepIndex": 2, "field": "text", "paramName": "email" }
+    ```
+    `stop` saves the flow as a JSON artifact. `parameterize` replaces a recorded literal with `{{email}}`. `get` shows the steps with their indexes; `delete_step` removes one.
+  </Step>
+  <Step title="Replay">
+    ```json
+    { "action": "replay", "flowId": "checkout", "tabId": 1234, "params": { "email": "qa@example.com" }, "stopAtCheckpoint": "after-payment" }
+    ```
+    Selectors are resolved to fresh refs on the live page. Replay stops at the first failure with the step index and reason, or continues past failures with `continueOnFailure`. `fromStep` resumes part-way.
+  </Step>
+  <Step title="Export">
+    ```json
+    { "action": "export", "flowId": "checkout", "format": "playwright", "path": "/Users/me/app/tests/checkout.spec.ts" }
+    ```
+    Produces a Playwright test: `page.goto`, `page.locator(selector).click()/fill()/selectOption()`, `page.keyboard.press`, assertions as `expect(page.getByText(…)).toBeVisible()` and `expect(page).toHaveURL(…)`, checkpoints as comments, and parameters read from environment variables (`EMAIL` for `{{email}}`). The same file is also saved as an artifact.
+  </Step>
+</Steps>
+
+`list` shows saved flows. `flowId` accepts either the id or the artifact path.

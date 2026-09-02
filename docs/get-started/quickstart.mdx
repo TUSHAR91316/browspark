@@ -1,0 +1,45 @@
+---
+title: "Quickstart"
+description: "From zero to an agent driving a tab in about five minutes."
+---
+
+<Info>You need [Bun](https://bun.sh) and a Chromium-based browser (Chrome, Brave, Edge, Chromium). Browspark is developed on macOS; the companion runs anywhere Bun does.</Info>
+
+<Steps>
+  <Step title="Build the extension">
+    ```bash
+    git clone https://github.com/uncaughterrs/browsermcp.git
+    cd browsermcp
+    bun install && bun run build
+    ```
+    `bun run build` bundles the extension's service worker and dashboard into `extension/dist/`. The companion itself comes from npm, so this clone is only for the extension.
+  </Step>
+  <Step title="Load the extension">
+    Open `chrome://extensions`, switch on **Developer mode**, click **Load unpacked** and pick the `extension/` folder. Pin the Browspark icon so the dashboard is one click away.
+  </Step>
+  <Step title="Register the companion with your agent">
+    For Claude Code:
+    ```bash
+    claude mcp add --transport stdio --scope user browspark -- bunx browspark-mcp@latest
+    ```
+    Every other client is covered in [Connect an agent](/connect/agents). The dashboard's Overview page shows ready-to-copy snippets for each.
+  </Step>
+  <Step title="Pair once">
+    Ask the agent to call `browser_status`. While the extension is not connected it prints the pairing token and port. Open the dashboard (click the extension icon), go to **Settings**, paste the token and click **Connect**. The token lives in `~/.browspark/token` and never changes unless you delete that file.
+  </Step>
+  <Step title="Share a tab">
+    In the dashboard's **Tabs** page, share the tab the agent should work on, or switch on **Share everything** to include every current and future tab. Then ask:
+
+    > Open example.com in my browser, take a snapshot, and tell me what the headline says.
+
+    The agent opens an ordinary tab in your current window, reads the accessible tree, and answers.
+  </Step>
+</Steps>
+
+## What you will see
+
+- A **"Browspark started debugging this browser"** bar on shared tabs while the agent is attached. It is Chromium's own notice for the debugger API and detaches after 30 seconds of inactivity. [How to hide it](/guides/troubleshooting#the-debugging-bar).
+- Tabs the agent opens are ordinary tabs in your window. They are shared automatically and become that agent's default target.
+- The dashboard's Overview counts operations and errors only when the [activity log](/dashboard/activity) is on. It is off by default.
+
+<Tip>Tell the agent what you want in plain language. The tool descriptions steer it: it calls `browser_status` first when something fails, re-snapshots after navigation, and does not open a separate browser unless a capability needs one.</Tip>

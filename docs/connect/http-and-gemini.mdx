@@ -1,0 +1,76 @@
+---
+title: "HTTP endpoint and Gemini"
+description: "Connect clients that take a URL: Gemini connected apps, web agents, sandboxed IDEs."
+---
+
+While the companion runs it serves MCP over **Streamable HTTP** at:
+
+```text
+http://127.0.0.1:9223/mcp?token=<pairing token>
+```
+
+The token is the same one the extension pairs with. Pass it either as the `token` query parameter or as `Authorization: Bearer <token>`; requests without it get `401`. The dashboard's **Settings → Other clients** card shows the exact URL with a copy button once you have paired.
+
+<Warning>
+The token is a password. The endpoint binds to localhost only; if you expose it through a tunnel, make sure the token stays in the URL and the tunnel is private.
+</Warning>
+
+## Starting the companion for HTTP clients
+
+An HTTP client cannot launch the companion the way a stdio client does. Either:
+
+- Keep a stdio client (Claude Code, OpenCode…) connected: its companion owns the port and serves HTTP at the same time.
+- Or run it standalone:
+
+```bash
+bunx browspark-mcp@latest --http-only
+```
+
+`--http-only` skips the stdio transport so the process does not exit when stdin closes. Stop it with Ctrl-C; it closes any developer browsers it launched.
+
+## Gemini
+
+Gemini can connect in two ways.
+
+<Tabs>
+  <Tab title="URL (recommended)">
+    Add a connected app of type **Cloud MCP** (or whichever option asks for a server URL) and paste the URL from the dashboard's Settings page. Start the companion with `--http-only` first, or have another client running. No sandbox configuration is needed because Gemini only makes HTTP requests to localhost.
+  </Tab>
+  <Tab title="Local command">
+    Gemini runs local MCP commands in a sandbox that, by default, cannot read your home directory. Two things are needed:
+
+    1. Set the sandbox to **Full Access** for this server so it can read the source tree and `~/.browspark`.
+    2. Use full executable paths, since the sandbox has a minimal `PATH`:
+    ```text
+    /Users/you/.bun/bin/bunx browspark-mcp@latest
+    ```
+    If the sandbox still cannot see the source tree, build the [single-file binary](/get-started/installation#single-file-build) and point Gemini at `dist/browspark`.
+
+    A "Timed out waiting for MCP server to answer handshake" error means the process could not start at all; check the two points above.
+  </Tab>
+</Tabs>
+
+## Any other HTTP client
+
+Connect with the MCP SDK's Streamable HTTP transport, for example:
+
+```ts
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+
+const client = new Client({ name: 'my-agent', version: '1.0' });
+await client.connect(new StreamableHTTPClientTransport(new URL('http://127.0.0.1:9223/mcp?token=…')));
+const { tools } = await client.listTools();
+```
+
+Each HTTP session gets its own MCP server instance and its own agent identity, exactly like a stdio client. The session id travels in the `mcp-session-id` header; the first request must be a `POST` that initialises the session.
+
+## Sandboxed clients
+
+Some IDEs and hosted agents run MCP servers with no access to your files. For those:
+
+| Situation | Use |
+|---|---|
+| Client can make localhost HTTP requests | The URL above. |
+| Client can run a command but not read the repo | `bun run compile` and point it at `dist/browspark`. |
+| Client can do neither | Not supported; the browser is on your machine, so the client must reach it somehow. |

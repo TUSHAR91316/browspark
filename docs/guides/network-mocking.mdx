@@ -1,0 +1,46 @@
+---
+title: "Network mocking and throttling"
+description: "Mock endpoints, block hosts, throttle, disable the cache, and replay requests during an inspection session."
+---
+
+All of these are `devtools_network` actions and need a running `devtools_session` on the tab. They are undone by `devtools_session stop`.
+
+## Mock a response
+
+```json
+{ "action": "mock", "pattern": "*/api/user", "response": { "status": 200, "json": { "name": "Test User", "plan": "pro" } } }
+```
+
+`pattern` is a URL glob. `response` takes `status`, `headers`, `contentType`, and either `body` (string) or `json`. `rules` lists active mocks, `unmock` removes one by pattern. Mocks are applied through Chrome's Fetch domain, so they also cover requests made before the page's JavaScript runs.
+
+## Block requests
+
+```json
+{ "action": "block", "patterns": ["*analytics*", "*doubleclick*"] }
+```
+
+Blocked requests fail in the page like a network error. `unblock` lifts them. For a policy that persists across tabs and sessions, use `browser_policy` instead; see [Domain policies](/guides/downloads-pdf-and-policies#domain-policies).
+
+## Throttle
+
+```json
+{ "action": "throttle", "preset": "slow3g" }
+```
+
+Presets: `none`, `offline`, `slow3g`, `fast3g`, `4g`, or custom `latencyMs`, `downloadKbps`, `uploadKbps`. CPU throttling lives in `devtools_emulation {action: "cpu", rate}`.
+
+## Cache
+
+`{ "action": "cache", "disabled": true }` is the "Disable cache" checkbox.
+
+## Replay
+
+```json
+{ "action": "replay", "requestId": "1234.56", "overrides": { "headers": { "x-debug": "1" }, "body": "{\"page\":2}" } }
+```
+
+Re-issues a captured request from the page with optional changes to method, URL, headers or body, and returns the response. Handy for probing an API without touching the UI.
+
+## Export
+
+`{ "action": "har" }` writes a HAR file of everything captured to the artifacts directory. It opens in Chrome's Network panel, Charles, Proxyman and friends.

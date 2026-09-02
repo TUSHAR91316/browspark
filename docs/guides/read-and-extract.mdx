@@ -1,0 +1,50 @@
+---
+title: "Read and extract"
+description: "Markdown from pages and URLs, tables, links, structured records, and WebMCP tools."
+---
+
+## A page you are on
+
+`browser_read` takes `what`:
+
+| `what` | Returns |
+|---|---|
+| `text` (default) | Visible text of the page or of one `ref` |
+| `markdown` | The main content converted to markdown: headings, lists, links, code blocks and tables. Navigation, footers and ads are dropped |
+| `links` | Every link with its text and absolute URL |
+| `tables` | Each table as an array of rows |
+| `html` | Raw outer HTML |
+
+## A URL you are not on
+
+`browser_fetch {url, what}` opens a background tab in your window, waits for load, reads the main content as markdown (or text or HTML) and closes the tab. It is the fast path for "read this documentation page and summarise it". Pass `keepTab: true` to leave the tab open for follow-up actions, or `context` to fetch inside a developer context instead.
+
+Because it is a real browser tab, pages that need JavaScript, logins from your session, or your cookies render correctly, unlike a plain HTTP fetch.
+
+## Structured extraction
+
+`browser_extract` turns repeated elements into records:
+
+```json
+{
+  "items": ".product-card",
+  "fields": {
+    "name": "h3",
+    "price": ".price",
+    "link": { "selector": "a", "attr": "href" },
+    "image": { "selector": "img", "attr": "src" }
+  },
+  "limit": 100
+}
+```
+
+Each field is a CSS selector evaluated inside the item, returning text, or `{selector, attr}` for an attribute. The result is a JSON array. Combine with `browser_scroll` or clicking "Load more" for paginated lists.
+
+## Tools the page exposes
+
+Pages that implement [WebMCP](https://github.com/webmachinelearning/webmcp) register typed tools on `navigator.modelContext`. `browser_webmcp {action: "list"}` reports them with their schemas, and `{action: "invoke", name, args}` calls one. When a page offers a `searchProducts` tool that beats scraping the results grid.
+
+## Saving what you read
+
+- `browser_pdf` prints the page to a PDF file (`A4`, `Letter` or `Legal`, landscape, background graphics, scale) and returns the path, `~/.browspark/artifacts/…` by default.
+- `browser_screenshot {fullPage: true}` for an image.

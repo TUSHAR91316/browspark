@@ -1,0 +1,68 @@
+---
+title: "Troubleshooting"
+description: "Symptoms, causes and fixes for connection, tab, tool and developer-browser problems."
+---
+
+## The agent says NOT CONNECTED
+
+The extension is not paired or the companion is not running.
+
+1. Ask for `browser_status`; it prints the token and port.
+2. Open the dashboard → Settings, paste the token, check the port matches, click **Connect**.
+3. If the dashboard says "Reconnecting…", no companion is listening. A stdio client starts one when it connects; for HTTP-only use start `bunx browspark-mcp@latest --http-only`.
+
+## Port already in use
+
+Another companion owns the port and the new one relays to it; that is normal and needs no action. If instead you see `port 9223 is in use but the companion there did not answer`, something else holds the port. Stop it, or start with `--port 9224` and set the same port in the dashboard.
+
+## The agent is looking at the wrong browser
+
+The extension is installed in two browsers (say Chrome and Brave) and both connect. Remove it from the one you do not use; the companion has one extension connection and the last to connect wins.
+
+## No usable tabs
+
+Share a tab on the Tabs page or switch on Share everything. `chrome://` pages, extension pages and the Web Store can never be used. The agent should open a tab with `browser_tabs {action: "new"}` rather than launch a separate browser; if it keeps trying to launch one, set the developer browser policy to **Never**.
+
+## The debugging bar
+
+"Browspark started debugging this browser" is Chrome's own notice. It goes away 30 seconds after the last command unless an inspection session holds the tab. To hide it permanently start the browser with `--silent-debugger-extension-api`:
+
+```bash
+open -a "Brave Browser" --args --silent-debugger-extension-api
+```
+
+Quit the browser first. Developer mode has no bar.
+
+## Tools missing or the dashboard looks stale
+
+The extension was rebuilt but not reloaded. Reload it on `chrome://extensions`; the dashboard shows a banner when it detects this. If the Tools page is empty, the companion has not connected since the extension started; connect once and the catalog arrives.
+
+## A tool says it is switched off
+
+Someone disabled it on the Tools page. Enable it there; no restart needed.
+
+## "Needs developer mode"
+
+The operation uses a protocol domain Chrome hides from extensions (heap profiler, target, browser, raw CDP, Lighthouse). The agent may now launch `browser_session` for ten minutes under the default policy. Everything else continues in your tabs.
+
+## Stale ref
+
+The element left the DOM or the page navigated. Snapshot again.
+
+## Clicks do nothing
+
+- A dialog is open: `browser_status` shows it, `browser_dialog` resolves it.
+- The page is paused on a breakpoint: `devtools_debugger {action: "resume"}`.
+- The element has no box (hidden or zero-size): check with `devtools_elements {action: "box"}`.
+
+## Keyboard shortcuts do not reach the browser
+
+By design. `browser_key` sends keys to the page. DevTools, tab switching and reload are browser UI; use `devtools_*` tools and `browser_navigate {action: "reload"}`.
+
+## Developer browser cannot find Chrome
+
+Set `BROWSPARK_CHROME` to the executable, for example `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`, or pass `chromePath` to `browser_session launch`.
+
+## Gemini: module not found or handshake timeout
+
+The sandbox cannot see the source tree or `bun`. Use the HTTP URL from Settings, or set the sandbox to Full Access and use full executable paths, or point it at the compiled `dist/browspark`. See [HTTP endpoint and Gemini](/connect/http-and-gemini).
