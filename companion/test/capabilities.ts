@@ -1,4 +1,4 @@
-// Generates docs/capabilities.md by probing CDP domains live in both connection modes.
+// Generates docs/reference/capability-matrix.mdx by probing CDP domains live in both connection modes.
 // Run: bun companion/test/capabilities.ts   (launches one throwaway Chrome with the extension and one headless dev Chrome)
 import { join } from 'node:path';
 import { writeFileSync } from 'node:fs';
@@ -48,7 +48,7 @@ ${rows.join('\n')}
 | devtools_cdp (raw commands) | ❌ developer mode only | ✅ |
 | Browser-wide operations (Target, Browser, Storage domains) | ${extCaps.domains.Target === 'supported' ? '✅' : '❌ not exposed to extensions'} | ✅ |
 `;
-  writeFileSync(join(ROOT, 'docs/capabilities.md'), md);
+  writeFileSync(join(ROOT, 'docs/reference/capability-matrix.mdx'), `---\ntitle: "Capability matrix"\ndescription: "Which DevTools Protocol domains work in extension mode versus developer mode, probed live."\n---\n\n` + md.replace(/^# Capability matrix\n\n/, '').replace('`bun companion/test/capabilities.ts`', '`bun run capabilities`'));
   console.log(md);
 } finally {
   await ok('browser_session', { action: 'close' }).catch(() => {});
