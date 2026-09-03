@@ -1,0 +1,67 @@
+// Shared plumbing for tool modules: result helpers, common argument schemas, and the objects tools operate on.
+import { z } from 'zod';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+import type { ToolInfo } from '../../shared/protocol.ts';
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { Sessions } from './session.ts';
+import type { Page } from './page.ts';
+import type { Capture } from './devtools/capture.ts';
+
+export type Result = { content: ({ type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string })[]; isError?: boolean };
+export const text = (t: string): Result => ({ content: [{ type: 'text', text: t }] });
+export const image = (data: string, mimeType: string, caption?: string): Result => ({ content: [...(caption ? [{ type: 'text' as const, text: caption }] : []), { type: 'image', data, mimeType }] });
+export const fail = (e: unknown): Result => ({ content: [{ type: 'text', text: `Error: ${e instanceof Error ? e.message : String(e)}` }], isError: true });
+export const json = (v: unknown): Result => text(typeof v === 'string' ? v : JSON.stringify(v, null, 1));
+export const run = (fn: () => Promise<Result | string | object | undefined | null | number | boolean>) =>
+  fn().then((r) => (r === undefined || r === null ? text('(no result)') : typeof r !== 'object' ? text(String(r)) : 'content' in r && Array.isArray((r as Result).content) ? (r as Result) : json(r))).catch((e) => { noteUnsupported(e instanceof Error ? e.message : String(e)); return fail(e); });
+
+export const tabArg = z.number().int().optional().describe('Target tab id from browser_tabs. Optional: defaults to the tab the agent opened most recently, else the user\'s active shared tab in their current window.');
+export const refArg = z.string().describe('Element ref from browser_snapshot, e.g. "e12"');
+export const pageArgs = { offset: z.number().int().min(0).optional().describe('Pagination offset, default 0'), limit: z.number().int().min(1).max(500).optional().describe('Page size, default 50') };
+
+export interface Ctx { server: McpServer; sessions: Sessions; page: Page; capture: Capture }
+
+/** Every tool is also callable in-process (browser_batch, recorder replay). */
+export const registry = new Map<string, (args: Record<string, unknown>) => Promise<Result>>();
+export const toolCatalog: ToolInfo[] = [];
+
+/** Developer-mode gate. The extension's setting (auto/always/never) applies while it is connected; without an extension
+ *  there is nobody to ask, so launches are allowed. In auto mode a launch is allowed only shortly after a tool reported
+ *  that an operation needs developer mode. */
+export const devGate = { policy: 'auto' as 'auto' | 'always' | 'never', lastNeededAt: 0, lastReason: '' };
+const NEED_DEV = /wasn't found|Not allowed|isn't allowed|developer mode|requires developer|needs developer/i;
+export const noteUnsupported = (message: string) => { if (NEED_DEV.test(message)) { devGate.lastNeededAt = Date.now(); devGate.lastReason = message.slice(0, 160); } };
+
+/** Tools the user switched off in the dashboard. Persisted so the policy holds even before the extension reconnects. */
+const POLICY_FILE = join(homedir(), '.browsermcp', 'tools.json');
+export const disabledTools = new Set<string>((() => { try { return JSON.parse(readFileSync(POLICY_FILE, 'utf8')).disabled as string[]; } catch { return []; } })());
+export function setDisabledTools(names: string[]) {
+  disabledTools.clear(); for (const n of names) disabledTools.add(n);
+  try { if (!existsSync(join(homedir(), '.browsermcp'))) mkdirSync(join(homedir(), '.browsermcp'), { recursive: true }); writeFileSync(POLICY_FILE, JSON.stringify({ disabled: names })); } catch {}
+}
+const disabledResult = (name: string): Result => ({ content: [{ type: 'text', text: `The ${name} tool is switched off in the BrowserMCP dashboard. Tell the user to turn it on under the Tools page of the extension, then try again.` }], isError: true });
+
+export function tool<S extends z.ZodRawShape>(ctx: Ctx, name: string, description: string, schema: S, handler: (args: z.infer<z.ZodObject<S>>) => Promise<Result | string | object>) {
+  const wrapped = (args: any) => (disabledTools.has(name) ? Promise.resolve(disabledResult(name)) : run(() => handler(args)));
+  registry.set(name, (args) => wrapped(z.object(schema).parse(args)));
+  toolCatalog.push({ name, description });
+  ctx.server.registerTool(name, { description, inputSchema: schema }, wrapped as any);
+}
+
+/** Regex-or-substring matcher used by every search tool. */
+export function matcher(q?: string, regex?: boolean, flags = 'i'): (s: string | undefined | null) => boolean {
+  if (!q) return () => true;
+  if (regex) { const re = new RegExp(q, flags); return (s) => !!s && re.test(s); }
+  const needle = q.toLowerCase();
+  return (s) => !!s && s.toLowerCase().includes(needle);
+}
+
+export function paginate<T>(items: T[], offset = 0, limit = 50) {
+  const total = items.length;
+  const slice = items.slice(offset, offset + limit);
+  return { total, offset, limit, returned: slice.length, hasMore: offset + slice.length < total, items: slice };
+}
+
+export const clip = (s: string, n = 200) => (s.length > n ? s.slice(0, n) + `… (+${s.length - n} chars)` : s);
