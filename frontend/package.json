@@ -1,0 +1,11 @@
+{
+  "name": "browspark-frontend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun serve.ts",
+    "build": "bun build.ts",
+    "preview": "bun serve.ts --preview",
+    "test": "bun run build && bun test smoke.test.ts highlight.test.js"
+  }
+}
