@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "browsermcp",
+      "name": "browspark-mcp",
       "dependencies": {
         "@modelcontextprotocol/sdk": "^1.20.0",
         "lighthouse": "^12.8.0",

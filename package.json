@@ -1,20 +1,25 @@
 {
-  "name": "browsermcp",
-  "version": "0.2.8",
-  "private": true,
+  "name": "browspark-mcp",
+  "version": "0.2.9",
   "type": "module",
+  "files": [
+    "companion/src",
+    "shared"
+  ],
   "bin": {
-    "browsermcp": "companion/src/index.ts"
+    "browspark-mcp": "companion/src/index.ts"
   },
   "scripts": {
     "build": "bun build extension/src/background.ts extension/src/app.ts --outdir extension/dist --target browser",
     "typecheck": "tsc --noEmit -p companion && tsc --noEmit -p extension",
     "test": "bun test --timeout 120000",
     "start": "bun companion/src/index.ts",
-    "package": "bun run build && mkdir -p dist && rm -f dist/browsermcp-extension.zip && cd extension && zip -qr ../dist/browsermcp-extension.zip manifest.json app.html app.css assets dist && cd .. && ls -la dist/browsermcp-extension.zip",
+    "package": "bun run build && mkdir -p dist && rm -f dist/browspark-extension.zip && cd extension && zip -qr ../dist/browspark-extension.zip manifest.json app.html app.css assets dist && cd .. && ls -la dist/browspark-extension.zip",
     "capabilities": "bun companion/test/capabilities.ts",
+    "docs:tools": "bun companion/test/docs.ts",
     "test:e2e": "E2E=1 bun test --timeout 120000",
-    "compile": "bun build --compile companion/src/index.ts --outfile dist/browsermcp"
+    "compile": "bun build --compile companion/src/index.ts --outfile dist/browspark",
+    "release": "bun publish --access public && for a in aliases/*; do (cd $a && bun pm version $npm_package_version --no-git-tag-version && bun publish --access public); done"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.20.0",
