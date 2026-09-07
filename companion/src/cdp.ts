@@ -12,7 +12,7 @@ export interface LaunchOptions {
   /** Open Chrome DevTools automatically for every tab (default: on when not headless). */ devtools?: boolean;
   /** Proxy server, e.g. "http://proxy.corp:8080" or "socks5://127.0.0.1:1080". */ proxy?: string;
   /** Unpacked extension directories to load into this browser. */ extensions?: string[];
-  /** Where downloads land (default ~/.browsermcp/downloads/<context>). */ downloadDir?: string;
+  /** Where downloads land (default ~/.browspark/downloads/<context>). */ downloadDir?: string;
 }
 export interface Download { guid: string; url: string; filename: string; path: string; state: 'inProgress' | 'completed' | 'canceled'; receivedBytes: number; totalBytes: number; startedAt: number; tabId?: number }
 let nextDevTabId = 1; // shared across all developer browsers so tab ids never collide
@@ -23,10 +23,10 @@ const CHROME_CANDIDATES: Record<string, string[]> = {
   win32: ['C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe', 'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe'],
 };
 export function findChrome(explicit?: string): string {
-  const c = explicit ?? process.env.BROWSERMCP_CHROME;
+  const c = explicit ?? process.env.BROWSPARK_CHROME;
   if (c) { if (existsSync(c)) return c; throw new Error(`Chrome not found at ${c}`); }
   for (const p of CHROME_CANDIDATES[platform()] ?? []) if (existsSync(p)) return p;
-  throw new Error('Could not find Chrome. Set BROWSERMCP_CHROME to the browser executable.');
+  throw new Error('Could not find Chrome. Set BROWSPARK_CHROME to the browser executable.');
 }
 
 /**
@@ -53,7 +53,7 @@ export class DirectChrome extends EventEmitter {
   readonly loadedExtensions: { id: string; path: string }[] = [];
   private ownsProcess = false;
 
-  constructor(profileDir = join(homedir(), '.browsermcp', 'profile'), name = 'default') { super(); this.profileDir = profileDir; this.name = name; }
+  constructor(profileDir = join(homedir(), '.browspark', 'profile'), name = 'default') { super(); this.profileDir = profileDir; this.name = name; }
 
   get running(): boolean { return this.ws?.readyState === 1; }
   get pid(): number | undefined { return this.proc?.pid; }
@@ -71,7 +71,7 @@ export class DirectChrome extends EventEmitter {
       ...(opts.args ?? []), opts.url ?? 'about:blank',
     ];
     this.headless = !!opts.headless; this.proxy = opts.proxy;
-    this.downloadDir = opts.downloadDir ?? join(homedir(), '.browsermcp', 'downloads', this.name);
+    this.downloadDir = opts.downloadDir ?? join(homedir(), '.browspark', 'downloads', this.name);
     mkdirSync(this.downloadDir, { recursive: true });
     this.proc = spawn(exe, args, { stdio: 'ignore', detached: false });
     this.ownsProcess = true;

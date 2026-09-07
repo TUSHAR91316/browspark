@@ -11,8 +11,8 @@ import { currentClient, clients } from './context.ts';
 export type Mode = 'extension' | 'dev';
 export interface TabRecord { id: number; mode: Mode; url: string; title: string; shared: boolean; attached: boolean; unsupported?: string; windowId?: number; agent?: boolean; context?: string }
 
-const profilesDir = () => process.env.BROWSERMCP_PROFILES ?? join(homedir(), '.browsermcp', 'profiles');
-export const profileDirFor = (context: string) => (context === 'default' ? process.env.BROWSERMCP_PROFILE ?? join(homedir(), '.browsermcp', 'profile') : join(profilesDir(), context));
+const profilesDir = () => process.env.BROWSPARK_PROFILES ?? join(homedir(), '.browspark', 'profiles');
+export const profileDirFor = (context: string) => (context === 'default' ? process.env.BROWSPARK_PROFILE ?? join(homedir(), '.browspark', 'profile') : join(profilesDir(), context));
 
 /**
  * One object the rest of the companion talks to. Emits, for every tab regardless of transport:

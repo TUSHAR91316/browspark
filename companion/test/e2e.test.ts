@@ -126,7 +126,7 @@ test('connected dashboard keeps setup first and follows activity logging setting
   };
   try {
     if (previousLog) await evaluate('chrome.runtime.sendMessage({type:"setActivityLog",on:false})');
-    await waitFor(`document.querySelector('.connection-panel')?.textContent.includes('Your browser is connected') && document.querySelector('.shared-preview')?.textContent.includes('BrowserMCP Test App')`);
+    await waitFor(`document.querySelector('.connection-panel')?.textContent.includes('Your browser is connected') && document.querySelector('.shared-preview')?.textContent.includes('Browspark Test App')`);
     await overview(false);
     await navigate('tools', 'Tools');
     await waitFor(`!!document.querySelector('input[aria-label="Enable browser_status"]')`);
@@ -156,7 +156,7 @@ test('setup client selection shows valid configuration and survives navigation a
   const previousHash = await evaluate('location.hash');
   const previousClient = await evaluate('localStorage.getItem("setupClient")');
   const port = await evaluate('chrome.runtime.sendMessage({type:"getState"}).then(state => state.port)');
-  const args = ['/absolute/path/to/browsermcp/companion/src/index.ts', ...(port === 9223 ? [] : ['--port', String(port)])];
+  const args = ['/absolute/path/to/browspark/companion/src/index.ts', ...(port === 9223 ? [] : ['--port', String(port)])];
   const clients = [['claude', 'Claude'], ['codex', 'Codex'], ['opencode', 'OpenCode'], ['cursor', 'Cursor'], ['kilo', 'Kilo'], ['antigravity', 'Antigravity']] as const;
   const selected = (id: string) => `document.querySelector('.setup-clients button[data-client="${id}"]')?.getAttribute('aria-pressed') === 'true'`;
   try {
@@ -177,12 +177,12 @@ test('setup client selection shows valid configuration and survives navigation a
       else {
         const config = JSON.parse(snippet);
         if (id === 'opencode' || id === 'kilo') {
-          assert.equal(config.mcp.browsermcp.type, 'local');
-          assert.deepEqual(config.mcp.browsermcp.command, ['bun', ...args]);
+          assert.equal(config.mcp.browspark.type, 'local');
+          assert.deepEqual(config.mcp.browspark.command, ['bun', ...args]);
         } else {
-          assert.equal(config.mcpServers.browsermcp.command, 'bun');
-          assert.deepEqual(config.mcpServers.browsermcp.args, args);
-          if (id === 'cursor') assert.equal(config.mcpServers.browsermcp.type, 'stdio');
+          assert.equal(config.mcpServers.browspark.command, 'bun');
+          assert.deepEqual(config.mcpServers.browspark.args, args);
+          if (id === 'cursor') assert.equal(config.mcpServers.browspark.type, 'stdio');
         }
       }
       assert.equal(await evaluate(`document.querySelector('.setup-code .btn').getAttribute('aria-label')`), `Copy ${name} setup`);

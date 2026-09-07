@@ -42,13 +42,13 @@ const NEED_DEV = /wasn't found|Not allowed|isn't allowed|developer mode|requires
 export const noteUnsupported = (message: string) => { if (NEED_DEV.test(message)) { devGate.lastNeededAt = Date.now(); devGate.lastReason = message.slice(0, 160); } };
 
 /** Tools the user switched off in the dashboard. Persisted so the policy holds even before the extension reconnects. */
-const POLICY_FILE = join(homedir(), '.browsermcp', 'tools.json');
+const POLICY_FILE = join(homedir(), '.browspark', 'tools.json');
 export const disabledTools = new Set<string>((() => { try { return JSON.parse(readFileSync(POLICY_FILE, 'utf8')).disabled as string[]; } catch { return []; } })());
 export function setDisabledTools(names: string[]) {
   disabledTools.clear(); for (const n of names) disabledTools.add(n);
-  try { if (!existsSync(join(homedir(), '.browsermcp'))) mkdirSync(join(homedir(), '.browsermcp'), { recursive: true }); writeFileSync(POLICY_FILE, JSON.stringify({ disabled: names })); } catch {}
+  try { if (!existsSync(join(homedir(), '.browspark'))) mkdirSync(join(homedir(), '.browspark'), { recursive: true }); writeFileSync(POLICY_FILE, JSON.stringify({ disabled: names })); } catch {}
 }
-const disabledResult = (name: string): Result => ({ content: [{ type: 'text', text: `The ${name} tool is switched off in the BrowserMCP dashboard. Tell the user to turn it on under the Tools page of the extension, then try again.` }], isError: true });
+const disabledResult = (name: string): Result => ({ content: [{ type: 'text', text: `The ${name} tool is switched off in the Browspark dashboard. Tell the user to turn it on under the Tools page of the extension, then try again.` }], isError: true });
 
 export function tool<S extends z.ZodRawShape>(ctx: Ctx, name: string, description: string, schema: S, handler: (args: z.infer<z.ZodObject<S>>) => Promise<Result | string | object>) {
   const wrapped = (args: any) => clientStore.run(ctx.client, () => (disabledTools.has(name) ? Promise.resolve(disabledResult(name)) : run(() => handler(args))));

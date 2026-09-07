@@ -3,7 +3,7 @@ import { mkdirSync, statSync, writeFileSync, readdirSync, readFileSync } from 'n
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
-export const artifactDir = () => process.env.BROWSERMCP_ARTIFACTS ?? join(homedir(), '.browsermcp', 'artifacts');
+export const artifactDir = () => process.env.BROWSPARK_ARTIFACTS ?? join(homedir(), '.browspark', 'artifacts');
 
 export interface Artifact { id: string; path: string; bytes: number; kind: string }
 

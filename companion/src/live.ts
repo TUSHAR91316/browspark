@@ -53,7 +53,7 @@ export const LIVE_HTML = (tabId: number, token: string) => `<!doctype html><meta
   img { max-width: 100%; max-height: 100%; background: #fff; box-shadow: 0 8px 30px rgba(0,0,0,.5); border-radius: 4px; outline: none; cursor: default; }
   img:focus { box-shadow: 0 0 0 2px #529cca, 0 8px 30px rgba(0,0,0,.5); }
 </style>
-<header><span class="dot" id="dot"></span><b>BrowserMCP live view</b><span class="muted">tab ${tabId}</span><span class="grow"></span><span class="muted" id="status">connecting…</span><span class="muted">click the page to type · <kbd>Esc</kbd> releases</span></header>
+<header><span class="dot" id="dot"></span><b>Browspark live view</b><span class="muted">tab ${tabId}</span><span class="grow"></span><span class="muted" id="status">connecting…</span><span class="muted">click the page to type · <kbd>Esc</kbd> releases</span></header>
 <main><img id="v" tabindex="0" alt="live view"></main>
 <script>
   const img = document.getElementById('v'), status = document.getElementById('status'), dot = document.getElementById('dot');

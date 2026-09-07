@@ -104,7 +104,7 @@ export function registerNetworkTools(ctx: Ctx) {
       }
       case 'har': {
         const entries = st.network.filter((r) => r.status !== undefined || r.failed).map((r) => harEntry(r));
-        const art = saveArtifact('har', 'har', JSON.stringify({ log: { version: '1.2', creator: { name: 'browsermcp', version: '0.2.0' }, pages: [], entries } }, null, 1), new URL(st.network[0]?.url ?? 'http://x').host);
+        const art = saveArtifact('har', 'har', JSON.stringify({ log: { version: '1.2', creator: { name: 'browspark', version: '0.2.0' }, pages: [], entries } }, null, 1), new URL(st.network[0]?.url ?? 'http://x').host);
         return `Wrote ${entries.length} entries to ${art.path} (${art.bytes} bytes). Opens in Chrome DevTools > Network > import.`;
       }
       case 'throttle': {

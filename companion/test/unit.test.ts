@@ -39,10 +39,10 @@ test('snapshot line diff', () => {
 });
 
 test('artifacts round trip', async () => {
-  process.env.BROWSERMCP_ARTIFACTS = join(ROOT, 'test-apps/dist/.artifacts-test');
+  process.env.BROWSPARK_ARTIFACTS = join(ROOT, 'test-apps/dist/.artifacts-test');
   const a = saveArtifact('trace', 'json', '{"ok":1}', 'unit');
   assert.ok(existsSync(a.path) && a.bytes === 8);
   assert.equal(readArtifact(a.id), '{"ok":1}');
   assert.ok(listArtifacts().some((x) => x.id === a.id));
-  rmSync(process.env.BROWSERMCP_ARTIFACTS, { recursive: true, force: true });
+  rmSync(process.env.BROWSPARK_ARTIFACTS, { recursive: true, force: true });
 });

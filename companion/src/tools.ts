@@ -17,7 +17,7 @@ export function registerBrowserTools(ctx: Ctx) {
     const b = sessions.bridge;
     const lines = [`Companion bridge: ws://127.0.0.1:${b.port}`, `You are agent "${ctx.client.name}"${(await import('./context.ts')).clients.size > 1 ? `; other agents connected: ${[...(await import('./context.ts')).clients.values()].filter((c) => c !== ctx.client).map((c) => c.name).join(', ')}` : ''}.`];
     if (b.connected) lines.push(`Extension mode: connected to ${b.browser ?? 'an unknown Chromium browser'} (extension v${b.extensionVersion}). Tabs below are that browser's tabs. The user can open DevTools (F12) on a shared tab to watch your console, network, debugger, and emulation work in the standard panels; that does not conflict with you.`);
-    else lines.push('Extension mode: NOT CONNECTED', '  Pairing: open the BrowserMCP extension dashboard in Chrome (click its toolbar icon), enter this token and port, click Connect, then share tabs:', `    token: ${b.token}`, `    port:  ${b.port}`);
+    else lines.push('Extension mode: NOT CONNECTED', '  Pairing: open the Browspark extension dashboard in Chrome (click its toolbar icon), enter this token and port, click Connect, then share tabs:', `    token: ${b.token}`, `    port:  ${b.port}`);
     const devs = sessions.runningDevs();
     if (!devs.length) lines.push('Developer mode: not running. Only launch it (browser_session) if the user asks for a separate browser or a tool says an operation needs it; otherwise work in the user\'s shared tabs.');
     for (const d of devs) lines.push(`Developer mode [${d.name}]: ${d.version}, pid ${d.pid}${d.headless ? ', headless' : ''}, profile ${d.profileDir}, downloads ${d.downloadDir}${d.proxy ? `, proxy ${d.proxy}` : ''}\n  CDP endpoint for Playwright/Puppeteer connectOverCDP: ${d.wsEndpoint}\n  Live view: http://127.0.0.1:${b.port}/live/<tabId>?token=${b.token}`);
@@ -36,7 +36,7 @@ export function registerBrowserTools(ctx: Ctx) {
     devtools: z.boolean().optional().describe('Open Chrome DevTools for every tab so the user can watch the standard panels while you work (default: true unless headless)'),
     proxy: z.string().optional().describe('Proxy server for this browser, e.g. "http://proxy:8080" or "socks5://127.0.0.1:1080"'),
     extensions: z.array(z.string()).optional().describe('Unpacked extension directories to load into this browser'),
-    downloadDir: z.string().optional().describe('Where downloads land (default ~/.browsermcp/downloads/<context>)'),
+    downloadDir: z.string().optional().describe('Where downloads land (default ~/.browspark/downloads/<context>)'),
   }, async ({ action, context, all, url, headless, chromePath, args, devtools, proxy, extensions, downloadDir }) => {
     const name = context ?? 'default';
     if (action === 'contexts') return sessions.listContexts();
@@ -45,7 +45,7 @@ export function registerBrowserTools(ctx: Ctx) {
     if (action === 'close') { const targets = all ? sessions.runningDevs() : [sessions.devFor(name)].filter((d) => d.running); if (!targets.length) return 'not running'; for (const d of targets) await d.close(); return `Closed ${targets.map((d) => d.name).join(', ')}.`; }
     if (sessions.bridge.connected) {
       const recent = Date.now() - devGate.lastNeededAt < 10 * 60_000;
-      if (devGate.policy === 'never') throw new Error('The developer browser is disabled in the BrowserMCP dashboard (Settings → Developer browser). Work in the user\'s shared tabs, or ask the user to change that setting.');
+      if (devGate.policy === 'never') throw new Error('The developer browser is disabled in the Browspark dashboard (Settings → Developer browser). Work in the user\'s shared tabs, or ask the user to change that setting.');
       if (devGate.policy === 'auto' && !recent) throw new Error('Not launching a developer browser: nothing so far needed one. Work in the user\'s shared tabs (or open a tab with browser_tabs). The developer browser is only for operations Chrome blocks for extensions (heap snapshots, Lighthouse, raw CDP); if such an operation fails with "unsupported", a launch is then allowed. The user can also set Settings → Developer browser to "Always".');
     }
     const d = await sessions.launch(name, { url, headless, chromePath, args, devtools, proxy, extensions, downloadDir });

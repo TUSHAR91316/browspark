@@ -137,7 +137,7 @@ export function registerProfilingTools(ctx: Ctx) {
         if (!rec.done) throw new Error('Tracing.tracingComplete never arrived (30s)');
         tracing.delete(id);
         const summary = summarizeTrace(rec.chunks);
-        const art = saveArtifact('trace', 'json', JSON.stringify({ traceEvents: rec.chunks, metadata: { source: 'browsermcp', tabId: id } }), `tab${id}`);
+        const art = saveArtifact('trace', 'json', JSON.stringify({ traceEvents: rec.chunks, metadata: { source: 'browspark', tabId: id } }), `tab${id}`);
         summaries.set(art.id, summary);
         const r = st?.recordings.find((x) => x.kind === 'trace' && !x.done); if (r) { r.done = true; r.artifact = art.path; }
         if (st) capture.push(st, 'companion.recordingComplete', `trace ${art.id}`, { artifact: art.path });

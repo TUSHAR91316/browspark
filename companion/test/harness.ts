@@ -43,7 +43,7 @@ export async function launchExtensionChrome(): Promise<Ext> {
 
 export async function startCompanion(): Promise<Client> {
   const client = new Client({ name: 'e2e', version: '0' });
-  await client.connect(new StdioClientTransport({ command: 'bun', args: [join(ROOT, 'companion/src/index.ts'), '--port', '0'], stderr: 'inherit', env: { ...process.env, BROWSERMCP_ARTIFACTS: mkdtempSync(join(tmpdir(), 'bmcp-artifacts-')), BROWSERMCP_PROFILE: mkdtempSync(join(tmpdir(), 'bmcp-devprofile-')), BROWSERMCP_PROFILES: mkdtempSync(join(tmpdir(), 'bmcp-profiles-')) } }));
+  await client.connect(new StdioClientTransport({ command: 'bun', args: [join(ROOT, 'companion/src/index.ts'), '--port', '0'], stderr: 'inherit', env: { ...process.env, BROWSPARK_ARTIFACTS: mkdtempSync(join(tmpdir(), 'bmcp-artifacts-')), BROWSPARK_PROFILE: mkdtempSync(join(tmpdir(), 'bmcp-devprofile-')), BROWSPARK_PROFILES: mkdtempSync(join(tmpdir(), 'bmcp-profiles-')) } }));
   return client;
 }
 

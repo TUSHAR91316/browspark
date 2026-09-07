@@ -14,7 +14,7 @@ import {
 
 const REQUEST_TIMEOUT_MS = 30_000;
 
-export function loadToken(dir = join(homedir(), '.browsermcp')): string {
+export function loadToken(dir = join(homedir(), '.browspark')): string {
   const file = join(dir, 'token');
   try { return readFileSync(file, 'utf8').trim(); } catch {}
   mkdirSync(dir, { recursive: true });
@@ -57,7 +57,7 @@ export class Bridge extends EventEmitter {
           if (u.searchParams.get('token') !== this.token) { res.statusCode = 403; res.end('bad token'); return; }
           res.setHeader('content-type', 'text/html; charset=utf-8'); res.end(LIVE_HTML(Number(live[1]), this.token)); return;
         }
-        res.statusCode = u.pathname === '/' ? 200 : 404; res.setHeader('content-type', 'text/plain'); res.end(u.pathname === '/' ? 'browsermcp companion' : 'not found');
+        res.statusCode = u.pathname === '/' ? 200 : 404; res.setHeader('content-type', 'text/plain'); res.end(u.pathname === '/' ? 'browspark companion' : 'not found');
       });
       this.wss = new WebSocketServer({ noServer: true });
       this.http.on('upgrade', (req, socket, head) => {
