@@ -1,0 +1,20 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>BrowserMCP Test App</title>
+<h1>Test App</h1>
+<nav><a href="#about" id="about-link">About</a> <a href="page2.html">Page 2</a></nav>
+<form id="f" onsubmit="event.preventDefault(); out.textContent = 'submitted:' + name.value + ':' + color.value + ':' + agree.checked">
+  <label for="name">Name</label> <input id="name" placeholder="your name">
+  <label for="color">Color</label>
+  <select id="color"><option value="r">Red</option><option value="g">Green</option><option value="b">Blue</option></select>
+  <label><input type="checkbox" id="agree"> Agree</label>
+  <button type="submit">Submit</button>
+</form>
+<p id="out">not submitted</p>
+<button id="alert" onclick="alerted.textContent = confirm('Sure?') ? 'confirmed' : 'cancelled'">Confirm</button>
+<span id="alerted"></span>
+<button id="later" onclick="setTimeout(() => later.textContent = 'Loaded!', 600)">Load later</button>
+<table><tr><th>A</th><th>B</th></tr><tr><td>1</td><td>2</td></tr></table>
+<iframe src="frame.html" title="inner"></iframe>
+<div style="height: 3000px"></div>
+<p id="bottom">Bottom</p>
