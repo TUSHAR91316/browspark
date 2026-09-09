@@ -160,21 +160,21 @@ function pairForm(s: State) {
     editing ? h('button', { class: 'btn ghost', onclick: () => { editing = false; repaint(); } }, 'Cancel') : null);
 }
 
-const COMPANION_PATH = '/absolute/path/to/browsermcp/companion/src/index.ts';
+const PACKAGE = 'browspark-mcp@latest';
 function clientSetup(port: number) {
-  const args = [COMPANION_PATH, ...(port === 9223 ? [] : ['--port', String(port)])];
-  const command = `bun "${COMPANION_PATH}"${port === 9223 ? '' : ` --port ${port}`}`;
-  const STDIO_CONFIG = { command: 'bun', args };
-  const LOCAL_CONFIG = JSON.stringify({ mcp: { browsermcp: { type: 'local', command: ['bun', ...args], enabled: true } } }, null, 2);
+  const args = [PACKAGE, ...(port === 9223 ? [] : ['--port', String(port)])];
+  const command = `bunx ${args.join(' ')}`;
+  const STDIO_CONFIG = { command: 'bunx', args };
+  const LOCAL_CONFIG = JSON.stringify({ mcp: { browspark: { type: 'local', command: ['bunx', ...args], enabled: true } } }, null, 2);
   const SETUP_CLIENTS = [
     { id: 'claude', name: 'Claude', file: 'Terminal · Claude Code',
-      instruction: 'Run this command in your terminal to add BrowserMCP to Claude Code for all projects.',
-      code: `claude mcp add --transport stdio --scope user browsermcp -- ${command}`,
+      instruction: 'Run this command in your terminal to add Browspark to Claude Code for all projects.',
+      code: `claude mcp add --transport stdio --scope user browspark -- ${command}`,
       next: 'Start a new Claude Code session, then use /mcp to check the connection.',
       docs: 'https://code.claude.com/docs/en/mcp' },
     { id: 'codex', name: 'Codex', file: 'Terminal · Codex CLI',
       instruction: 'Run this command in your terminal. Codex saves the server in ~/.codex/config.toml.',
-      code: `codex mcp add browsermcp -- ${command}`,
+      code: `codex mcp add browspark -- ${command}`,
       next: 'Restart your Codex client, then check the server in MCP settings or with /mcp in the CLI.',
       docs: 'https://developers.openai.com/codex/mcp/' },
     { id: 'opencode', name: 'OpenCode', file: '~/.config/opencode/opencode.json',
@@ -183,17 +183,17 @@ function clientSetup(port: number) {
       docs: 'https://opencode.ai/docs/mcp-servers/' },
     { id: 'cursor', name: 'Cursor', file: '~/.cursor/mcp.json',
       instruction: 'Add this entry to your global Cursor config, keeping any existing servers.',
-      code: JSON.stringify({ mcpServers: { browsermcp: { type: 'stdio', ...STDIO_CONFIG } } }, null, 2),
-      next: 'Restart Cursor, then check that BrowserMCP is enabled under Customize → MCP.',
+      code: JSON.stringify({ mcpServers: { browspark: { type: 'stdio', ...STDIO_CONFIG } } }, null, 2),
+      next: 'Restart Cursor, then check that Browspark is enabled under Customize → MCP.',
       docs: 'https://cursor.com/docs/mcp' },
     { id: 'kilo', name: 'Kilo', file: '~/.config/kilo/kilo.jsonc',
       instruction: 'Add this entry to your global Kilo config, keeping any existing servers.',
-      code: LOCAL_CONFIG, next: 'In the Kilo extension, open Settings → MCP and check that BrowserMCP is enabled.',
+      code: LOCAL_CONFIG, next: 'In the Kilo extension, open Settings → MCP and check that Browspark is enabled.',
       docs: 'https://kilo.ai/docs/automate/mcp/using-in-kilo-code' },
     { id: 'antigravity', name: 'Antigravity', file: 'mcp_config.json',
       instruction: 'In the Agent panel, open … → MCP Servers → Manage MCP Servers → View raw config. Add this entry, keeping any existing servers.',
-      code: JSON.stringify({ mcpServers: { browsermcp: STDIO_CONFIG } }, null, 2),
-      next: 'Save the config, then check that BrowserMCP is enabled in MCP management.',
+      code: JSON.stringify({ mcpServers: { browspark: STDIO_CONFIG } }, null, 2),
+      next: 'Save the config, then check that Browspark is enabled in MCP management.',
       docs: 'https://antigravity.google/docs/mcp' },
   ];
 
@@ -211,7 +211,7 @@ function clientSetup(port: number) {
         h('div', { class: 'setup-code-h' }, h('span', {}, selected.file), copyBtn(selected.code, `Copy ${selected.name} setup`)),
         h('pre', { tabindex: '0', 'aria-label': `${selected.name} configuration` }, h('code', {}, selected.code))),
       h('div', { class: 'setup-next' }, h('p', {}, selected.next), h('a', { href: selected.docs, target: '_blank', rel: 'noreferrer', 'aria-label': `${selected.name} setup documentation` }, 'Docs', icon('external')))),
-    h('p', { class: 'setup-prerequisites' }, 'Requires Bun and ', h('code', {}, 'bun install'), ' in your BrowserMCP folder. Replace ', h('code', {}, '/absolute/path/to/browsermcp'), ' with its full path. If Bun is not found, use its full executable path too.'));
+    h('p', { class: 'setup-prerequisites' }, 'Requires Bun. The companion is fetched from npm on first run. If ', h('code', {}, 'bunx'), ' is not found, use its full executable path (', h('code', {}, '~/.bun/bin/bunx'), ').'));
 }
 function viewOverview(s: State) {
   const shared = s.tabs.filter((t) => t.shared && canShare(t));
@@ -404,7 +404,7 @@ function viewSettings(s: State) {
     h('div', { class: 'card danger-card' },
       h('div', { class: 'card-h' }, h('h2', {}, 'Emergency stop')),
       h('div', { class: 'setting' }, h('div', {}, h('h3', {}, s.stopped ? 'Access is stopped' : 'Stop all agent access'), h('p', {}, 'Detaches the debugger from every tab, clears the shared list, and disconnects. Nothing is retried on resume.')), h('div', { class: 'ctl' }, stopResume(s)))),
-    h('p', { style: 'color:var(--fg-3);font-size:12px;margin-top:24px' }, `BrowserMCP extension v${s.extensionVersion} · Chrome restricts automation on browser-internal pages and the Web Store.`));
+    h('p', { style: 'color:var(--fg-3);font-size:12px;margin-top:24px' }, `Browspark extension v${s.extensionVersion} · Chrome restricts automation on browser-internal pages and the Web Store.`));
 }
 
 // ---------- paint loop ----------
@@ -449,7 +449,7 @@ function paintInner(s: State) {
   const keep = a && a.id && 'selectionStart' in a ? { id: a.id, value: a.value, s: a.selectionStart, e: a.selectionEnd } : null;
   const drafts = sameRoute ? [...main.querySelectorAll<HTMLInputElement>('#token, #port')].filter((el) => el.value !== el.defaultValue).map((el) => ({ id: el.id, value: el.value })) : [];
   renderShell(s);
-  document.title = `${NAV.find((n) => n[0] === route)?.[2] ?? 'BrowserMCP'} · BrowserMCP`;
+  document.title = `${NAV.find((n) => n[0] === route)?.[2] ?? 'Browspark'} · Browspark`;
   // The worker only picks up new code when the extension is reloaded; this page reloads on its own. Detect the mismatch.
   const onDisk = chrome.runtime.getManifest().version;
   const stale = !rawState || rawState.disabledTools === undefined || rawState.shareAll === undefined || rawState.connecting === undefined || s.extensionVersion !== onDisk;
