@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Debug Test App</title>
+<link rel="manifest" href="/manifest.json">
+<style>
+  #out { color: rgb(0, 128, 0); padding: 8px; border: 1px solid #ccc; }
+  .unused-rule { display: none; color: red; }
+  button:hover { outline: 2px solid blue; }
+</style>
+<h1>Debug App</h1>
+<p id="out">idle</p>
+<button id="log">Log</button>
+<button id="error">Error</button>
+<button id="fetch-ok">Fetch OK</button>
+<button id="fetch-404">Fetch 404</button>
+<button id="fetch-post">Fetch POST</button>
+<button id="slow">Slow</button>
+<button id="leak">Leak</button>
+<button id="sw">Register SW</button>
+<button id="storage">Write storage</button>
+<button id="ws">WebSocket</button>
+<button id="shift">Layout shift</button>
+<div style="display: contents"><button id="dc">Contents child</button></div>
+<img src="/nope.png" alt="">
+<input id="unlabeled" type="text">
+<script src="/dist/app.js"></script>
+</html>
