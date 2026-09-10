@@ -1,0 +1,59 @@
+// Generates docs/capabilities.md by probing CDP domains live in both connection modes.
+// Run: bun companion/test/capabilities.ts   (launches one throwaway Chrome with the extension and one headless dev Chrome)
+import { join } from 'node:path';
+import { writeFileSync } from 'node:fs';
+import { startTestServer } from '../../test-apps/server.ts';
+import { launchExtensionChrome, startCompanion, callers, pairAndShare, ROOT } from './harness.ts';
+
+const { server, url } = await startTestServer(join(ROOT, 'test-apps'));
+const ext = await launchExtensionChrome();
+const client = await startCompanion();
+const { ok, okJson } = callers(client);
+try {
+  await ext.cdp.send('Target.createTarget', { url: url + 'debug.html' });
+  const extTab = await pairAndShare(ext, ok, url + 'debug.html');
+  const extCaps = await okJson('devtools_capabilities', { tabId: extTab, refresh: true });
+  await ok('browser_session', { action: 'launch', headless: true, url: url + 'debug.html' });
+  const devTab = Number(/\[(\d+)\] dev/.exec(await ok('browser_tabs'))![1]);
+  const devCaps = await okJson('devtools_capabilities', { tabId: devTab, refresh: true });
+  const domains = [...new Set([...Object.keys(extCaps.domains), ...Object.keys(devCaps.domains)])];
+  const mark = (v: string) => (v === 'supported' ? '✅' : `❌ ${v.replace(/^unsupported: /, '').replace(/[{}"]/g, '').slice(0, 60)}`);
+  const rows = domains.map((d) => `| ${d} | ${mark(extCaps.domains[d] ?? 'unsupported: not probed')} | ${mark(devCaps.domains[d] ?? 'unsupported: not probed')} |`);
+  const md = `# Capability matrix
+
+Probed live by \`bun companion/test/capabilities.ts\` on ${new Date().toISOString().slice(0, 10)}.
+
+- Extension mode: ${extCaps.browser} via chrome.debugger (extension v${/v([\d.]+)/.exec(await ok('browser_status'))?.[1] ?? '?'})
+- Developer mode: ${devCaps.browser} via direct CDP
+
+| CDP domain | Extension mode | Developer mode |
+|---|---|---|
+${rows.join('\n')}
+
+## What that means for the tools
+
+| Tool | Extension mode | Developer mode |
+|---|---|---|
+| browser_* automation | ✅ shared tabs only | ✅ every tab |
+| devtools_console, devtools_evaluate, devtools_network, devtools_sources, devtools_debugger, devtools_elements | ✅ | ✅ |
+| devtools_storage | ✅ cookies via CDP, web storage via page JavaScript | ✅ |
+| devtools_workers | ${extCaps.domains.ServiceWorker === 'supported' ? '✅' : '⚠️ registrations via the page; update/unregister via the page; skipWaiting/start/evaluate need developer mode'} | ✅ |
+| devtools_performance (tracing) | ${extCaps.domains.Tracing === 'supported' ? '✅' : '❌'} | ✅ |
+| devtools_profile (CPU) | ${extCaps.domains.Profiler === 'supported' ? '✅' : '❌'} | ✅ |
+| devtools_memory (heap) | ${extCaps.domains.HeapProfiler === 'supported' ? '✅' : '❌ HeapProfiler not exposed to extensions'} | ✅ |
+| devtools_coverage | ${extCaps.domains.Profiler === 'supported' ? '✅' : '❌'} | ✅ |
+| devtools_emulation | ✅ | ✅ |
+| devtools_accessibility, devtools_security | ✅ | ✅ |
+| devtools_lighthouse | ❌ developer mode only | ✅ |
+| devtools_cdp (raw commands) | ❌ developer mode only | ✅ |
+| Browser-wide operations (Target, Browser, Storage domains) | ${extCaps.domains.Target === 'supported' ? '✅' : '❌ not exposed to extensions'} | ✅ |
+`;
+  writeFileSync(join(ROOT, 'docs/capabilities.md'), md);
+  console.log(md);
+} finally {
+  await ok('browser_session', { action: 'close' }).catch(() => {});
+  await client.close().catch(() => {});
+  await ext.cleanup();
+  server.close();
+  process.exit(0);
+}
