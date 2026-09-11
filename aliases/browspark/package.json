@@ -1,0 +1,11 @@
+{
+  "name": "browspark",
+  "version": "0.2.9",
+  "description": "Alias for browspark-mcp",
+  "bin": {
+    "browspark": "bin.ts"
+  },
+  "dependencies": {
+    "browspark-mcp": "*"
+  }
+}
