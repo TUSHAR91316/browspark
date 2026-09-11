@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import type { Bridge } from './bridge.ts';
 import { DirectChrome, type LaunchOptions } from './cdp.ts';
 import type { TabInfo } from '../../shared/protocol.ts';
+import { currentClient, clients } from './context.ts';
 
 export type Mode = 'extension' | 'dev';
 export interface TabRecord { id: number; mode: Mode; url: string; title: string; shared: boolean; attached: boolean; unsupported?: string; active?: boolean; windowId?: number; agent?: boolean; context?: string }
@@ -28,6 +29,7 @@ export class Sessions extends EventEmitter {
     bridge.on('cdp.event', (e) => this.emit('cdp.event', e));
     bridge.on('detached', (e) => this.emit('detached', e));
     bridge.on('disconnected', () => this.emit('disconnected'));
+    this.on('detached', ({ tabId, reason }) => { if (/closed/.test(reason)) for (const c of clients.values()) c.ownedTabs.delete(tabId); });
   }
 
   /** The default developer browser (running or not). */
@@ -86,9 +88,12 @@ export class Sessions extends EventEmitter {
     if (tabId !== undefined && this.devOfTab(tabId)) return tabId;
     if (tabId === undefined) {
       const usable = (await this.tabs()).filter((t) => t.shared && !t.unsupported);
-      // Prefer the agent's own tabs so it does not take over whatever the user is looking at.
-      const own = usable.filter((t) => t.agent);
-      if (own.length) return own[own.length - 1].id;
+      // Prefer tabs this particular agent opened, so several agents never default to each other's pages.
+      const me = currentClient();
+      const mine = me ? usable.filter((t) => me.ownedTabs.has(t.id)) : [];
+      if (mine.length) return mine[mine.length - 1].id;
+      const own = usable.filter((t) => t.agent && ![...clients.values()].some((c) => c !== me && c.ownedTabs.has(t.id)));
+      if (own.length && !me) return own[own.length - 1].id;
       if (usable.length === 1) return usable[0].id;
       // Several shared tabs: work where the user is looking, in their current window.
       const active = usable.find((t) => t.active && t.mode === 'extension');
@@ -109,17 +114,22 @@ export class Sessions extends EventEmitter {
     const devs = this.runningDevs();
     // Prefer the user's browser when it is connected; developer browsers only when asked for or nothing else exists.
     const m = mode ?? (this.bridge.connected ? 'extension' : devs.length ? 'dev' : 'extension');
+    let id: number;
     if (m === 'dev') {
       const d = context ? this.devs.get(context) : devs.length === 1 ? devs[0] : this.devs.get('default')?.running ? this.devs.get('default') : devs[0];
       if (!d?.running) throw new Error(context ? `Context "${context}" is not running` : 'No developer browser is running');
-      return d.newTab(url);
+      id = await d.newTab(url);
+    } else {
+      if (!this.bridge.connected) throw new Error('Extension not connected');
+      const r = await this.bridge.request<{ id: number }>('tabs.create', { url, active });
+      this.bridge.tabs = [];
+      id = r.id;
     }
-    if (!this.bridge.connected) throw new Error('Extension not connected');
-    const r = await this.bridge.request<{ id: number }>('tabs.create', { url, active });
-    this.bridge.tabs = [];
-    return r.id;
+    currentClient()?.ownedTabs.add(id);
+    return id;
   }
   async closeTab(tabId: number) {
+    for (const c of clients.values()) c.ownedTabs.delete(tabId);
     const d = this.devOfTab(tabId);
     if (d) return d.closeTab(tabId);
     await this.bridge.request('tabs.close', { tabId }); this.bridge.tabs = [];

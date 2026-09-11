@@ -1,6 +1,6 @@
 // devtools_recorder: record browser_* actions into a flow, parameterize, add assertions/checkpoints, replay.
 import { z } from 'zod';
-import { type Ctx, tool, tabArg, registry, text } from '../context.ts';
+import { type Ctx, tool, tabArg, text, currentClient } from '../context.ts';
 import { writeFileSync } from 'node:fs';
 import { saveArtifact, listArtifacts, readArtifact } from '../artifacts.ts';
 
@@ -35,13 +35,14 @@ export interface Step { tool?: string; args?: Record<string, unknown>; selector?
 export interface Flow { id: string; name: string; createdAt: string; params: string[]; steps: Step[] }
 
 class Recorder {
-  active?: { tabId: number; name: string; steps: Step[]; startedAt: number };
   flows = new Map<string, Flow>();
+  /** Records into the recording of the agent making the call, if it is recording this tab. */
   record(tabId: number, toolName: string, args: Record<string, unknown>) {
-    if (!this.active || this.active.tabId !== tabId) return;
+    const active = currentClient()?.recording;
+    if (!active || active.tabId !== tabId) return;
     const { selector, ...rest } = args;
     const clean = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined));
-    this.active.steps.push({ tool: toolName, args: clean, ...(typeof selector === 'string' && { selector }) });
+    active.steps.push({ tool: toolName, args: clean, ...(typeof selector === 'string' && { selector }) });
   }
 }
 export const recorder = new Recorder();
@@ -50,8 +51,9 @@ const subst = (v: unknown, params: Record<string, string>): unknown => typeof v 
 const paramsIn = (steps: Step[]) => [...new Set(JSON.stringify(steps).match(/\{\{(\w+)\}\}/g)?.map((m) => m.slice(2, -2)) ?? [])];
 
 export function registerRecorderTools(ctx: Ctx) {
-  const { sessions, page } = ctx;
+  const { sessions, page, registry } = ctx;
   const tab = (id?: number) => sessions.resolve(id);
+  const me = () => ctx.client;
   const loadFlow = (idOrPath?: string) => {
     if (!idOrPath) throw new Error('flowId required');
     const mem = recorder.flows.get(idOrPath); if (mem) return mem;
@@ -67,20 +69,20 @@ export function registerRecorderTools(ctx: Ctx) {
     params: z.record(z.string(), z.string()).optional(), stopAtCheckpoint: z.string().optional(), fromStep: z.number().int().optional(), continueOnFailure: z.boolean().optional(),
   }, async (a) => {
     switch (a.action) {
-      case 'start': { const id = await tab(a.tabId); if (recorder.active) throw new Error(`Already recording "${recorder.active.name}" on tab ${recorder.active.tabId}; stop it first.`); recorder.active = { tabId: id, name: a.name ?? `flow-${Date.now()}`, steps: [], startedAt: Date.now() }; const url = await page.evaluate<string>(id, 'location.href').catch(() => undefined); if (url) recorder.active.steps.push({ tool: 'browser_navigate', args: { action: 'goto', url } }); return `Recording "${recorder.active.name}" on tab ${id}. Perform actions with the browser_* tools, then stop.`; }
-      case 'status': return recorder.active ? { recording: true, name: recorder.active.name, tabId: recorder.active.tabId, steps: recorder.active.steps.length } : { recording: false };
+      case 'start': { const id = await tab(a.tabId); if (me().recording) throw new Error(`Already recording "${me().recording!.name}" on tab ${me().recording!.tabId}; stop it first.`); me().recording = { tabId: id, name: a.name ?? `flow-${Date.now()}`, steps: [], startedAt: Date.now() }; const url = await page.evaluate<string>(id, 'location.href').catch(() => undefined); if (url) me().recording!.steps.push({ tool: 'browser_navigate', args: { action: 'goto', url } }); return `Recording "${me().recording!.name}" on tab ${id}. Perform actions with the browser_* tools, then stop.`; }
+      case 'status': { const r = me().recording; return r ? { recording: true, name: r.name, tabId: r.tabId, steps: r.steps.length } : { recording: false }; }
       case 'stop': {
-        if (!recorder.active) throw new Error('Not recording');
-        const r = recorder.active; recorder.active = undefined;
+        if (!me().recording) throw new Error('Not recording');
+        const r = me().recording!; me().recording = undefined;
         const flow: Flow = { id: r.name.replace(/[^a-z0-9_-]+/gi, '_'), name: r.name, createdAt: new Date().toISOString(), params: paramsIn(r.steps), steps: r.steps };
         recorder.flows.set(flow.id, flow);
         const art = saveArtifact('flow', 'json', JSON.stringify(flow, null, 1), flow.id);
         return `Saved flow "${flow.name}" (${flow.steps.length} steps) as ${flow.id} → ${art.path}`;
       }
       case 'list': return { inMemory: [...recorder.flows.values()].map((f) => ({ id: f.id, name: f.name, steps: f.steps.length, params: f.params })), artifacts: listArtifacts().filter((x) => x.id.includes('-flow-')).map((x) => x.path) };
-      case 'get': { const f = a.flowId ? loadFlow(a.flowId) : recorder.active && { ...recorder.active, id: '(recording)', params: paramsIn(recorder.active.steps), createdAt: '' }; if (!f) throw new Error('flowId required (or start recording)'); return { ...f, steps: f.steps.map((s, i) => ({ index: i, ...s })) }; }
+      case 'get': { const f = a.flowId ? loadFlow(a.flowId) : me().recording && { ...me().recording!, id: '(recording)', params: paramsIn(me().recording!.steps), createdAt: '' }; if (!f) throw new Error('flowId required (or start recording)'); return { ...f, steps: f.steps.map((s, i) => ({ index: i, ...s })) }; }
       case 'add_assertion': case 'add_checkpoint': case 'parameterize': case 'delete_step': {
-        const steps = a.flowId ? loadFlow(a.flowId).steps : recorder.active?.steps; if (!steps) throw new Error('flowId required (or be recording)');
+        const steps = a.flowId ? loadFlow(a.flowId).steps : me().recording?.steps; if (!steps) throw new Error('flowId required (or be recording)');
         if (a.action === 'add_checkpoint') { steps.push({ checkpoint: a.label ?? `checkpoint-${steps.length}` }); return `Checkpoint "${steps.at(-1)!.checkpoint}" added at step ${steps.length - 1}`; }
         if (a.action === 'add_assertion') { if (!a.assertion) throw new Error('assertion required'); const { selector, ...rest } = a.assertion; steps.push({ tool: 'browser_wait', args: rest, ...(selector && { selector }), note: 'assertion' }); return `Assertion added at step ${steps.length - 1}`; }
         if (a.action === 'delete_step') { if (a.stepIndex === undefined || !steps[a.stepIndex]) throw new Error('valid stepIndex required'); steps.splice(a.stepIndex, 1); return `Deleted step ${a.stepIndex}`; }

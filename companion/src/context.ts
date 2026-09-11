@@ -1,5 +1,6 @@
 // Shared plumbing for tool modules: result helpers, common argument schemas, and the objects tools operate on.
 import { z } from 'zod';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -21,10 +22,16 @@ export const tabArg = z.number().int().optional().describe('Target tab id from b
 export const refArg = z.string().describe('Element ref from browser_snapshot, e.g. "e12"');
 export const pageArgs = { offset: z.number().int().min(0).optional().describe('Pagination offset, default 0'), limit: z.number().int().min(1).max(500).optional().describe('Page size, default 50') };
 
-export interface Ctx { server: McpServer; sessions: Sessions; page: Page; capture: Capture }
+/** One connected agent (one MCP transport). Everything that must not leak between agents hangs off this. */
+export interface ClientState { id: string; name: string; ownedTabs: Set<number>; recording?: { tabId: number; name: string; steps: import('./devtools/recorder.ts').Step[]; startedAt: number } }
+export const clients = new Map<string, ClientState>();
+export const clientStore = new AsyncLocalStorage<ClientState>();
+/** The agent whose tool call is currently executing (undefined outside a tool call). */
+export const currentClient = () => clientStore.getStore();
+export const ownerOf = (tabId: number) => [...clients.values()].find((c) => c.ownedTabs.has(tabId));
 
-/** Every tool is also callable in-process (browser_batch, recorder replay). */
-export const registry = new Map<string, (args: Record<string, unknown>) => Promise<Result>>();
+export interface Ctx { server: McpServer; sessions: Sessions; page: Page; capture: Capture; client: ClientState; registry: Map<string, (args: Record<string, unknown>) => Promise<Result>> }
+
 export const toolCatalog: ToolInfo[] = [];
 
 /** Developer-mode gate. The extension's setting (auto/always/never) applies while it is connected; without an extension
@@ -44,9 +51,9 @@ export function setDisabledTools(names: string[]) {
 const disabledResult = (name: string): Result => ({ content: [{ type: 'text', text: `The ${name} tool is switched off in the BrowserMCP dashboard. Tell the user to turn it on under the Tools page of the extension, then try again.` }], isError: true });
 
 export function tool<S extends z.ZodRawShape>(ctx: Ctx, name: string, description: string, schema: S, handler: (args: z.infer<z.ZodObject<S>>) => Promise<Result | string | object>) {
-  const wrapped = (args: any) => (disabledTools.has(name) ? Promise.resolve(disabledResult(name)) : run(() => handler(args)));
-  registry.set(name, (args) => wrapped(z.object(schema).parse(args)));
-  toolCatalog.push({ name, description });
+  const wrapped = (args: any) => clientStore.run(ctx.client, () => (disabledTools.has(name) ? Promise.resolve(disabledResult(name)) : run(() => handler(args))));
+  ctx.registry.set(name, (args) => wrapped(z.object(schema).parse(args)));
+  if (!toolCatalog.some((t) => t.name === name)) toolCatalog.push({ name, description });
   ctx.server.registerTool(name, { description, inputSchema: schema }, wrapped as any);
 }
 

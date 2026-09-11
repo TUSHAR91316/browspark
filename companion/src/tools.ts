@@ -1,6 +1,6 @@
 // browser_* tools: connection, tabs, and page automation. Work in both connection modes.
 import { z } from 'zod';
-import { type Ctx, image, tool, tabArg, refArg, registry, text, devGate } from './context.ts';
+import { type Ctx, image, tool, tabArg, refArg, text, devGate, ownerOf } from './context.ts';
 import { recorder } from './devtools/recorder.ts';
 import { policies, defaultPolicy, setDefaultPolicy, applyFetch, forgetTab, type Policy } from './devtools/intercept.ts';
 import { saveArtifact } from './artifacts.ts';
@@ -8,12 +8,13 @@ import { writeFileSync } from 'node:fs';
 import type { Download } from './cdp.ts';
 
 export function registerBrowserTools(ctx: Ctx) {
-  const { sessions, page, capture } = ctx;
+  const { sessions, page, capture, registry } = ctx;
   const tab = (id?: number) => sessions.resolve(id);
+  const owner = (id: number) => { const o = ownerOf(id); return o && o !== ctx.client ? ` (opened by agent "${o.name}")` : o ? ' (opened by you)' : ''; };
 
   tool(ctx, 'browser_status', 'Connection status for both modes, pairing instructions, usable tabs, and open dialogs. Call this first if anything fails.', {}, async () => {
     const b = sessions.bridge;
-    const lines = [`Companion bridge: ws://127.0.0.1:${b.port}`];
+    const lines = [`Companion bridge: ws://127.0.0.1:${b.port}`, `You are agent "${ctx.client.name}"${(await import('./context.ts')).clients.size > 1 ? `; other agents connected: ${[...(await import('./context.ts')).clients.values()].filter((c) => c !== ctx.client).map((c) => c.name).join(', ')}` : ''}.`];
     if (b.connected) lines.push(`Extension mode: connected to ${b.browser ?? 'an unknown Chromium browser'} (extension v${b.extensionVersion}). Tabs below are that browser's tabs. The user can open DevTools (F12) on a shared tab to watch your console, network, debugger, and emulation work in the standard panels; that does not conflict with you.`);
     else lines.push('Extension mode: NOT CONNECTED', '  Pairing: open the BrowserMCP extension dashboard in Chrome (click its toolbar icon), enter this token and port, click Connect, then share tabs:', `    token: ${b.token}`, `    port:  ${b.port}`);
     const devs = sessions.runningDevs();
@@ -21,7 +22,7 @@ export function registerBrowserTools(ctx: Ctx) {
     for (const d of devs) lines.push(`Developer mode [${d.name}]: ${d.version}, pid ${d.pid}${d.headless ? ', headless' : ''}, profile ${d.profileDir}, downloads ${d.downloadDir}${d.proxy ? `, proxy ${d.proxy}` : ''}\n  CDP endpoint for Playwright/Puppeteer connectOverCDP: ${d.wsEndpoint}\n  Live view: http://127.0.0.1:${b.port}/live/<tabId>?token=${b.token}`);
     const tabs = (await sessions.tabs(true).catch(() => [])).filter((t) => t.shared);
     lines.push(tabs.length ? `Usable tabs (${tabs.length}); to work on something else, open a tab with browser_tabs {action:"new"} in the user's window:` : 'Usable tabs: none — ask the user to share a tab, or open one with browser_tabs {action:"new", url}.');
-    for (const t of tabs) lines.push(`  [${t.id}] ${t.mode}${t.agent ? ' agent-owned' : ''} ${t.unsupported ? `(unsupported: ${t.unsupported}) ` : ''}${t.title || '(untitled)'} — ${t.url}${t.attached ? ' (attached)' : ''}${capture.get(t.id)?.active ? ' (inspecting)' : ''}${page.dialogs.has(t.id) ? ` — DIALOG OPEN: ${page.dialogs.get(t.id)!.type} "${page.dialogs.get(t.id)!.message}"` : ''}`);
+    for (const t of tabs) lines.push(`  [${t.id}] ${t.mode}${owner(t.id)} ${t.unsupported ? `(unsupported: ${t.unsupported}) ` : ''}${t.title || '(untitled)'} — ${t.url}${t.attached ? ' (attached)' : ''}${capture.get(t.id)?.active ? ' (inspecting)' : ''}${page.dialogs.has(t.id) ? ` — DIALOG OPEN: ${page.dialogs.get(t.id)!.type} "${page.dialogs.get(t.id)!.message}"` : ''}`);
     return lines.join('\n');
   });
 
@@ -63,7 +64,7 @@ export function registerBrowserTools(ctx: Ctx) {
     const tabs = await sessions.tabs(true);
     const list = onlyUsable === false ? tabs : tabs.filter((t) => t.shared);
     if (!list.length) return onlyUsable === false ? 'No tabs.' : 'No usable tabs. Ask the user to share a tab in the extension dashboard, or launch the development browser.';
-    return list.map((t) => `[${t.id}] ${t.mode}${t.context ? ':' + t.context : ''}${t.agent ? ' agent-owned' : ''} ${t.shared ? 'shared' : 'not shared'}${t.unsupported ? ` (unsupported: ${t.unsupported})` : ''}${t.active && !t.agent ? " (user's active tab)" : ''}${t.attached ? ' debugging' : ''} — ${t.title} — ${t.url}`).join('\n');
+    return list.map((t) => `[${t.id}] ${t.mode}${t.context ? ':' + t.context : ''}${owner(t.id)} ${t.shared ? 'shared' : 'not shared'}${t.unsupported ? ` (unsupported: ${t.unsupported})` : ''}${t.active && !t.agent ? " (user's active tab)" : ''}${t.attached ? ' debugging' : ''} — ${t.title} — ${t.url}`).join('\n');
   });
 
   tool(ctx, 'browser_navigate', 'Navigate a tab: goto a URL, reload, back, or forward. Waits for the load event.', {

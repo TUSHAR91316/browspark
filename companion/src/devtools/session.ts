@@ -25,12 +25,12 @@ export function registerSessionTools(ctx: Ctx) {
     what: z.enum(['all', 'console', 'network', 'events', 'issues']).optional().describe('For clear'),
   }, async ({ action, tabId, bodies, maxBodyBytes, what }) => {
     const id = await tab(tabId);
-    if (action === 'start') { const st = await capture.start(id, { ...(bodies !== undefined && { bodies }), ...(maxBodyBytes && { maxBodyBytes }) }); return `Inspecting tab ${id} (${sessions.modeOf(id)} mode). bodies=${st.opts.bodies}. ${st.frames.size} frame(s), ${st.contexts.size} context(s).`; }
-    if (action === 'stop') { const notes = await capture.stop(id); return `Stopped inspecting tab ${id}. Cleanup done.${notes.length ? ' Notes: ' + notes.join('; ') : ''}`; }
+    if (action === 'start') { const st = await capture.start(id, { ...(bodies !== undefined && { bodies }), ...(maxBodyBytes && { maxBodyBytes }) }, ctx.client.name); return `Inspecting tab ${id} (${sessions.modeOf(id)} mode). bodies=${st.opts.bodies}. ${st.frames.size} frame(s), ${st.contexts.size} context(s).${st.users.size > 1 ? ` Shared with: ${[...st.users].filter((u) => u !== ctx.client.name).join(', ')}.` : ''}`; }
+    if (action === 'stop') { const notes = await capture.stop(id, ctx.client.name); return notes.some((n) => n.includes('session kept')) ? `Left the inspection session on tab ${id}; ${notes[0]}.` : `Stopped inspecting tab ${id}. Cleanup done.${notes.length ? ' Notes: ' + notes.join('; ') : ''}`; }
     if (action === 'clear') { capture.clear(id, what); return `Cleared ${what ?? 'all'} for tab ${id}`; }
     const st = capture.get(id);
     if (!st) return `Tab ${id}: not inspecting.`;
-    return { tabId: id, active: st.active, mode: sessions.modeOf(id), startedAt: new Date(st.startedAt).toISOString(), stoppedAt: st.stoppedAt && new Date(st.stoppedAt).toISOString(), options: st.opts, counts: { console: st.console.length, network: st.network.length, events: st.events.length, issues: st.issues.length, scripts: st.scripts.size, styleSheets: st.styleSheets.size, frames: st.frames.size, breakpoints: st.breakpoints.size, overrides: st.overrides.size, blocked: st.blocked.length }, dropped: st.dropped, paused: !!st.paused, recordings: st.recordings };
+    return { tabId: id, active: st.active, users: [...st.users], mode: sessions.modeOf(id), startedAt: new Date(st.startedAt).toISOString(), stoppedAt: st.stoppedAt && new Date(st.stoppedAt).toISOString(), options: st.opts, counts: { console: st.console.length, network: st.network.length, events: st.events.length, issues: st.issues.length, scripts: st.scripts.size, styleSheets: st.styleSheets.size, frames: st.frames.size, breakpoints: st.breakpoints.size, overrides: st.overrides.size, blocked: st.blocked.length }, dropped: st.dropped, paused: !!st.paused, recordings: st.recordings };
   });
 
   tool(ctx, 'devtools_events', 'Read or wait for events collected in the inspection session: console messages, exceptions, request start/finish/fail, breakpoint pauses, navigations, issues, service worker and animation events, recording completion. Use afterId to page forward; wait:true blocks until a matching event arrives.', {

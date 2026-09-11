@@ -45,6 +45,8 @@ export interface TabState {
   blocked: string[]; fetchEnabled: boolean; vitalsScriptId?: string; cleanups: (() => Promise<void>)[];
   waiters: Set<{ pred: (e: Evt) => boolean; resolve: (e: Evt) => void }>;
   recordings: { kind: string; startedAt: number; done: boolean; artifact?: string }[];
+  /** Agents currently using this session. stop() only tears down when the last one leaves. */
+  users: Set<string>;
 }
 
 const headersOf = (h?: Record<string, string>) => Object.fromEntries(Object.entries(h ?? {}).map(([k, v]) => [k.toLowerCase(), String(v)]));
@@ -95,17 +97,19 @@ export class Capture {
     return st;
   }
 
-  async start(tabId: number, opts: Partial<TabState['opts']> = {}): Promise<TabState> {
+  async start(tabId: number, opts: Partial<TabState['opts']> = {}, user = 'agent'): Promise<TabState> {
     let st = this.states.get(tabId);
+    if (st?.active) { st.users.add(user); st.opts = { ...st.opts, ...opts }; return st; }
     if (!st) {
       st = {
         tabId, active: true, startedAt: Date.now(), opts: { bodies: false, maxBodyBytes: 1_000_000, maxConsole: 5000, maxNetwork: 5000, maxEvents: 5000, ...opts },
         dropped: { console: 0, network: 0, events: 0, issues: 0 }, seq: 0, console: [], network: [], netIndex: new Map(), events: [], issues: [],
         scripts: new Map(), styleSheets: new Map(), frames: new Map(), contexts: new Map(), pauseHistory: [], breakpoints: new Map(),
-        swRegistrations: new Map(), swVersions: new Map(), swErrors: [], animations: [], overrides: new Map(), blocked: [], fetchEnabled: false, cleanups: [], waiters: new Set(), recordings: [],
+        swRegistrations: new Map(), swVersions: new Map(), swErrors: [], animations: [], overrides: new Map(), blocked: [], fetchEnabled: false, cleanups: [], waiters: new Set(), recordings: [], users: new Set(),
       };
       this.states.set(tabId, st);
     } else { st.active = true; st.stoppedAt = undefined; st.opts = { ...st.opts, ...opts }; }
+    st.users.add(user);
     await this.sessions.hold(tabId, true);
     const cdp = (m: string, p?: unknown) => this.sessions.cdp(tabId, m, p).catch((e) => { this.push(st!, 'companion.enableFailed', `${m}: ${e.message}`); });
     await cdp('Page.enable'); await cdp('Runtime.enable'); await cdp('Log.enable'); await cdp('Network.enable', { maxResourceBufferSize: 50_000_000, maxTotalBufferSize: 200_000_000 });
@@ -121,9 +125,13 @@ export class Capture {
     return st;
   }
 
-  /** Stop collecting and undo everything this session put in the browser. Data stays until clear(). */
-  async stop(tabId: number): Promise<string[]> {
+  /** Stop collecting and undo everything this session put in the browser. Data stays until clear().
+   *  With several agents on the session, only the last one to leave triggers the teardown. */
+  async stop(tabId: number, user = 'agent', force = false): Promise<string[]> {
     const st = this.states.get(tabId); if (!st) return [];
+    st.users.delete(user);
+    if (st.users.size && !force) return [`still in use by ${[...st.users].join(', ')}; session kept`];
+    st.users.clear();
     st.active = false; st.stoppedAt = Date.now();
     const notes: string[] = [];
     const cdp = (m: string, p?: unknown) => this.sessions.cdp(tabId, m, p).catch((e) => { notes.push(`${m}: ${e.message}`); });

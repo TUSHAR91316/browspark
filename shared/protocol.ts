@@ -33,7 +33,7 @@ export interface TabInfo {
 }
 
 export interface HelloParams { token: string; version: number; extensionVersion: string; browser?: string; userAgent?: string }
-export interface CdpParams { tabId: number; method: string; params?: unknown; sessionId?: string }
+export interface CdpParams { tabId: number; method: string; params?: unknown; sessionId?: string; /** Name of the agent issuing the command. */ client?: string }
 export interface CdpEventParams { tabId: number; method: string; params: unknown; sessionId?: string }
 export interface DetachedParams { tabId: number; reason: string }
 
