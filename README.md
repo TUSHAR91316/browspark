@@ -28,6 +28,8 @@ For OpenCode, add to `opencode.json`:
 { "mcp": { "browsermcp": { "type": "local", "command": ["bun", "/absolute/path/to/browsermcp/companion/src/index.ts"], "enabled": true } } }
 ```
 
+For clients that take a URL instead of a command (Gemini connected apps, web agents), the companion also serves MCP over Streamable HTTP at `http://127.0.0.1:9223/mcp?token=<pairing token>` while it runs; the dashboard's Settings page shows the exact URL with a copy button. Start it standalone with `bun companion/src/index.ts --http-only` if no stdio client launches it. Sandboxed clients that cannot read the source tree (Gemini's command option) should use the URL, or run the single-file build from `bun run compile` (`dist/browsermcp`). The token is a password: never expose the endpoint beyond localhost without a tunnel that keeps it in the URL.
+
 3. Pair once: click the extension icon to open the dashboard. Ask the agent to call `browser_status`; it prints a token. Paste it and click Connect.
 4. Share tabs in the Tabs view, or switch on "Share everything" to include every current and future tab. Stop revokes access instantly.
 
