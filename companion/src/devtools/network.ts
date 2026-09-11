@@ -21,7 +21,7 @@ export async function applyFetchRules(ctx: Ctx, tabId: number, st: TabState) {
   st.fetchEnabled = await applyFetch(ctx.sessions, tabId, [...st.overrides.keys()]);
 }
 
-export function installFetchHandler(ctx: Ctx) {
+export function installFetchHandler(ctx: Pick<Ctx, 'sessions' | 'capture'>) {
   ctx.sessions.on('cdp.event', async ({ tabId, method, params }) => {
     if (method !== 'Fetch.requestPaused') return;
     const st = ctx.capture.get(tabId);

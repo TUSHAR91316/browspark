@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { createServer, type Server } from 'node:http';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { LIVE_HTML } from './live.ts';
+import { currentClient } from './context.ts';
 import {
   isEvt, isRes, type CdpEventParams, type DetachedParams, type HelloParams, type Msg, type Req,
   type ReqMethod, type TabInfo, PROTOCOL_VERSION,
@@ -31,6 +32,8 @@ export class Bridge extends EventEmitter {
   private http?: Server;
   /** Set by installLiveView: handles a browser viewer connection for a tab. */
   viewerHandler?: (ws: WebSocket, tabId: number) => void;
+  /** Set by the entry point: MCP over Streamable HTTP at /mcp for URL-based clients (Gemini, web apps). */
+  mcpHandler?: (req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse) => Promise<void>;
   private ws?: WebSocket;
   private nextId = 1;
   private pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: NodeJS.Timeout }>();
@@ -48,6 +51,7 @@ export class Bridge extends EventEmitter {
     return new Promise((resolve, reject) => {
       this.http = createServer((req, res) => {
         const u = new URL(req.url ?? '/', 'http://x');
+        if (u.pathname === '/mcp' && this.mcpHandler) { this.mcpHandler(req, res).catch((e) => { if (!res.headersSent) { res.statusCode = 500; res.end(String(e?.message ?? e)); } }); return; }
         const live = /^\/live\/(\d+)$/.exec(u.pathname);
         if (live) {
           if (u.searchParams.get('token') !== this.token) { res.statusCode = 403; res.end('bad token'); return; }
@@ -134,7 +138,7 @@ export class Bridge extends EventEmitter {
   }
 
   cdp<T = unknown>(tabId: number, method: string, params?: unknown, timeoutMs?: number, sessionId?: string): Promise<T> {
-    return this.request<T>('cdp', { tabId, method, params, sessionId }, timeoutMs);
+    return this.request<T>('cdp', { tabId, method, params, sessionId, client: currentClient()?.name }, timeoutMs);
   }
 
   close() {
