@@ -9,6 +9,8 @@ import { join } from 'node:path';
 import type { Server } from 'node:http';
 import { startTestServer } from '../../test-apps/server.ts';
 import { launchExtensionChrome, startCompanion, callers, pairAndShare, dashboard, ROOT, type Ext } from './harness.ts';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
 const skip = !process.env.E2E;
 let ext: Ext, http: Server, appUrl: string, tabId: number;
@@ -252,7 +254,7 @@ describe.skipIf(skip)('devtools e2e (extension mode)', () => {
     await call('devtools_memory', { tabId, action: 'snapshot' }); // unsupported in extension mode: this is what justifies a launch in auto mode
     const allowed = await call('browser_session', { action: 'launch', headless: true }); assert.ok(!allowed.err && /Launched/.test(allowed.txt), allowed.txt);
     assert.match(await ok('browser_session', { action: 'close' }), /Closed/);
-    assert.match(await ok('browser_tabs'), new RegExp(`\\[${id2}\\] extension agent-owned shared`));
+    assert.match(await ok('browser_tabs'), new RegExp(`\\[${id2}\\] extension \\(opened by you\\) shared`));
     assert.match(await ok('browser_read'), /Page Two/); // no tabId: defaults to the agent's tab, not the user's
     await ext.eval!('chrome.storage.local.set({ idleDetachMs: 1500 })');
     await new Promise((r) => setTimeout(r, 4500));
@@ -321,6 +323,48 @@ describe.skipIf(skip)('devtools e2e (extension mode)', () => {
     for (let i = 0; i < 30 && !(await msg({ type: 'getState' })).connected; i++) await new Promise((r) => setTimeout(r, 100));
     assert.equal((await msg({ type: 'getState' })).connected, true, 'reconnected with the stored token');
     await msg({ type: 'setShared', tabIds: [tabId], shared: true });
+  });
+
+  test('MCP over HTTP: token-protected endpoint serves the same tools to a second client', async () => {
+    const status = await ok('browser_status'); const port = Number(/ws:\/\/127\.0\.0\.1:(\d+)/.exec(status)![1]);
+    const st = await (await dashboard(ext))({ type: 'getState' }); const token = st.token as string; assert.ok(token);
+    assert.equal((await fetch(`http://127.0.0.1:${port}/mcp`, { method: 'POST', body: '{}' })).status, 401, 'no token -> 401');
+    const http = new Client({ name: 'gemini-like', version: '0' });
+    await http.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}/mcp?token=${token}`)));
+    const tools = await http.listTools(); assert.ok(tools.tools.length >= 40 && tools.tools.some((t) => t.name === 'browser_snapshot'));
+    const r = await http.callTool({ name: 'browser_read', arguments: { tabId } }) as any; assert.match(r.content[0].text, /Debug App/);
+    await http.close();
+  });
+
+  test('two agents on one companion keep their own tabs, recordings, and shared inspection sessions', async () => {
+    const status = await ok('browser_status'); const port = Number(/ws:\/\/127\.0\.0\.1:(\d+)/.exec(status)![1]);
+    const msg = await dashboard(ext); const token = (await msg({ type: 'getState' })).token as string;
+    const b = new Client({ name: 'second-agent', version: '0' });
+    await b.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}/mcp?token=${token}`)));
+    const bText = async (name: string, args: Record<string, unknown> = {}) => { const r = await b.callTool({ name, arguments: args }) as any; return { txt: r.content.filter((c: any) => c.type === 'text').map((c: any) => c.text).join('\n'), err: !!r.isError }; };
+    assert.match((await bText('browser_status')).txt, /You are agent "second-agent"/);
+    // each agent opens a tab; default targets do not cross
+    const ta = Number(/tab (\d+)/.exec(await ok('browser_tabs', { action: 'new', url: appUrl + 'page2.html' }))![1]);
+    const tb = Number(/tab (\d+)/.exec((await bText('browser_tabs', { action: 'new', url: appUrl + 'basic.html' })).txt)![1]);
+    assert.match(await ok('browser_read'), /Page Two/, 'agent A defaults to its own tab');
+    assert.match((await bText('browser_read')).txt, /Test App/, 'agent B defaults to its own tab');
+    assert.match(await ok('browser_tabs'), new RegExp(`\\[${tb}\\] extension \\(opened by agent "second-agent"\\)`));
+    // recordings are per agent
+    await ok('devtools_recorder', { action: 'start', tabId: ta, name: 'a-flow' });
+    assert.equal(JSON.parse((await bText('devtools_recorder', { action: 'status' })).txt).recording, false);
+    await ok('devtools_recorder', { action: 'stop' });
+    // inspection sessions are shared and survive until the last agent leaves
+    assert.match((await bText('devtools_session', { action: 'start', tabId })).txt, /Shared with: e2e/);
+    assert.match(await ok('devtools_session', { action: 'stop', tabId }), /session kept/);
+    assert.equal((await okJson('devtools_session', { action: 'status', tabId })).active, true);
+    assert.match((await bText('devtools_session', { action: 'stop', tabId })).txt, /Stopped inspecting/);
+    await ok('devtools_session', { action: 'start', tabId, bodies: true });
+    // the dashboard's activity log names the agent
+    await msg({ type: 'setActivityLog', on: true }); await bText('browser_read', { tabId: tb }); await new Promise((r) => setTimeout(r, 300));
+    const recent = (await msg({ type: 'getState' })).recent; assert.ok(recent.some((r: any) => r.client === 'second-agent'), JSON.stringify(recent.slice(0, 3)));
+    await msg({ type: 'setActivityLog', on: false });
+    await bText('browser_tabs', { action: 'close', tabId: tb }); await ok('browser_tabs', { action: 'close', tabId: ta });
+    await b.close();
   });
 
   test('recorder, batch, richer automation, cleanup on stop', async () => {

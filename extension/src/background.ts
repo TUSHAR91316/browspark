@@ -127,7 +127,7 @@ async function handle(req: Req): Promise<Res> {
       return { id: req.id, result: {} };
     }
     if (req.method === 'cdp') {
-      const { tabId, method, params, sessionId } = req.params as CdpParams;
+      const { tabId, method, params, sessionId, client } = req.params as CdpParams;
       // Trust boundary: only user-shared tabs may be driven, regardless of what the companion asks.
       if (!isShared(tabId)) throw new Error(`Tab ${tabId} is not shared by the user`);
       await ensureAttached(tabId);
@@ -143,11 +143,11 @@ async function handle(req: Req): Promise<Res> {
       const t0 = Date.now();
       try {
         const result = await chrome.debugger.sendCommand(sessionId ? { tabId, sessionId } : { tabId }, method, params as Record<string, unknown> | undefined);
-        log({ at: t0, ms: Date.now() - t0, tabId, tabLabel: await tabLabel(tabId), method, ok: true });
+        log({ at: t0, ms: Date.now() - t0, tabId, tabLabel: await tabLabel(tabId), method, ok: true, client });
         return { id: req.id, result };
       } catch (e) {
         const error = (e as Error).message || String(e);
-        log({ at: t0, ms: Date.now() - t0, tabId, tabLabel: await tabLabel(tabId), method, ok: false, error });
+        log({ at: t0, ms: Date.now() - t0, tabId, tabLabel: await tabLabel(tabId), method, ok: false, error, client });
         return { id: req.id, error };
       }
     }
@@ -204,7 +204,7 @@ async function state(): Promise<State> {
   const { port, token } = await cfg();
   const windows = (await chrome.windows.getAll()).filter((w) => w.id !== undefined).map((w) => ({ id: w.id!, focused: !!w.focused, incognito: w.incognito }));
   return {
-    connected: ws?.readyState === WebSocket.OPEN, stopped, shareAll, activityLog, toolCatalog, disabledTools: [...disabledTools], companionVersion, devMode, port, hasToken: !!token, lastError, connectedAt,
+    connected: ws?.readyState === WebSocket.OPEN, stopped, shareAll, activityLog, toolCatalog, disabledTools: [...disabledTools], companionVersion, devMode, token, port, hasToken: !!token, lastError, connectedAt,
     extensionVersion: chrome.runtime.getManifest().version, windows, tabs: await listTabs(), recent, totals,
   };
 }

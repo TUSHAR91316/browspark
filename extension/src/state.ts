@@ -1,7 +1,7 @@
 // Messages between the dashboard page and the service worker.
 import type { TabInfo, ToolInfo } from '../../shared/protocol.ts';
 
-export interface OpLog { id: number; at: number; ms: number; tabId: number; tabLabel: string; method: string; ok: boolean; error?: string }
+export interface OpLog { id: number; at: number; ms: number; tabId: number; tabLabel: string; method: string; ok: boolean; error?: string; client?: string }
 export interface WindowInfo { id: number; focused: boolean; incognito: boolean }
 export interface State {
   connected: boolean;
@@ -17,6 +17,8 @@ export interface State {
   companionVersion?: string;
   /** When the agent may launch the developer-mode browser. */
   devMode: 'auto' | 'always' | 'never';
+  /** Pairing token, shown so the user can build the HTTP endpoint URL for URL-based clients. */
+  token?: string;
   port: number;
   hasToken: boolean;
   lastError?: string;
