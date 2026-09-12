@@ -88,3 +88,67 @@ for (const button of document.querySelectorAll('[data-copy]')) {
     toastTimer = setTimeout(() => toast.classList.remove('show'), 2500);
   });
 }
+
+// Tool ticker: cycles through real tool calls in the preview terminal.
+const command = document.querySelector('#demo-command');
+const result = document.querySelector('#demo-result');
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const CALLS = [
+  ['browser_tabs', '({ onlyUsable: true })', () => `${document.querySelectorAll('[data-share]:checked').length} tabs available to your agent`],
+  ['browser_snapshot', '({ tabId: 1731 })', 'Accessible tree · 42 nodes with refs'],
+  ['browser_click', '({ ref: "e12" })', 'Clicked "Checkout"'],
+  ['devtools_network', '({ action: "search", url: "/api" })', '3 requests · 1 slow (412 ms)'],
+  ['devtools_console', '({ level: "error" })', '1 exception · stack mapped to app.ts:41'],
+  ['devtools_performance', '({ action: "trace" })', 'LCP 1.2 s · 2 long tasks'],
+];
+const check = '<svg class="icon small"><use href="#i-check"/></svg>';
+let index = 0, timer, pinnedUntil = 0;
+const show = (tool, args, text) => {
+  command.innerHTML = `<span class="tool">${tool}</span><span class="arg">${args}</span>`;
+  result.innerHTML = `${text} ${check}`;
+};
+async function tick() {
+  if (Date.now() < pinnedUntil) { timer = setTimeout(tick, pinnedUntil - Date.now()); return; }
+  const [tool, args, text] = CALLS[index];
+  index = (index + 1) % CALLS.length;
+  const full = tool + args;
+  result.classList.add('pending');
+  if (reduceMotion) {
+    show(tool, args, typeof text === 'function' ? text() : text);
+  } else {
+    command.classList.add('typing');
+    for (let i = 1; i <= full.length; i++) {
+      const head = full.slice(0, i);
+      command.innerHTML = head.length <= tool.length ? `<span class="tool">${head}</span>` : `<span class="tool">${tool}</span><span class="arg">${head.slice(tool.length)}</span>`;
+      await new Promise((r) => setTimeout(r, 22));
+    }
+    await new Promise((r) => setTimeout(r, 350));
+    command.classList.remove('typing');
+    result.innerHTML = `${typeof text === 'function' ? text() : text} ${check}`;
+  }
+  result.classList.remove('pending');
+  timer = setTimeout(tick, reduceMotion ? 3200 : 2800);
+}
+for (const input of document.querySelectorAll('[data-share]')) {
+  input.addEventListener('change', () => {
+    clearTimeout(timer);
+    index = 1;
+    show('browser_tabs', '({ onlyUsable: true })', `${document.querySelectorAll('[data-share]:checked').length} tabs available to your agent`);
+    result.classList.remove('pending');
+    pinnedUntil = Date.now() + 4000;
+    timer = setTimeout(tick, 4000);
+  });
+}
+document.addEventListener('visibilitychange', () => { clearTimeout(timer); if (!document.hidden) timer = setTimeout(tick, 600); });
+timer = setTimeout(tick, 1200);
+
+// Scroll reveals: sections and the inspector animate in once when they enter the viewport.
+for (const el of document.querySelectorAll('.feature, .developer-feature, .integrations, .client-showcase, .closing, .faq-section > div')) el.classList.add('reveal');
+if ('IntersectionObserver' in window) {
+  const io = new IntersectionObserver((entries) => {
+    for (const e of entries) if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
+  }, { threshold: 0.2 });
+  for (const el of document.querySelectorAll('.reveal, .inspector')) io.observe(el);
+} else {
+  for (const el of document.querySelectorAll('.reveal, .inspector')) el.classList.add('in');
+}
