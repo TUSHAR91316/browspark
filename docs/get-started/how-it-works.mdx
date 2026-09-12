@@ -5,13 +5,7 @@ description: "The three pieces, how they talk, and what happens on a single tool
 
 ## The pieces
 
-```mermaid
-flowchart LR
-  A[MCP client<br/>Claude Code, Codex, Cursor…] -- "MCP over stdio or HTTP" --> C[Companion<br/>bunx browspark-mcp]
-  C -- "WebSocket 127.0.0.1:9223<br/>pairing token" --> E[Chrome extension<br/>service worker + dashboard]
-  E -- "chrome.debugger" --> T[Shared tabs in your Chrome]
-  C -- "direct CDP" --> D[Developer-mode Chrome<br/>own profile]
-```
+<img src="/images/how-it-works.gif" alt="An MCP client talks to the companion over stdio or HTTP; the companion drives shared tabs through the Chrome extension over WebSocket, or a developer-mode Chrome directly over CDP" />
 
 - **Companion** (`companion/`): the MCP server. Registers 43 tools, keeps per-tab capture state (console, network, scripts, paused frames, issues), holds artifacts, and routes each command to either the extension or a developer browser.
 - **Extension** (`extension/`): a Manifest V3 service worker that owns the WebSocket to the companion and attaches Chrome's debugger to shared tabs, plus the full-page dashboard where you share tabs, switch tools on and off, and read the activity log.

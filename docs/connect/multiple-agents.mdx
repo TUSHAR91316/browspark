@@ -9,13 +9,7 @@ You can connect as many agents as you like. They share one companion, one extens
 
 The first companion process to start owns port `9223`. Every companion started afterwards, by any other client, finds the port taken and becomes a **relay**: a thin stdio server that forwards `tools/list` and `tools/call` to the owner over the HTTP endpoint. From the client's point of view nothing changes; from the extension's point of view there is still exactly one connection.
 
-```mermaid
-flowchart LR
-  A[Claude Code] --> C1[companion · owns :9223]
-  B[OpenCode] --> C2[companion · relay] --> C1
-  G[HTTP client] -- HTTP --> C1
-  C1 --> E[extension]
-```
+<img src="/images/multiple-agents.gif" alt="Several MCP clients reaching one extension: the first companion owns port 9223, later ones relay to it over HTTP, and HTTP clients connect to the owner directly" />
 
 The relay passes the downstream client's name through, so the owner still knows which agent is calling. Stopping the owner ends the relays too; the next client to start becomes the new owner.
 
