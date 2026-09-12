@@ -11,6 +11,16 @@ description: "Every install option in detail: source, packaged extension, compil
 | Chromium-based browser | Chrome, Brave, Edge or Chromium for extension mode. Developer mode finds Chrome automatically or uses `BROWSPARK_CHROME`. |
 | An MCP client | Claude Code, Codex, OpenCode, Cursor, Kilo, Antigravity, Gemini, or anything that speaks MCP over stdio or Streamable HTTP. |
 
+## One-command setup
+
+The setup script covers everything on this page for the common case: it downloads the extension, lets you choose bun, pnpm or npm to run the companion, writes the MCP config for the agents you pick, and prints the pairing steps.
+
+```bash
+curl -fsSL https://browspark.krishm.dev/setup.sh | bash
+```
+
+`bash setup.sh --test` is a dry run: it prints every command and file it would write without touching anything. The script lives at [`setup.sh`](https://github.com/uncaughterrs/browspark/blob/main/setup.sh) in the repo.
+
 ## The companion
 
 The companion is the MCP server. It is published on npm as `browspark-mcp` (alias `browspark`) and runs with a single command, no clone or install step:
@@ -50,6 +60,9 @@ The full list is in the [CLI and environment reference](/reference/cli-and-envir
 ## The extension
 
 <Tabs>
+  <Tab title="Release zip">
+    Download `browspark-extension.zip` from the [latest release](https://github.com/uncaughterrs/browspark/releases/latest), unzip it, then `chrome://extensions` → **Developer mode** → **Load unpacked** → the unzipped folder. This is what the setup script does, into `~/browspark-extension`.
+  </Tab>
   <Tab title="Unpacked from source">
     ```bash
     bun run build

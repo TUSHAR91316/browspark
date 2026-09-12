@@ -5,17 +5,30 @@ description: "From zero to an agent driving a tab in about five minutes."
 
 <Info>You need [Bun](https://bun.sh) and a Chromium-based browser (Chrome, Brave, Edge, Chromium). Browspark is developed on macOS; the companion runs anywhere Bun does.</Info>
 
+## Option 1: one command
+
+The setup script downloads the extension to `~/browspark-extension`, registers the companion with the agents you pick (Claude Code, Codex, OpenCode, Cursor, Kilo, Antigravity), and prints the pairing steps. Add `--test` for a dry run that downloads nothing and writes no config.
+
+```bash
+curl -fsSL https://browspark.krishm.dev/setup.sh | bash
+```
+
+Then continue from **Load the extension** below.
+
+## Option 2: by hand
+
 <Steps>
-  <Step title="Build the extension">
+  <Step title="Get the extension">
+    Download `browspark-extension.zip` from the [latest release](https://github.com/uncaughterrs/browspark/releases/latest) and unzip it anywhere. To build it yourself instead:
     ```bash
     git clone https://github.com/uncaughterrs/browspark.git
-    cd browsermcp
+    cd browspark
     bun install && bun run build
     ```
-    `bun run build` bundles the extension's service worker and dashboard into `extension/dist/`. The companion itself comes from npm, so this clone is only for the extension.
+    That bundles the extension into the `extension/` folder. The companion itself comes from npm, so the clone is only for the extension.
   </Step>
   <Step title="Load the extension">
-    Open `chrome://extensions`, switch on **Developer mode**, click **Load unpacked** and pick the `extension/` folder. Pin the Browspark icon so the dashboard is one click away.
+    Open `chrome://extensions`, switch on **Developer mode**, click **Load unpacked** and pick the unzipped folder (or `extension/` in the clone). Pin the Browspark icon so the dashboard is one click away.
   </Step>
   <Step title="Register the companion with your agent">
     For Claude Code:
