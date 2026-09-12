@@ -8,6 +8,10 @@
   <meta property="og:title" content="Browspark — Your browser. Now agent-ready.">
   <meta property="og:description" content="Automate, inspect, and debug the browser you already use. Your tabs. Your sessions. You stay in control.">
   <meta property="og:type" content="website">
+  <meta property="og:url" content="https://browspark.krishm.dev/">
+  <meta property="og:image" content="https://browspark.krishm.dev/assets/logo.png">
+  <meta name="twitter:card" content="summary">
+  <link rel="canonical" href="https://browspark.krishm.dev/">
   <title>Browspark — Your browser. Now agent-ready.</title>
   <link rel="icon" href="./assets/favicon.png" type="image/png">
   <link rel="stylesheet" href="./styles.css">
@@ -103,9 +107,9 @@
       <details class="setup-help">
         <summary>Install and connect Browspark <svg class="icon small"><use href="#i-plus"/></svg></summary>
         <div class="setup-layout">
-          <ol class="setup-steps"><li><span class="step-number">01</span><div><h3>Build the extension</h3><p>The companion comes from npm, so the clone is only for the extension.</p><div class="code-box install-code"><div class="code-header"><span>Terminal</span><button class="copy-button" data-copy="install-command" aria-label="Copy install commands"><svg class="icon small"><use href="#i-copy"/></svg></button></div><pre tabindex="0"><code id="install-command">git clone https://github.com/uncaughterrs/browspark.git
+          <ol class="setup-steps"><li><span class="step-number">01</span><div><h3>Get the extension</h3><p>Download <code>browspark-extension.zip</code> from the <a href="https://github.com/uncaughterrs/browspark/releases/latest" target="_blank" rel="noreferrer">latest release</a> and unzip it. The companion comes from npm, so nothing else needs downloading.</p><div class="code-box install-code"><div class="code-header"><span>Or build from source</span><button class="copy-button" data-copy="install-command" aria-label="Copy build commands"><svg class="icon small"><use href="#i-copy"/></svg></button></div><pre tabindex="0"><code id="install-command">git clone https://github.com/uncaughterrs/browspark.git
 cd browspark
-bun install &amp;&amp; bun run build</code></pre></div></div></li><li><span class="step-number">02</span><div><h3>Load the extension</h3><p>Open <code>chrome://extensions</code>, turn on Developer mode, then choose <strong>Load unpacked</strong> and select the project's <code>extension/</code> folder.</p></div></li><li><span class="step-number">03</span><div><h3>Pair. Share. You're ready.</h3><p>Add the companion to your client using the config above; it is fetched from npm on first run. Ask your agent to call <code>browser_status</code>, paste the pairing token into the extension, and choose your tabs.</p></div></li></ol>
+bun install &amp;&amp; bun run build</code></pre></div></div></li><li><span class="step-number">02</span><div><h3>Load the extension</h3><p>Open <code>chrome://extensions</code>, turn on Developer mode, then choose <strong>Load unpacked</strong> and select the unzipped folder (or <code>extension/</code> in the clone).</p></div></li><li><span class="step-number">03</span><div><h3>Pair. Share. You're ready.</h3><p>Add the companion to your client using the config above; it is fetched from npm on first run. Ask your agent to call <code>browser_status</code>, paste the pairing token into the extension, and choose your tabs.</p></div></li></ol>
           <div class="setup-notes">
             <h3>Configure your client</h3>
             <p id="client-instruction">Run this command in your terminal to register Browspark for all your projects.</p>
