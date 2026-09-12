@@ -80,3 +80,19 @@ test('isNewTab recognizes only native Chrome New Tab URLs', () => {
     assert.equal(isNewTab(url), false, url);
   }
 });
+
+test('bridge answers malformed request targets with 400 instead of crashing', async () => {
+  const { connect } = await import('node:net');
+  const bridge = new Bridge('secret', 0);
+  await bridge.listen();
+  const raw = (target: string, upgrade = false) => new Promise<string>((resolve) => {
+    const s = connect(bridge.port, '127.0.0.1', () => s.write(`GET ${target} HTTP/1.1\r\nHost: x\r\n${upgrade ? 'Connection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n' : ''}\r\n`));
+    let out = ''; s.on('data', (d) => { out += d.toString(); }); s.on('close', () => resolve(out)); s.on('error', () => resolve(out));
+    setTimeout(() => s.destroy(), 500);
+  });
+  assert.match(await raw('//['), /^HTTP\/1\.1 400/);
+  await raw('//[', true); // upgrade path: socket is dropped, server keeps running
+  const ok = await fetch(`http://127.0.0.1:${bridge.port}/`);
+  assert.equal(ok.status, 200);
+  bridge.close();
+});

@@ -49,8 +49,10 @@ export class Bridge extends EventEmitter {
 
   listen(): Promise<void> {
     return new Promise((resolve, reject) => {
+      const parse = (target?: string) => { try { return new URL(target ?? '/', 'http://x'); } catch { return undefined; } };
       this.http = createServer((req, res) => {
-        const u = new URL(req.url ?? '/', 'http://x');
+        const u = parse(req.url);
+        if (!u) { res.statusCode = 400; res.setHeader('content-type', 'text/plain'); res.end('bad request'); return; }
         if (u.pathname === '/mcp' && this.mcpHandler) { this.mcpHandler(req, res).catch((e) => { if (!res.headersSent) { res.statusCode = 500; res.end(String(e?.message ?? e)); } }); return; }
         const live = /^\/live\/(\d+)$/.exec(u.pathname);
         if (live) {
@@ -61,7 +63,8 @@ export class Bridge extends EventEmitter {
       });
       this.wss = new WebSocketServer({ noServer: true });
       this.http.on('upgrade', (req, socket, head) => {
-        const u = new URL(req.url ?? '/', 'http://x');
+        const u = parse(req.url);
+        if (!u) { socket.destroy(); return; }
         if (u.pathname === '/live-ws') {
           const tabId = Number(u.searchParams.get('tab'));
           if (u.searchParams.get('token') !== this.token || !tabId || !this.viewerHandler) { socket.destroy(); return; }
