@@ -1,5 +1,5 @@
 import {
-  DEFAULT_PORT, PROTOCOL_VERSION, isReq, unsupportedReason,
+  DEFAULT_PORT, PROTOCOL_VERSION, isReq, isNewTab, unsupportedReason,
   type CdpParams, type Evt, type HelloParams, type Msg, type Req, type Res, type TabInfo, type ToolInfo,
 } from '../../shared/protocol.ts';
 import type { OpLog, PopupMsg, State } from './state.ts';
@@ -13,7 +13,7 @@ let companionVersion: string | undefined;
 const sendToolPolicy = () => evt('tools.policy', { disabled: [...disabledTools], haveCatalog: toolCatalog.length > 0 && !!companionVersion, devMode });
 const isShared = (tabId: number) => shareAll || shared.has(tabId);
 const attached = new Set<number>();
-const agentTabs = new Set<number>();     // tabs the agent opened (in the user's current window)
+const agentTabs = new Set<number>();     // ordinary browser tabs the agent opened
 let devMode: 'auto' | 'always' | 'never' = 'auto';
 const held = new Set<number>();          // tabs with an active inspection session: never idle-detach
 const windowBounds = new Map<number, { width?: number; height?: number; state?: string }>(); // originals, restored after emulation
@@ -23,11 +23,14 @@ const recent: OpLog[] = [];
 const totals = { ops: 0, errors: 0 };
 let opSeq = 0;
 let connectedAt: number | undefined;
+let connecting = false;
+let connectionAttempt = 0;
 let ws: WebSocket | undefined;
 let stopped = false;
 let lastError: string | undefined;
 let backoff = 1000;
 let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+let connectionTimer: ReturnType<typeof setTimeout> | undefined;
 
 const cfg = async () => {
   const s = await chrome.storage.local.get(['token', 'port', 'shareAll', 'stopped', 'activityLog', 'toolCatalog', 'disabledTools', 'devMode']);
@@ -42,8 +45,8 @@ const APP_URL = chrome.runtime.getURL('app.html');
 async function listTabs(): Promise<TabInfo[]> {
   const tabs = await chrome.tabs.query({});
   return tabs.filter((t) => t.id !== undefined).map((t) => ({
-    id: t.id!, url: t.url || '', title: t.title || '', shared: isShared(t.id!), attached: attached.has(t.id!),
-    windowId: t.windowId, active: !!t.active, agent: agentTabs.has(t.id!) || undefined, favIconUrl: t.favIconUrl, unsupported: unsupportedReason(t.url || ''),
+    id: t.id!, url: t.url || '', title: t.title || '', shared: isShared(t.id!) && (!unsupportedReason(t.url || '') || isNewTab(t.url || '')), attached: attached.has(t.id!),
+    windowId: t.windowId, agent: agentTabs.has(t.id!) || undefined, favIconUrl: t.favIconUrl, unsupported: unsupportedReason(t.url || ''),
   }));
 }
 const tabLabel = async (tabId: number) => { try { const t = await chrome.tabs.get(tabId); return new URL(t.url || '').host || t.title || String(tabId); } catch { return String(tabId); } };
@@ -80,6 +83,26 @@ async function handle(req: Req): Promise<Res> {
   await ready;
   try {
     if (req.method === 'tabs.list') return { id: req.id, result: await listTabs() };
+    if (req.method === 'tabs.prepare') {
+      const { tabId } = req.params as { tabId: number };
+      if (!isShared(tabId)) throw new Error(`Tab ${tabId} is not shared by the user`);
+      const tab = await chrome.tabs.get(tabId);
+      if (!isNewTab(tab.url || '')) return { id: req.id, result: { prepared: false } };
+      // Chrome blocks debugger attachment to its New Tab UI. Prepare the same tab
+      // only for an explicit navigation; the destination still uses normal CDP.
+      await chrome.tabs.update(tabId, { url: 'about:blank' });
+      for (let i = 0; i < 100; i++) {
+        const current = await chrome.tabs.get(tabId);
+        if (!isShared(tabId)) throw new Error(`Tab ${tabId} was unshared by the user`);
+        if (current.url === 'about:blank' && !current.pendingUrl && current.status === 'complete') {
+          await pushTabs();
+          return { id: req.id, result: { prepared: true } };
+        }
+        if (current.url && current.url !== 'about:blank' && !isNewTab(current.url)) throw new Error(`Tab ${tabId} navigated elsewhere while preparing; retry with its current state`);
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      throw new Error(`Timed out preparing New Tab ${tabId} for navigation`);
+    }
     if (req.method === 'tools.catalog') {
       const p = req.params as { tools: ToolInfo[]; version?: string };
       toolCatalog = p.tools; companionVersion = p.version;
@@ -88,7 +111,7 @@ async function handle(req: Req): Promise<Res> {
       return { id: req.id, result: { received: toolCatalog.length } };
     }
     if (req.method === 'tabs.create') {
-      // Tabs the agent opens are ordinary tabs in the user's current window, shared automatically (it created them).
+      // Tabs the agent opens are ordinary Chrome tabs, shared automatically because it created them.
       const { url, active } = req.params as { url: string; active?: boolean };
       const t = await chrome.tabs.create({ url, active: active ?? true });
       agentTabs.add(t.id!); shared.add(t.id!); await chrome.storage.session.set({ shared: [...shared] }); pushTabs();
@@ -157,15 +180,42 @@ async function handle(req: Req): Promise<Res> {
   }
 }
 
-async function connect() {
+async function connect(force = false) {
+  if (stopped || (!force && (ws || connecting))) return;
+  const attempt = ++connectionAttempt;
   clearTimeout(reconnectTimer);
-  if (stopped || ws) return;
+  clearTimeout(connectionTimer);
+  const previous = ws;
+  ws = undefined; connecting = true; connectedAt = undefined; companionVersion = undefined;
+  if (force) { backoff = 1000; lastError = undefined; }
+  // Finish closing the old connection before opening its replacement.
+  if (previous && previous.readyState !== WebSocket.CLOSED) {
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, 1000);
+      previous.addEventListener('close', () => { clearTimeout(timer); resolve(); }, { once: true });
+      previous.close(1000, 'reconnecting');
+    });
+  }
   const { token, port } = await cfg();
-  if (!token) return; // unpaired is the expected initial state, not an error
-  const sock = new WebSocket(`ws://127.0.0.1:${port}`);
+  if (attempt !== connectionAttempt || stopped) return;
+  if (!token) { connecting = false; return; } // unpaired is expected, not an error
+  let sock: WebSocket;
+  try { sock = new WebSocket(`ws://127.0.0.1:${port}`); }
+  catch { connecting = false; lastError = 'Invalid bridge address. Check the port in Settings.'; return; }
   ws = sock;
+  const disconnected = (error?: string) => {
+    if (ws !== sock) return;
+    clearTimeout(connectionTimer);
+    ws = undefined; connecting = false; connectedAt = undefined; companionVersion = undefined; lastError = error;
+    if (!stopped) { reconnectTimer = setTimeout(connect, backoff); backoff = Math.min(backoff * 2, 15_000); }
+  };
+  connectionTimer = setTimeout(() => {
+    if (ws !== sock) return;
+    disconnected('Companion did not respond. Check that the MCP server is running.');
+    sock.close(1000, 'connection timed out');
+  }, 10_000);
   sock.onopen = () => {
-    backoff = 1000; lastError = undefined; connectedAt = Date.now(); companionVersion = undefined;
+    if (ws !== sock) return;
     const brands = ((navigator as any).userAgentData?.brands ?? []) as { brand: string; version: string }[];
     const named = brands.find((b) => !/Chromium|not.*brand/i.test(b.brand)) ?? brands.find((b) => /Chromium/.test(b.brand));
     const hello: HelloParams = { token, version: PROTOCOL_VERSION, extensionVersion: chrome.runtime.getManifest().version, browser: named ? `${named.brand} ${named.version}` : undefined, userAgent: navigator.userAgent };
@@ -174,37 +224,44 @@ async function connect() {
     sendToolPolicy();
   };
   sock.onmessage = async (m) => {
+    if (ws !== sock) return;
     let msg: Msg;
     try { msg = JSON.parse(m.data as string); } catch { return; }
     if (!msg || typeof msg !== 'object') return;
-    if (isReq(msg)) send(await handle(msg));
+    if (isReq(msg)) {
+      // A response from the paired companion confirms readiness, not merely an open socket.
+      if (connecting) { connecting = false; connectedAt = Date.now(); lastError = undefined; backoff = 1000; clearTimeout(connectionTimer); }
+      const response = await handle(msg);
+      if (ws === sock && sock.readyState === WebSocket.OPEN) sock.send(JSON.stringify(response));
+    }
   };
   sock.onclose = (e) => {
     if (ws !== sock) return;
-    ws = undefined; connectedAt = undefined;
-    if (e.code === 4003) { lastError = 'Companion rejected the token'; stopped = true; return; }
-    if (e.code === 4002) { lastError = e.reason || 'Protocol version mismatch; update the extension'; stopped = true; return; }
-    lastError = e.code === 1000 ? undefined : `Disconnected (${e.code})`;
-    if (!stopped) { reconnectTimer = setTimeout(connect, backoff); backoff = Math.min(backoff * 2, 15_000); }
+    if (e.code === 4003) { stopped = true; disconnected('Companion rejected the token'); return; }
+    if (e.code === 4002) { stopped = true; disconnected(e.reason || 'Protocol version mismatch; update the extension'); return; }
+    disconnected(lastError ?? (e.code === 1000 ? 'Companion disconnected. Retrying automatically.' : `Disconnected (${e.code}). Retrying automatically.`));
   };
-  sock.onerror = () => { lastError = 'Companion not reachable; is the MCP server running?'; };
+  sock.onerror = () => { if (ws === sock) lastError = 'Companion not reachable; is the MCP server running?'; };
 }
 
 async function stop(persist = true) {
   stopped = true;
+  connectionAttempt++;
   clearTimeout(reconnectTimer);
+  clearTimeout(connectionTimer);
+  const previous = ws;
+  ws = undefined; connecting = false; connectedAt = undefined; companionVersion = undefined; lastError = undefined;
+  previous?.close(1000, 'stopped by user');
   for (const id of [...attached]) await detach(id);
   shared.clear(); shareAll = false;
-  ws?.close(1000, 'stopped by user');
-  ws = undefined;
   if (persist) { await chrome.storage.session.set({ shared: [] }); await chrome.storage.local.set({ shareAll: false, stopped: true }); }
 }
 
 async function state(): Promise<State> {
   const { port, token } = await cfg();
-  const windows = (await chrome.windows.getAll()).filter((w) => w.id !== undefined).map((w) => ({ id: w.id!, focused: !!w.focused, incognito: w.incognito }));
+  const windows = (await chrome.windows.getAll()).filter((w) => w.id !== undefined).map((w) => ({ id: w.id!, incognito: w.incognito }));
   return {
-    connected: ws?.readyState === WebSocket.OPEN, stopped, shareAll, activityLog, toolCatalog, disabledTools: [...disabledTools], companionVersion, devMode, token, port, hasToken: !!token, lastError, connectedAt,
+    connected: ws?.readyState === WebSocket.OPEN && connectedAt !== undefined, connecting: connecting && !lastError, stopped, shareAll, activityLog, toolCatalog, disabledTools: [...disabledTools], companionVersion, devMode, token, port, hasToken: !!token, lastError, connectedAt,
     extensionVersion: chrome.runtime.getManifest().version, windows, tabs: await listTabs(), recent, totals,
   };
 }
@@ -215,11 +272,11 @@ chrome.runtime.onMessage.addListener((msg: PopupMsg, _s, reply) => {
     switch (msg.type) {
       case 'setConfig': {
         const token = msg.token || (await cfg()).token; // empty token = keep the current one (port-only change)
+        stopped = false;
         await chrome.storage.local.set({ token, port: msg.port, stopped: false });
-        stopped = false; ws?.close(1000, 'reconfigured'); ws = undefined; backoff = 1000;
-        await connect(); break;
+        await connect(true); break;
       }
-      case 'connect': stopped = false; await chrome.storage.local.set({ stopped: false }); await connect(); break;
+      case 'connect': stopped = false; await chrome.storage.local.set({ stopped: false }); await connect(true); break;
       case 'stop': await stop(); break;
       case 'clearLog': recent.length = 0; break;
       case 'setShared':

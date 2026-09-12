@@ -2,11 +2,13 @@
 import type { TabInfo, ToolInfo } from '../../shared/protocol.ts';
 
 export interface OpLog { id: number; at: number; ms: number; tabId: number; tabLabel: string; method: string; ok: boolean; error?: string; client?: string }
-export interface WindowInfo { id: number; focused: boolean; incognito: boolean }
+export interface WindowInfo { id: number; incognito: boolean }
 export interface State {
   connected: boolean;
+  /** Pending connection UI; background retries retain their disconnected error state. */
+  connecting: boolean;
   stopped: boolean;
-  /** Every tab, current and future, is shared. */
+  /** Existing and newly opened tabs across all windows are shared. */
   shareAll: boolean;
   /** Record per-command activity (off by default: nothing is stored). */
   activityLog: boolean;

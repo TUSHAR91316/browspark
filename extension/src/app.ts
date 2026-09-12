@@ -1,4 +1,4 @@
-import type { TabInfo } from '../../shared/protocol.ts';
+import { isNewTab, type TabInfo } from '../../shared/protocol.ts';
 import type { PopupMsg, State } from './state.ts';
 
 // ---------- helpers ----------
@@ -65,21 +65,27 @@ const I = {
   inbox: '<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5.1 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.9A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1.1z"/>',
   refresh: '<path d="M21 12a9 9 0 1 1-3-6.7L21 8M21 3v5h-5"/>',
   external: '<path d="M15 3h6v6M10 14 21 3M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"/>',
+  tools: '<path d="m8 8-4 4 4 4m8-8 4 4-4 4M14 4l-4 16"/>',
+  shield: '<path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6z"/><path d="m8 12 3 3 5-6"/>',
+  arrow: '<path d="M5 12h14m-5-5 5 5-5 5"/>',
 };
-const icon = (name: keyof typeof I) => h('span', { html: `<svg class="i" viewBox="0 0 24 24">${I[name]}</svg>` }).firstElementChild as SVGElement;
+const icon = (name: keyof typeof I) => h('span', { html: `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${I[name]}</svg>` }).firstElementChild as SVGElement;
 const host = (u: string) => { try { return new URL(u).host; } catch { return ''; } };
 const initial = (t: TabInfo) => (host(t.url).replace(/^www\./, '') || t.title || '?')[0]?.toUpperCase() ?? '?';
 const time = (t: number) => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' });
 const ago = (t: number) => { const s = Math.max(0, (Date.now() - t) / 1000); return s < 60 ? `${Math.floor(s)}s` : s < 3600 ? `${Math.floor(s / 60)}m` : `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`; };
 const OWN = chrome.runtime.getURL('');
 const isOwn = (t: TabInfo) => t.url.startsWith(OWN);
+const canShare = (t: TabInfo) => !t.unsupported || isNewTab(t.url);
 
 // ---------- state ----------
 let state: State | undefined;
 let route = location.hash.replace(/^#\/?/, '') || 'overview';
 let editing = false;
-const ui = { search: '', tabFilter: 'all' as 'all' | 'shared' | 'available', logFilter: 'all' as 'all' | 'errors', theme: 'system', toolSearch: '', toolFilter: 'all' as 'all' | 'on' | 'off', expanded: new Set<string>() };
-try { ui.theme = localStorage.getItem('theme') || 'system'; } catch {}
+let connectionAction: 'connect' | 'stop' | undefined;
+let connectionEpoch = 0;
+const ui = { search: '', tabFilter: 'all' as 'all' | 'shared' | 'available', logFilter: 'all' as 'all' | 'errors', theme: 'system', setupClient: 'claude', toolSearch: '', toolFilter: 'all' as 'all' | 'on' | 'off', expanded: new Set<string>() };
+try { ui.theme = localStorage.getItem('theme') || 'system'; ui.setupClient = localStorage.getItem('setupClient') || 'claude'; } catch {}
 applyTheme();
 
 function applyTheme() {
@@ -87,132 +93,222 @@ function applyTheme() {
   else document.documentElement.setAttribute('data-theme', ui.theme);
 }
 
+async function changeConnection(message: Extract<PopupMsg, { type: 'connect' | 'setConfig' | 'stop' }>) {
+  const stopping = message.type === 'stop';
+  if (!stopping && (connectionAction || state?.connecting)) return;
+  const epoch = ++connectionEpoch;
+  connectionAction = stopping ? 'stop' : 'connect';
+  if (state) paint({ ...state, ...(message.type === 'setConfig' && { hasToken: state.hasToken || !!message.token, port: message.port }) });
+  try {
+    const next = await ask(message);
+    if (epoch !== connectionEpoch) return;
+    connectionAction = undefined;
+    paint(next);
+  } catch (e) {
+    if (epoch !== connectionEpoch) return;
+    connectionAction = undefined;
+    paint({ ...normalize(state), connected: false, connecting: false, lastError: (e as Error).message || String(e) });
+  }
+}
+const connectionBusy = (s: State) => s.connecting || !!connectionAction;
+const spinner = () => h('span', { class: 'spinner', 'aria-hidden': 'true' });
+
 // ---------- shell ----------
-const NAV: [string, string, string][] = [['overview', '🏠', 'Overview'], ['tabs', '🗂️', 'Tabs'], ['tools', '🧰', 'Tools'], ['activity', '📈', 'Activity'], ['settings', '⚙️', 'Settings']];
-const EMOJI = Object.fromEntries(NAV.map(([r, e]) => [r, e]));
+const NAV: [string, keyof typeof I, string][] = [['overview', 'home', 'Overview'], ['tabs', 'tabs', 'Tabs'], ['tools', 'tools', 'Tools'], ['activity', 'activity', 'Activity'], ['settings', 'settings', 'Settings']];
 function renderShell(s: State) {
-  $('ver').textContent = `v${s.extensionVersion} · extension mode`;
-  patch($('nav'), ...NAV.filter(([r]) => r !== 'activity' || s.activityLog).map(([r, ic, label]) => {
-    const n = r === 'tabs' ? s.tabs.filter((t) => t.shared).length : r === 'activity' ? s.totals.errors : r === 'tools' ? s.disabledTools.length : 0;
-    return h('a', { href: `#/${r}`, class: route === r ? 'on' : '', 'data-key': r }, h('span', { class: 'emoji' }, ic), label, n ? h('span', { class: 'n' }, String(n)) : null);
+  $('ver').textContent = `v${s.extensionVersion}`;
+  $('crumb').textContent = NAV.find(([r]) => r === route)?.[2] ?? 'Overview';
+  $('session-status').className = `local-badge ${s.connected ? 'ok' : s.stopped ? 'bad' : ''}`;
+  $('session-status').setAttribute('role', 'status');
+  $('session-status').setAttribute('aria-busy', String(s.connecting));
+  patch($('session-status'), s.connecting ? spinner() : h('span', { class: 'dot' }), h('span', {}, s.connecting ? 'Reconnecting…' : s.connected ? 'Connected' : s.lastError ? 'Disconnected' : s.stopped ? 'Access paused' : 'Disconnected'));
+  patch($('nav'), ...NAV.map(([r, ic, label]) => {
+    const n = r === 'tabs' ? s.tabs.filter((t) => t.shared && canShare(t)).length : r === 'tools' ? s.toolCatalog.length : 0;
+    return h('a', { href: `#/${r}`, class: route === r ? 'on' : '', 'aria-current': route === r ? 'page' : undefined, 'data-key': r }, icon(ic), h('span', { class: 'nav-text' }, label), n ? h('span', { class: 'n' }, String(n)) : null);
   }));
-  const [cls, l1, l2] = s.connected ? ['ok', `Connected${s.companionVersion ? ' · companion v' + s.companionVersion : ''}`, `127.0.0.1:${s.port} · ${ago(s.connectedAt!)}`] : s.stopped ? ['bad', 'Stopped', 'agent access paused'] : s.hasToken ? ['warn', 'Connecting…', `127.0.0.1:${s.port}`] : ['', 'Not paired', 'see Overview'];
+  const [cls, l1, l2] = s.connecting ? ['pending', 'Reconnecting…', `127.0.0.1:${s.port}`] : s.connected ? ['ok', 'Connected', `127.0.0.1:${s.port} · ${ago(s.connectedAt!)}`] : s.lastError ? ['bad', 'Disconnected', s.lastError] : s.stopped ? ['bad', 'Access paused', 'Resume when you’re ready'] : ['', 'Disconnected', s.hasToken ? 'Retry from Settings' : 'Pair from Overview'];
   $('conn').className = `conn ${cls}`;
-  patch($('conn'), h('span', { class: 'dot' }), h('div', {}, h('div', { class: 'l1' }, l1), h('div', { class: 'l2', ...(s.connected && { 'data-ago': String(s.connectedAt), 'data-ago-fmt': `127.0.0.1:${s.port} · {ago}` }) }, l2)));
+  $('conn').setAttribute('aria-busy', String(s.connecting));
+  patch($('conn'), s.connecting ? spinner() : h('span', { class: 'dot' }), h('div', {}, h('div', { class: 'l1' }, l1), h('div', { class: 'l2', ...(s.connected && { 'data-ago': String(s.connectedAt), 'data-ago-fmt': `127.0.0.1:${s.port} · {ago}` }) }, l2)));
   patch($('theme'), ...([['system', 'monitor'], ['light', 'sun'], ['dark', 'moon']] as [string, keyof typeof I][]).map(([t, ic]) =>
-    h('button', { class: ui.theme === t ? 'on' : '', title: `${t[0].toUpperCase()}${t.slice(1)} theme`, role: 'radio', 'aria-checked': String(ui.theme === t), onclick: () => { ui.theme = t; try { localStorage.setItem('theme', t); } catch {} applyTheme(); repaint(); } }, icon(ic))));
+    h('button', { class: ui.theme === t ? 'on' : '', title: `${t[0].toUpperCase()}${t.slice(1)} theme`, 'aria-label': `${t[0].toUpperCase()}${t.slice(1)} theme`, 'aria-pressed': String(ui.theme === t), onclick: () => { ui.theme = t; try { localStorage.setItem('theme', t); } catch {} applyTheme(); repaint(); } }, icon(ic))));
 }
 
 // ---------- views ----------
-const pageHeader = (title: string, sub: string, ...actions: (Node | null)[]) => h('div', { class: 'page-h' }, h('span', { class: 'icon emoji' }, EMOJI[route] ?? '📄'), h('h1', {}, title), h('p', {}, sub), actions.filter(Boolean).length ? h('div', { class: 'actions' }, ...actions) : null);
+const pageHeader = (title: string, sub: string, ...actions: (Node | null)[]) => h('div', { class: 'page-h' }, h('div', { class: 'page-h-copy' }, h('h1', {}, title), h('p', {}, sub)), actions.filter(Boolean).length ? h('div', { class: 'actions' }, ...actions) : null);
 const stat = (k: string, v: string | number, extra?: string, cls = '', agoTs?: number) => h('div', { class: 'stat' }, h('div', { class: 'k' }, k), h('div', { class: `v ${cls}` }, String(v), extra ? h('small', agoTs ? { 'data-ago': String(agoTs), 'data-ago-fmt': '{ago}' } : {}, extra) : null));
 const empty = (ic: keyof typeof I, title: string, sub?: string, action?: Node) => h('div', { class: 'empty' }, icon(ic), h('b', {}, title), sub ? h('span', {}, sub) : null, action ?? null);
 const stopResume = (s: State) => s.stopped
-  ? h('button', { class: 'btn primary', onclick: () => ask({ type: 'connect' }).then(paint) }, icon('play'), 'Resume access')
-  : h('button', { class: 'btn danger', disabled: !s.connected && !s.hasToken, onclick: () => ask({ type: 'stop' }).then(paint), title: 'Detach from every tab and disconnect' }, icon('stop'), 'Stop');
+  ? h('button', { class: 'btn primary', disabled: connectionBusy(s), 'aria-busy': String(connectionBusy(s)), onclick: () => changeConnection({ type: 'connect' }) }, icon('play'), 'Resume access')
+  : h('button', { class: 'btn danger', disabled: !s.connected && !s.hasToken && !s.connecting, onclick: () => changeConnection({ type: 'stop' }), title: 'Detach from every tab and disconnect' }, icon('stop'), 'Stop access');
 
-function copyBtn(text: string) {
-  return h('button', { class: 'btn sm icon ghost', title: 'Copy', onclick: async (e: Event) => { const b = e.currentTarget as HTMLElement; await navigator.clipboard.writeText(text); b.replaceChildren(icon('check')); setTimeout(() => b.replaceChildren(icon('copy')), 1200); } }, icon('copy'));
+function copyBtn(text: string, label = 'Copy') {
+  return h('button', { class: 'btn sm icon ghost', title: label, 'aria-label': label, onclick: async (e: Event) => { const b = e.currentTarget as HTMLElement; await navigator.clipboard.writeText(text); b.replaceChildren(icon('check')); setTimeout(() => b.replaceChildren(icon('copy')), 1200); } }, icon('copy'));
 }
 const inputValue = (id: string) => $<HTMLInputElement>(id)?.value ?? '';
 const checked = (e: Event) => (e.currentTarget as HTMLInputElement).checked;
 
 function pairForm(s: State) {
-  const token = h('input', { id: 'token', class: 'mono', placeholder: 'paste token', spellcheck: false, autocomplete: 'off' }) as HTMLInputElement;
-  const port = h('input', { id: 'port', type: 'number', value: String(s.port), class: 'mono' }) as HTMLInputElement;
-  const submit = () => { editing = false; ask({ type: 'setConfig', token: inputValue('token').trim(), port: Number(inputValue('port')) || 9223 }).then(paint); }; // empty token keeps the stored one
+  const token = h('input', { id: 'token', class: 'mono', placeholder: 'Enter pairing token', 'aria-label': 'Pairing token', spellcheck: false, autocomplete: 'off' }) as HTMLInputElement;
+  const port = h('input', { id: 'port', type: 'number', min: 1, max: 65535, 'aria-label': 'Bridge port', value: String(s.port), class: 'mono' }) as HTMLInputElement;
+  const submit = () => { const message = { type: 'setConfig' as const, token: inputValue('token').trim(), port: Number(inputValue('port')) || 9223 }; editing = false; return changeConnection(message); }; // empty token keeps the stored one
   token.onkeydown = (e) => { if (e.key === 'Enter') submit(); };
-  return h('div', { class: 'row' },
-    h('label', { class: 'field', style: 'flex:1;max-width:320px' }, h('span', {}, 'token'), token),
-    h('label', { class: 'field', style: 'width:130px' }, h('span', {}, 'port'), port),
-    h('button', { class: 'btn primary', onclick: submit }, s.connected ? 'Reconnect' : 'Connect'),
+  return h('div', { class: 'row pair-form' },
+    h('label', { class: 'field', style: 'flex:1;max-width:320px' }, h('span', {}, 'Token'), token),
+    h('label', { class: 'field', style: 'width:130px' }, h('span', {}, 'Port'), port),
+    h('button', { class: 'btn primary', disabled: connectionBusy(s), 'aria-busy': String(connectionBusy(s)), onclick: submit }, s.connecting ? spinner() : null, s.connecting ? 'Reconnecting…' : s.connected ? 'Reconnect' : 'Connect'),
     editing ? h('button', { class: 'btn ghost', onclick: () => { editing = false; repaint(); } }, 'Cancel') : null);
 }
 
-const CMD = 'claude mcp add browsermcp -- bun /path/to/browsermcp/companion/src/index.ts';
+const COMPANION_PATH = '/absolute/path/to/browsermcp/companion/src/index.ts';
+function clientSetup(port: number) {
+  const args = [COMPANION_PATH, ...(port === 9223 ? [] : ['--port', String(port)])];
+  const command = `bun "${COMPANION_PATH}"${port === 9223 ? '' : ` --port ${port}`}`;
+  const STDIO_CONFIG = { command: 'bun', args };
+  const LOCAL_CONFIG = JSON.stringify({ mcp: { browsermcp: { type: 'local', command: ['bun', ...args], enabled: true } } }, null, 2);
+  const SETUP_CLIENTS = [
+    { id: 'claude', name: 'Claude', file: 'Terminal · Claude Code',
+      instruction: 'Run this command in your terminal to add BrowserMCP to Claude Code for all projects.',
+      code: `claude mcp add --transport stdio --scope user browsermcp -- ${command}`,
+      next: 'Start a new Claude Code session, then use /mcp to check the connection.',
+      docs: 'https://code.claude.com/docs/en/mcp' },
+    { id: 'codex', name: 'Codex', file: 'Terminal · Codex CLI',
+      instruction: 'Run this command in your terminal. Codex saves the server in ~/.codex/config.toml.',
+      code: `codex mcp add browsermcp -- ${command}`,
+      next: 'Restart your Codex client, then check the server in MCP settings or with /mcp in the CLI.',
+      docs: 'https://developers.openai.com/codex/mcp/' },
+    { id: 'opencode', name: 'OpenCode', file: '~/.config/opencode/opencode.json',
+      instruction: 'Add this entry to your global OpenCode config, keeping any existing servers.',
+      code: LOCAL_CONFIG, next: 'Restart OpenCode, then run opencode mcp list to check the connection.',
+      docs: 'https://opencode.ai/docs/mcp-servers/' },
+    { id: 'cursor', name: 'Cursor', file: '~/.cursor/mcp.json',
+      instruction: 'Add this entry to your global Cursor config, keeping any existing servers.',
+      code: JSON.stringify({ mcpServers: { browsermcp: { type: 'stdio', ...STDIO_CONFIG } } }, null, 2),
+      next: 'Restart Cursor, then check that BrowserMCP is enabled under Customize → MCP.',
+      docs: 'https://cursor.com/docs/mcp' },
+    { id: 'kilo', name: 'Kilo', file: '~/.config/kilo/kilo.jsonc',
+      instruction: 'Add this entry to your global Kilo config, keeping any existing servers.',
+      code: LOCAL_CONFIG, next: 'In the Kilo extension, open Settings → MCP and check that BrowserMCP is enabled.',
+      docs: 'https://kilo.ai/docs/automate/mcp/using-in-kilo-code' },
+    { id: 'antigravity', name: 'Antigravity', file: 'mcp_config.json',
+      instruction: 'In the Agent panel, open … → MCP Servers → Manage MCP Servers → View raw config. Add this entry, keeping any existing servers.',
+      code: JSON.stringify({ mcpServers: { browsermcp: STDIO_CONFIG } }, null, 2),
+      next: 'Save the config, then check that BrowserMCP is enabled in MCP management.',
+      docs: 'https://antigravity.google/docs/mcp' },
+  ];
+
+  const selected = SETUP_CLIENTS.find((client) => client.id === ui.setupClient) ?? SETUP_CLIENTS[0]!;
+  return h('div', { class: 'client-setup' },
+    h('div', { class: 'setup-clients', role: 'group', 'aria-label': 'MCP client' }, ...SETUP_CLIENTS.map((client) =>
+      h('button', { class: 'btn', 'data-client': client.id, 'data-key': client.id, 'aria-pressed': String(client === selected), 'aria-controls': 'setup-instructions', onclick: () => {
+        ui.setupClient = client.id; try { localStorage.setItem('setupClient', client.id); } catch {} repaint();
+      } }, h('picture', {},
+        ['opencode', 'cursor'].includes(client.id) ? h('source', { media: ui.theme === 'system' ? '(prefers-color-scheme: dark)' : ui.theme === 'dark' ? 'all' : 'not all', srcset: `assets/clients/${client.id}-dark.svg` }) : null,
+        h('img', { src: `assets/clients/${client.id}.${client.id === 'claude' || client.id === 'antigravity' ? 'png' : 'svg'}`, alt: '', width: '20', height: '20' })), client.name))),
+    h('div', { id: 'setup-instructions', class: 'setup-instructions', role: 'region', 'aria-label': `${selected.name} setup` },
+      h('p', {}, selected.instruction),
+      h('div', { class: 'setup-code' },
+        h('div', { class: 'setup-code-h' }, h('span', {}, selected.file), copyBtn(selected.code, `Copy ${selected.name} setup`)),
+        h('pre', { tabindex: '0', 'aria-label': `${selected.name} configuration` }, h('code', {}, selected.code))),
+      h('div', { class: 'setup-next' }, h('p', {}, selected.next), h('a', { href: selected.docs, target: '_blank', rel: 'noreferrer', 'aria-label': `${selected.name} setup documentation` }, 'Docs', icon('external')))),
+    h('p', { class: 'setup-prerequisites' }, 'Requires Bun and ', h('code', {}, 'bun install'), ' in your BrowserMCP folder. Replace ', h('code', {}, '/absolute/path/to/browsermcp'), ' with its full path. If Bun is not found, use its full executable path too.'));
+}
 function viewOverview(s: State) {
-  const shared = s.tabs.filter((t) => t.shared);
+  const shared = s.tabs.filter((t) => t.shared && canShare(t));
   const paired = s.hasToken && !editing;
   const step = !paired ? 2 : shared.length || s.shareAll ? 4 : 3;
   const companionOk = s.connected; // only verifiable once the bridge answers
-  const onboarding = h('div', { class: 'card' },
-    h('div', { class: 'card-h' }, h('h2', {}, 'Get started'), h('span', { class: 'sub' }, 'Three steps to let an agent drive your tabs')),
+  const onboarding = h('div', { class: 'card setup-card' },
+    h('div', { class: 'card-h' }, icon('plug'), h('h2', {}, 'Connect your workspace'), h('span', { class: 'sub' }, 'Quick setup')),
     h('div', { class: 'card-b steps' },
       h('div', { class: `step ${companionOk ? 'done' : step === 2 ? 'now' : ''}` }, h('div', { class: 'num' }, companionOk ? icon('check') : '1'), h('div', {},
         h('h3', {}, 'Run the companion'),
         h('p', {}, 'Register it with your MCP client. It starts the local bridge on ', h('code', {}, `127.0.0.1:${s.port}`), '.'),
-        h('div', { class: 'cmd' }, h('code', { title: CMD }, CMD), copyBtn(CMD)))),
+        clientSetup(s.port))),
       h('div', { class: `step ${step > 2 ? 'done' : step === 2 ? 'now' : ''}` }, h('div', { class: 'num' }, step > 2 ? icon('check') : '2'), h('div', {},
         h('h3', {}, 'Pair this extension'),
-        h('p', {}, 'Ask the agent to call ', h('code', {}, 'browser_status'), '. It prints a one-time pairing token.'),
+        h('p', {}, 'Ask the agent to call ', h('code', {}, 'browser_status'), ' to get your pairing token.'),
         paired ? h('div', { class: 'row' }, h('span', { class: 'pill ok' }, icon('check'), 'Paired'), h('span', { class: 'mono', style: 'color:var(--fg-3)' }, `127.0.0.1:${s.port}`), h('button', { class: 'btn sm ghost', onclick: () => { editing = true; repaint(); $('token')?.focus(); } }, 'Change')) : pairForm(s),
         s.lastError && !s.connected ? h('div', { class: 'notice bad', style: 'margin-top:10px' }, icon('alert'), s.lastError) : null)),
       h('div', { class: `step ${step > 3 ? 'done' : step === 3 ? 'now' : ''}` }, h('div', { class: 'num' }, step > 3 ? icon('check') : '3'), h('div', {},
         h('h3', {}, 'Share tabs'),
-        h('p', {}, 'Only tabs you switch on can be seen or driven. Revoke any time.'),
+        h('p', {}, 'Choose the tabs your agent can control. Change access at any time.'),
         h('a', { href: '#/tabs', class: 'btn' }, icon('tabs'), s.shareAll ? 'Sharing everything · manage' : shared.length ? `${shared.length} shared · manage` : 'Choose tabs')))));
 
-  const recent = s.recent.slice(0, 8);
+  const ready = (s.connected || s.connecting || s.hasToken) && !editing && (!s.stopped || !!s.lastError);
+  const recent = s.recent.slice(0, 4);
+  const sharedPanel = h('div', { class: 'card' },
+    h('div', { class: 'card-h' }, icon('tabs'), h('h2', {}, 'Shared tabs'), h('span', { class: 'pill' }, String(shared.length))),
+    shared.length ? h('div', {}, ...shared.slice(0, 4).map((t) => h('a', { class: 'shared-preview', href: '#/tabs', title: t.title || t.url, 'data-key': String(t.id) },
+      h('span', { class: 'fav' }, initial(t)), h('span', { class: 'shared-meta' }, h('b', {}, t.title || host(t.url)), h('span', {}, host(t.url))), icon('arrow'))))
+      : empty('tabs', 'Your tabs stay private', 'Choose a tab to give your agent access.', h('a', { class: 'btn primary', href: '#/tabs' }, 'Choose tabs')),
+    shared.length ? h('a', { class: 'panel-footer', href: '#/tabs' }, 'Manage tab access', icon('arrow')) : null);
   return h('div', { class: 'page' },
-    pageHeader('Overview', s.connected ? 'The companion is connected. Shared tabs are ready for the agent.' : 'Pair the companion and choose which tabs the agent may drive.', stopResume(s)),
-    s.stopped ? h('div', { class: 'notice warn', style: 'margin-bottom:16px' }, icon('alert'), 'Access is stopped. The agent cannot reach any tab until you resume.', h('button', { class: 'btn sm', onclick: () => ask({ type: 'connect' }).then(paint) }, 'Resume')) : null,
-    h('div', { class: 'grid c4', style: 'margin-bottom:16px' },
-      stat('Connection', s.connected ? 'Live' : s.stopped ? 'Stopped' : s.hasToken ? 'Connecting' : 'Unpaired', s.connected ? ago(s.connectedAt!) : undefined, s.connected ? 'ok' : s.stopped ? 'bad' : '', s.connected ? s.connectedAt : undefined),
-      stat('Shared tabs', s.shareAll ? 'All' : shared.length, s.shareAll ? 'incl. new tabs' : `of ${s.tabs.filter((t) => !t.unsupported).length}`),
-      stat('Operations', s.totals.ops, 'this session'),
-      stat('Errors', s.totals.errors, undefined, s.totals.errors ? 'bad' : '')),
-    h('div', { class: 'grid c2' },
-      onboarding,
+    pageHeader('Overview', 'Your browser workspace, at a glance.', ready ? h('a', { class: 'btn primary', href: '#/tabs' }, icon('tabs'), 'Manage tabs') : null, stopResume(s)),
+    s.stopped && !s.lastError ? h('div', { class: 'notice warn', style: 'margin-bottom:16px' }, icon('alert'), 'Access is stopped. The agent cannot reach any tab until you resume.', h('button', { class: 'btn sm', disabled: connectionBusy(s), 'aria-busy': String(connectionBusy(s)), onclick: () => changeConnection({ type: 'connect' }) }, 'Resume')) : null,
+    onboarding,
+    ready ? h('div', { class: 'card connection-panel', 'aria-busy': String(s.connecting) },
+      h('div', { class: 'connection-icon' }, s.connecting ? spinner() : icon('plug')),
+      h('div', { class: 'connection-copy' }, h('h2', {}, s.connecting ? 'Reconnecting…' : s.connected ? 'Your browser is connected' : 'Disconnected'), h('p', {}, s.connecting ? 'Waiting for the companion to confirm the connection.' : s.connected ? shared.length ? 'Your agent can work in the tabs you’ve shared.' : 'Share a tab to start working with your agent.' : s.lastError ?? 'Start the companion, then reconnect.')),
+      h('div', { class: 'connection-meta' }, s.connected ? h('span', { class: 'pill ok' }, icon('check'), 'Live session') : s.connecting ? h('span', { class: 'pill' }, 'Connecting') : h('button', { class: 'btn', disabled: connectionBusy(s), onclick: () => changeConnection({ type: 'connect' }) }, icon('refresh'), 'Reconnect'), h('a', { href: '#/settings', title: 'Connection settings' }, h('code', {}, `127.0.0.1:${s.port}`)))) : null,
+    h('div', { class: `grid ${s.activityLog ? 'c4' : 'c2'} metric-grid` },
+      stat('Shared tabs', shared.length, s.shareAll ? 'all tabs + new' : `of ${s.tabs.filter(canShare).length} available`),
+      stat('Enabled tools', s.toolCatalog.filter((t) => !s.disabledTools.includes(t.name)).length, `of ${s.toolCatalog.length} tools`),
+      s.activityLog ? stat('Operations', s.totals.ops, 'this session') : null,
+      s.activityLog ? stat('Errors', s.totals.errors, undefined, s.totals.errors ? 'bad' : '') : null),
+    h('div', { class: 'overview-grid' },
+      sharedPanel,
       h('div', { class: 'card' },
-        h('div', { class: 'card-h' }, h('h2', {}, 'Recent activity'), h('div', { class: 'right' }, s.activityLog ? h('a', { href: '#/activity', class: 'btn sm ghost' }, 'View all') : null)),
+        h('div', { class: 'card-h' }, icon('activity'), h('h2', {}, 'Recent activity'), h('div', { class: 'right' }, s.activityLog ? h('a', { href: '#/activity', class: 'btn sm ghost' }, 'View all') : null)),
         !s.activityLog ? empty('activity', 'Activity log is off', 'Nothing is recorded. Turn it on in Settings to see what the agent does.', h('a', { href: '#/settings', class: 'btn sm', style: 'margin-top:8px' }, 'Open Settings'))
-        : recent.length ? h('table', { class: 'table' }, h('tbody', {}, ...recent.map((r) => h('tr', {},
-          h('td', { class: 'mono muted', style: 'width:1%' }, time(r.at)),
-          h('td', { class: 'trunc' }, h('span', { class: `st ${r.ok ? '' : 'bad'}` }), h('span', { class: 'mono' }, r.method)),
-          h('td', { class: 'muted trunc', style: 'width:30%' }, r.tabLabel)))))
-          : empty('inbox', 'Nothing yet', s.connected ? 'Operations the agent performs show up here.' : 'Connect the companion to see activity.'))));
+        : recent.length ? h('div', {}, ...recent.map((r) => h('div', { class: 'recent-row', 'data-key': String(r.id), title: r.error },
+          h('span', { class: `st ${r.ok ? '' : 'bad'}`, role: 'img', 'aria-label': r.ok ? 'Succeeded' : 'Failed' }),
+          h('div', { class: 'recent-copy' }, h('code', {}, r.method), h('span', {}, r.tabLabel)),
+          h('div', { class: 'recent-time' }, h('span', {}, time(r.at)), h('small', {}, `${r.ms} ms`)))))
+          : empty('inbox', 'No commands yet', s.connected ? 'Your agent’s commands will appear here.' : 'Connect the companion to start a session.'))));
 }
 
 function viewTabs(s: State) {
   const q = ui.search.trim().toLowerCase();
   const all = s.tabs.filter((t) => !isOwn(t));
-  const list = all.filter((t) => (ui.tabFilter === 'all' || (ui.tabFilter === 'shared' ? t.shared : !t.unsupported)) && (!q || t.title.toLowerCase().includes(q) || t.url.toLowerCase().includes(q)));
-  const shareable = list.filter((t) => !t.unsupported);
-  const windows = s.windows.map((w, i) => ({ ...w, label: `Window ${i + 1}${w.focused ? ' · current' : ''}${w.incognito ? ' · incognito' : ''}` }));
+  const list = all.filter((t) => (ui.tabFilter === 'all' || (ui.tabFilter === 'shared' ? t.shared && canShare(t) : canShare(t))) && (!q || t.title.toLowerCase().includes(q) || t.url.toLowerCase().includes(q)));
+  const shareable = list.filter(canShare);
+  const windows = s.windows.map((w, i) => ({ ...w, label: `Window ${i + 1}${w.incognito ? ' · incognito' : ''}` }));
   const groups = windows.map((w) => ({ w, tabs: list.filter((t) => t.windowId === w.id) })).filter((g) => g.tabs.length);
-  const search = h('input', { id: 'search', placeholder: 'Search tabs by title or URL…  /', value: ui.search, oninput: (e: Event) => { ui.search = (e.target as HTMLInputElement).value; repaint(); } });
-  const seg = (v: typeof ui.tabFilter, label: string) => h('button', { class: ui.tabFilter === v ? 'on' : '', onclick: () => { ui.tabFilter = v; repaint(); } }, label);
+  const search = h('input', { id: 'search', placeholder: 'Search tabs by title or URL…', 'aria-label': 'Search tabs', value: ui.search, oninput: (e: Event) => { ui.search = (e.target as HTMLInputElement).value; repaint(); } });
+  const seg = (v: typeof ui.tabFilter, label: string) => h('button', { class: ui.tabFilter === v ? 'on' : '', 'aria-pressed': String(ui.tabFilter === v), onclick: () => { ui.tabFilter = v; repaint(); } }, label);
   const setMany = (ids: number[], shared: boolean) => ids.length && ask({ type: 'setShared', tabIds: ids, shared }).then(paint);
 
   const row = (t: TabInfo) => {
-    const cb = h('input', { type: 'checkbox', checked: t.shared, disabled: !!t.unsupported || s.shareAll, title: t.unsupported ? `Chrome does not allow automation on ${t.unsupported}s` : s.shareAll ? 'Shared because "Share everything" is on' : t.shared ? 'Stop sharing' : 'Share with agent', onchange: (e: Event) => ask({ type: 'setShared', tabIds: [t.id], shared: checked(e) }).then(paint) }) as HTMLInputElement;
+    const eligible = canShare(t);
+    const cb = h('input', { type: 'checkbox', checked: t.shared && eligible, 'aria-label': `Share ${t.title || t.url}`, disabled: !eligible || s.shareAll, title: !eligible ? `Chrome does not allow automation on ${t.unsupported}s` : s.shareAll ? 'Shared because "Share everything" is on' : t.shared ? 'Stop sharing' : isNewTab(t.url) ? 'Share this New Tab so the agent can navigate it to a website' : 'Share with agent', onchange: (e: Event) => ask({ type: 'setShared', tabIds: [t.id], shared: checked(e) }).then(paint) }) as HTMLInputElement;
     const fav = h('div', { class: 'fav' });
     if (t.favIconUrl) { const img = h('img', { src: t.favIconUrl, alt: '' }) as HTMLImageElement; img.onerror = () => fav.replaceChildren(initial(t)); fav.append(img); } else fav.textContent = initial(t);
-    return h('div', { class: `tab ${t.unsupported ? 'off' : ''}`, 'data-key': String(t.id) },
+    return h('div', { class: `tab ${!eligible ? 'off' : t.shared ? 'shared' : ''}`, 'data-key': String(t.id) },
       fav,
       h('div', {}, h('div', { class: 't' }, h('button', { onclick: () => ask({ type: 'focusTab', tabId: t.id }), title: 'Switch to this tab' }, t.title || host(t.url) || 'Loading…')), h('div', { class: 'u' }, t.url || '')),
       h('div', { class: 'badges' },
         t.agent ? h('span', { class: 'pill accent' }, 'agent') : null,
-        s.shareAll && !t.unsupported ? h('span', { class: 'pill accent' }, 'all') : t.active ? h('span', { class: 'pill' }, 'active') : null,
+        t.shared && eligible ? h('span', { class: 'pill ok' }, 'Shared') : null,
         t.attached ? h('span', { class: 'pill ok', title: 'The debugger is attached: Chrome shows its "started debugging" bar. It detaches after 30s of inactivity unless an inspection session is running.' }, 'debugging') : null,
-        t.unsupported ? h('span', { class: 'pill' }, t.unsupported) : null),
+        isNewTab(t.url) ? h('span', { class: 'pill', title: 'Share this tab to let the agent navigate it to a website. Chrome’s New Tab content cannot be inspected directly.' }, 'New tab') : t.unsupported ? h('span', { class: 'pill' }, t.unsupported) : null),
       h('label', { class: 'switch' }, cb));
   };
 
-  const allCb = h('input', { type: 'checkbox', checked: s.shareAll, onchange: (e: Event) => ask({ type: 'setShareAll', on: checked(e) }).then(paint) }) as HTMLInputElement;
+  const allCb = h('input', { type: 'checkbox', checked: s.shareAll, 'aria-label': 'Share everything', onchange: (e: Event) => ask({ type: 'setShareAll', on: checked(e) }).then(paint) }) as HTMLInputElement;
   return h('div', { class: 'page' },
-    pageHeader('Tabs', 'Switch on the tabs the agent may see and control. Tabs the agent opens itself appear here in your current window and are shared automatically.',
+    pageHeader('Tabs', 'Choose which tabs your agent can use across all windows. Tabs opened by the agent are shared automatically.',
       h('button', { class: 'btn', disabled: s.shareAll || !shareable.some((t) => !t.shared), onclick: () => setMany(shareable.filter((t) => !t.shared).map((t) => t.id), true) }, `Share ${q || ui.tabFilter !== 'all' ? 'matching' : 'listed'}`),
       h('button', { class: 'btn', disabled: s.shareAll || !list.some((t) => t.shared), onclick: () => setMany(list.filter((t) => t.shared).map((t) => t.id), false) }, 'Unshare'),
       stopResume(s)),
-    h('div', { class: `callout`, style: 'margin-bottom:12px' },
-      h('span', { class: 'emoji' }, s.shareAll ? '🌐' : '🔒'),
-      h('div', { class: 'body' }, h('b', {}, 'Share everything'), h('div', { class: 'muted' }, s.shareAll ? 'Every window and tab is shared, including tabs opened from now on. Per-tab switches are locked while this is on.' : 'Give the agent every window and tab, including ones you open later. Handy for long sessions; turn off to go back to picking tabs.')),
+    h('div', { class: `callout ${s.shareAll ? 'sharing-all' : ''}`, style: 'margin-bottom:16px' },
+      icon(s.shareAll ? 'globe' : 'shield'),
+      h('div', { class: 'body' }, h('b', {}, 'Share everything'), h('div', { class: 'muted' }, s.shareAll ? 'All supported tabs across every window are shared, including new tabs. Turn off to choose tabs individually.' : 'Allow access to all supported tabs across every window, including tabs you open later.')),
       h('label', { class: 'switch ctl' }, allCb)),
     h('div', { class: 'card' },
       h('div', { class: 'toolbar' },
-        h('label', { class: 'field' }, icon('search'), search),
-        h('div', { class: 'seg' }, seg('all', `All ${all.length}`), seg('available', 'Available'), seg('shared', `Shared ${all.filter((t) => t.shared).length}`)),
+        h('label', { class: 'field' }, icon('search'), search, h('kbd', { class: 'kbd', 'aria-hidden': 'true' }, '/')),
+        h('div', { class: 'seg' }, seg('all', `All ${all.length}`), seg('available', 'Available'), seg('shared', `Shared ${all.filter((t) => t.shared && canShare(t)).length}`)),
         h('div', { class: 'right' }, h('span', { class: 'sub', style: 'color:var(--fg-3);font-size:12.5px' }, `${list.length} shown`))),
       groups.length ? h('div', {}, ...groups.flatMap((g) => [h('div', { class: 'group' }, icon('globe'), g.w.label, h('span', { style: 'font-weight:500;text-transform:none;letter-spacing:0' }, `· ${g.tabs.length}`)), ...g.tabs.map(row)]))
         : empty('search', 'No tabs match', q ? `Nothing for “${ui.search}”.` : 'Open a page in Chrome and it will appear here.')));
@@ -232,23 +328,23 @@ function viewTools(s: State) {
   const list = all.filter((t) => (ui.toolFilter === 'all' || (ui.toolFilter === 'on' ? !off.has(t.name) : off.has(t.name))) && (!q || t.name.toLowerCase().includes(q) || t.description.toLowerCase().includes(q)));
   const groups = [...new Set(list.map((t) => groupOf(t.name)))].map((g) => ({ g, tools: list.filter((t) => groupOf(t.name) === g) }));
   const setMany = (names: string[], enabled: boolean) => names.length && ask({ type: 'setToolsEnabled', names, enabled }).then(paint);
-  const seg = (v: typeof ui.toolFilter, label: string) => h('button', { class: ui.toolFilter === v ? 'on' : '', onclick: () => { ui.toolFilter = v; repaint(); } }, label);
+  const seg = (v: typeof ui.toolFilter, label: string) => h('button', { class: ui.toolFilter === v ? 'on' : '', 'aria-pressed': String(ui.toolFilter === v), onclick: () => { ui.toolFilter = v; repaint(); } }, label);
   const row = (t: { name: string; description: string }) => {
     const open = ui.expanded.has(t.name);
     return h('div', { class: `tab tool ${off.has(t.name) ? 'off' : ''}`, 'data-key': t.name },
-      h('div', { class: 'fav', title: groupOf(t.name) }, t.name.startsWith('browser_') ? '🖱️' : '🛠️'),
-      h('div', {}, h('div', { class: 't' }, h('code', {}, t.name)), h('div', { class: `desc ${open ? 'open' : ''}`, onclick: () => { open ? ui.expanded.delete(t.name) : ui.expanded.add(t.name); repaint(); }, title: open ? 'Click to collapse' : 'Click to expand' }, t.description)),
-      h('div', { class: 'badges' }, off.has(t.name) ? h('span', { class: 'pill bad' }, 'off') : null),
-      h('label', { class: 'switch' }, h('input', { type: 'checkbox', checked: !off.has(t.name), onchange: (e: Event) => ask({ type: 'setToolEnabled', name: t.name, enabled: checked(e) }).then(paint) })));
+      h('div', { class: 'fav', title: groupOf(t.name) }, icon(t.name.startsWith('browser_') ? 'tabs' : 'tools')),
+      h('div', {}, h('div', { class: 't' }, h('code', {}, t.name)), h('button', { type: 'button', class: `desc ${open ? 'open' : ''}`, 'aria-expanded': String(open), onclick: () => { open ? ui.expanded.delete(t.name) : ui.expanded.add(t.name); repaint(); }, title: open ? 'Collapse description' : 'Expand description' }, t.description)),
+      h('div', { class: 'badges' }, off.has(t.name) ? h('span', { class: 'pill' }, 'Disabled') : null),
+      h('label', { class: 'switch' }, h('input', { type: 'checkbox', checked: !off.has(t.name), 'aria-label': `Enable ${t.name}`, onchange: (e: Event) => ask({ type: 'setToolEnabled', name: t.name, enabled: checked(e) }).then(paint) })));
   };
   return h('div', { class: 'page' },
-    pageHeader('Tools', 'Everything the agent can call, with what each tool does. Switch a tool off and the agent is told to ask you before it can use it.',
+    pageHeader('Tools', 'Manage your agent’s capabilities. Disabled tools require your approval before they can be used.',
       h('button', { class: 'btn', disabled: !list.some((t) => off.has(t.name)), onclick: () => setMany(list.filter((t) => off.has(t.name)).map((t) => t.name), true) }, `Enable ${q || ui.toolFilter !== 'all' ? 'matching' : 'all'}`),
       h('button', { class: 'btn', disabled: !list.some((t) => !off.has(t.name)), onclick: () => setMany(list.filter((t) => !off.has(t.name)).map((t) => t.name), false) }, `Disable ${q || ui.toolFilter !== 'all' ? 'matching' : 'all'}`)),
     h('div', { class: 'card' },
       h('div', { class: 'toolbar' },
-        h('label', { class: 'field' }, icon('search'), h('input', { id: 'toolsearch', placeholder: 'Search tools…', value: ui.toolSearch, oninput: (e: Event) => { ui.toolSearch = (e.target as HTMLInputElement).value; repaint(); } })),
-        h('div', { class: 'seg' }, seg('all', `All ${all.length}`), seg('on', `On ${all.length - off.size}`), seg('off', `Off ${off.size}`)),
+        h('label', { class: 'field' }, icon('search'), h('input', { id: 'toolsearch', placeholder: 'Search tools…', 'aria-label': 'Search tools', value: ui.toolSearch, oninput: (e: Event) => { ui.toolSearch = (e.target as HTMLInputElement).value; repaint(); } }), h('kbd', { class: 'kbd', 'aria-hidden': 'true' }, '/')),
+        h('div', { class: 'seg' }, seg('all', `All ${all.length}`), seg('on', `Enabled ${all.length - off.size}`), seg('off', `Disabled ${off.size}`)),
         h('div', { class: 'right' }, h('span', { style: 'color:var(--fg-3);font-size:12.5px' }, `${list.length} shown`))),
       !all.length ? empty('inbox', 'No tool list yet', !s.connected ? 'Connect the companion to load the list of tools.' : 'The connected companion is an older build that does not send its tool list. Restart the MCP server in your agent client (new session, or reconnect the MCP) so the companion restarts on the current code.')
         : groups.length ? h('div', {}, ...groups.flatMap(({ g, tools }) => [h('div', { class: 'group' }, g, h('span', { style: 'font-weight:500;text-transform:none;letter-spacing:0' }, `· ${tools.length}`)), ...tools.map(row)]))
@@ -256,18 +352,19 @@ function viewTools(s: State) {
 }
 
 function viewActivity(s: State) {
-  if (!s.activityLog) return h('div', { class: 'page' }, pageHeader('Activity', 'Every protocol command the agent has sent to your shared tabs this session.'),
+  if (!s.activityLog) return h('div', { class: 'page' }, pageHeader('Activity', 'The last 200 commands recorded while activity logging is enabled.'),
     h('div', { class: 'card' }, empty('activity', 'Activity log is off', 'Nothing is being recorded. Enable it in Settings to see commands, latency, and errors here.', h('button', { class: 'btn primary sm', style: 'margin-top:8px', onclick: () => ask({ type: 'setActivityLog', on: true }).then(paint) }, 'Enable activity log'))));
-  const list = ui.logFilter === 'errors' ? s.recent.filter((r) => !r.ok) : s.recent;
-  const seg = (v: typeof ui.logFilter, label: string) => h('button', { class: ui.logFilter === v ? 'on' : '', onclick: () => { ui.logFilter = v; repaint(); } }, label);
+  const errors = s.recent.filter((r) => !r.ok);
+  const list = ui.logFilter === 'errors' ? errors : s.recent;
+  const seg = (v: typeof ui.logFilter, label: string) => h('button', { class: ui.logFilter === v ? 'on' : '', 'aria-pressed': String(ui.logFilter === v), onclick: () => { ui.logFilter = v; repaint(); } }, label);
   return h('div', { class: 'page' },
-    pageHeader('Activity', 'Every protocol command the agent has sent to your shared tabs this session.',
+    pageHeader('Activity', 'The last 200 commands recorded while activity logging is enabled.',
       h('button', { class: 'btn ghost', disabled: !s.recent.length, onclick: () => ask({ type: 'clearLog' }).then(paint) }, icon('trash'), 'Clear')),
     h('div', { class: 'grid c4', style: 'margin-bottom:16px' },
-      stat('Operations', s.totals.ops), stat('Errors', s.totals.errors, undefined, s.totals.errors ? 'bad' : ''),
+      stat('Operations', s.recent.length), stat('Errors', errors.length, undefined, errors.length ? 'bad' : ''),
       stat('Shown', list.length, 'of last 200'), stat('Avg latency', s.recent.length ? Math.round(s.recent.reduce((a, r) => a + r.ms, 0) / s.recent.length) : 0, 'ms')),
     h('div', { class: 'card' },
-      h('div', { class: 'toolbar' }, h('div', { class: 'seg' }, seg('all', 'All'), seg('errors', `Errors ${s.totals.errors ? '· ' + s.recent.filter((r) => !r.ok).length : ''}`))),
+      h('div', { class: 'toolbar' }, h('div', { class: 'seg' }, seg('all', 'All'), seg('errors', `Errors · ${errors.length}`))),
       list.length ? h('div', { style: 'overflow:auto' }, h('table', { class: 'table' },
         h('thead', {}, h('tr', {}, h('th', { style: 'width:1%' }, 'Time'), h('th', {}, 'Agent'), h('th', {}, 'Command'), h('th', {}, 'Tab'), h('th', { class: 'r', style: 'width:1%' }, 'Latency'), h('th', {}, 'Result'))),
         h('tbody', {}, ...list.map((r) => h('tr', { 'data-key': String(r.id) },
@@ -277,20 +374,20 @@ function viewActivity(s: State) {
           h('td', { class: 'muted trunc', style: 'width:22%' }, r.tabLabel),
           h('td', { class: 'mono muted r' }, `${r.ms} ms`),
           h('td', { class: `trunc ${r.ok ? 'muted' : 'err-text'}`, title: r.error ?? '' }, r.ok ? 'ok' : r.error ?? 'failed'))))))
-        : empty('activity', ui.logFilter === 'errors' ? 'No errors' : 'No activity yet', ui.logFilter === 'errors' ? 'Every command has succeeded so far.' : 'Commands appear here as the agent works.')));
+        : empty('activity', ui.logFilter === 'errors' ? 'No errors' : 'No activity yet', ui.logFilter === 'errors' ? 'No errors in the recorded commands.' : 'Commands appear here as the agent works.')));
 }
 
 function viewSettings(s: State) {
-  const token = h('input', { id: 'token', class: 'mono', placeholder: s.hasToken ? '•••••••• (set)' : 'paste token', spellcheck: false }) as HTMLInputElement;
-  const port = h('input', { id: 'port', type: 'number', value: String(s.port), class: 'mono' }) as HTMLInputElement;
-  const save = () => { ask({ type: 'setConfig', token: inputValue('token').trim(), port: Number(inputValue('port')) || 9223 }).then(paint); }; // empty token keeps the stored one
+  const token = h('input', { id: 'token', class: 'mono', placeholder: s.hasToken ? '•••••••• (set)' : 'Enter pairing token', 'aria-label': 'Pairing token', autocomplete: 'off', spellcheck: false }) as HTMLInputElement;
+  const port = h('input', { id: 'port', type: 'number', min: 1, max: 65535, 'aria-label': 'Bridge port', value: String(s.port), class: 'mono' }) as HTMLInputElement;
+  const save = () => changeConnection({ type: 'setConfig', token: inputValue('token').trim(), port: Number(inputValue('port')) || 9223 }); // empty token keeps the stored one
   return h('div', { class: 'page' },
-    pageHeader('Settings', 'Pairing, connection, and emergency controls.'),
+    pageHeader('Settings', 'Your connection, privacy, and agent access preferences.'),
     h('div', { class: 'card', style: 'margin-bottom:16px' },
       h('div', { class: 'card-h' }, h('h2', {}, 'Companion')),
       h('div', { class: 'setting' }, h('div', {}, h('h3', {}, 'Pairing token'), h('p', {}, 'Printed by ', h('code', {}, 'browser_status'), '. Stored only in this browser profile.')), h('div', { class: 'ctl' }, h('label', { class: 'field' }, token))),
       h('div', { class: 'setting' }, h('div', {}, h('h3', {}, 'Bridge port'), h('p', {}, 'Where the companion listens on localhost. Change it if you run the companion with ', h('code', {}, '--port'), '.')), h('div', { class: 'ctl' }, h('label', { class: 'field narrow' }, port))),
-      h('div', { class: 'setting' }, h('div', {}, h('h3', {}, 'Connection'), h('p', s.connected ? { 'data-ago': String(s.connectedAt), 'data-ago-fmt': 'Connected for {ago}.' } : {}, s.connected ? `Connected for ${ago(s.connectedAt!)}.` : s.lastError ?? 'Not connected.')), h('div', { class: 'ctl' }, h('button', { class: 'btn ghost', onclick: () => ask({ type: 'connect' }).then(paint) }, icon('refresh'), 'Reconnect'), h('button', { class: 'btn primary', onclick: save }, 'Save')))),
+      h('div', { class: 'setting' }, h('div', {}, h('h3', {}, 'Connection'), h('p', s.connected ? { 'data-ago': String(s.connectedAt), 'data-ago-fmt': 'Connected for {ago}.' } : {}, s.connecting ? 'Reconnecting… Waiting for the companion.' : s.connected ? `Connected for ${ago(s.connectedAt!)}.` : `Disconnected.${s.lastError ? ' ' + s.lastError : ''}`)), h('div', { class: 'ctl' }, h('button', { id: 'reconnect', class: 'btn ghost', 'aria-label': 'Reconnect', disabled: connectionBusy(s), 'aria-busy': String(connectionBusy(s)), onclick: () => changeConnection({ type: 'connect' }) }, s.connecting ? spinner() : icon('refresh'), s.connecting ? 'Reconnecting…' : 'Reconnect'), h('button', { class: 'btn primary', disabled: connectionBusy(s), 'aria-busy': String(connectionBusy(s)), onclick: save }, 'Save')))),
     h('div', { class: 'card', style: 'margin-bottom:16px' },
       h('div', { class: 'card-h' }, h('h2', {}, 'Other clients')),
       h('div', { class: 'setting' }, h('div', {}, h('h3', {}, 'HTTP endpoint'), h('p', {}, 'Clients that take a URL instead of a command (Gemini connected apps, web agents) connect here while the companion runs. The token is part of the URL; treat it like a password.'),
@@ -299,11 +396,11 @@ function viewSettings(s: State) {
     h('div', { class: 'card', style: 'margin-bottom:16px' },
       h('div', { class: 'card-h' }, h('h2', {}, 'Developer browser')),
       h('div', { class: 'setting' }, h('div', {}, h('h3', {}, 'When the agent may open a separate Chrome'), h('p', {}, 'Everyday work happens in your tabs. A developer-mode Chrome is only needed for things Chrome blocks for extensions: heap snapshots, Lighthouse, raw protocol commands.')),
-        h('div', { class: 'ctl' }, h('div', { class: 'seg', style: 'display:flex;gap:2px;background:var(--callout);border-radius:6px;padding:2px' }, ...([['auto', 'Only when needed'], ['always', 'Always'], ['never', 'Never']] as const).map(([v, label]) =>
-          h('button', { class: 'btn sm ghost', style: s.devMode === v ? 'background:var(--bg);color:var(--fg);box-shadow:0 1px 2px rgba(0,0,0,.12)' : '', onclick: () => ask({ type: 'setDevMode', mode: v }).then(paint) }, label)))))),
+        h('div', { class: 'ctl' }, h('div', { class: 'seg', role: 'group', 'aria-label': 'Developer browser mode' }, ...([['auto', 'Only when needed'], ['always', 'Always'], ['never', 'Never']] as const).map(([v, label]) =>
+          h('button', { class: s.devMode === v ? 'on' : '', 'aria-pressed': String(s.devMode === v), onclick: () => ask({ type: 'setDevMode', mode: v }).then(paint) }, label)))))),
     h('div', { class: 'card', style: 'margin-bottom:16px' },
       h('div', { class: 'card-h' }, h('h2', {}, 'Privacy')),
-      h('div', { class: 'setting' }, h('div', {}, h('h3', {}, 'Activity log'), h('p', {}, s.activityLog ? 'Recording every command the agent sends (last 200, in memory only). The Activity page is visible.' : 'Off. No per-command records are kept and the Activity page is hidden. Counters on the Overview still work.')), h('div', { class: 'ctl' }, h('label', { class: 'switch' }, h('input', { type: 'checkbox', checked: s.activityLog, onchange: (e: Event) => ask({ type: 'setActivityLog', on: checked(e) }).then(paint) }))))),
+      h('div', { class: 'setting' }, h('div', {}, h('h3', {}, 'Activity log'), h('p', {}, s.activityLog ? 'Keeps the last 200 commands in memory for this session.' : 'Off. No command history is kept. Operations and Errors are hidden on Overview.')), h('div', { class: 'ctl' }, h('label', { class: 'switch' }, h('input', { type: 'checkbox', checked: s.activityLog, 'aria-label': 'Activity log', onchange: (e: Event) => ask({ type: 'setActivityLog', on: checked(e) }).then(paint) }))))),
     h('div', { class: 'card danger-card' },
       h('div', { class: 'card-h' }, h('h2', {}, 'Emergency stop')),
       h('div', { class: 'setting' }, h('div', {}, h('h3', {}, s.stopped ? 'Access is stopped' : 'Stop all agent access'), h('p', {}, 'Detaches the debugger from every tab, clears the shared list, and disconnects. Nothing is retried on resume.')), h('div', { class: 'ctl' }, stopResume(s)))),
@@ -314,7 +411,7 @@ function viewSettings(s: State) {
 const VIEWS: Record<string, (s: State) => HTMLElement> = { overview: viewOverview, tabs: viewTabs, tools: viewTools, activity: viewActivity, settings: viewSettings };
 let lastKey = '', lastRoute = '';
 /** Everything that should trigger a re-render; timers are updated in place by tick(). */
-const fingerprint = (s: State) => JSON.stringify(s, (k, v) => (k === 'connectedAt' ? undefined : v));
+const fingerprint = (s: State) => JSON.stringify(s);
 /** Refresh relative times without rebuilding the DOM. */
 function tick() {
   for (const el of document.querySelectorAll<HTMLElement>('[data-ago]')) el.textContent = el.dataset.agoFmt!.replace('{ago}', ago(Number(el.dataset.ago)));
@@ -322,7 +419,7 @@ function tick() {
 /** Older workers (before an extension reload) omit newer fields; never let that blank the page. */
 function normalize(s: Partial<State> | undefined): State {
   const x = (s ?? {}) as Partial<State>;
-  const defaults: State = { connected: false, stopped: false, shareAll: false, activityLog: false, port: 9223, hasToken: false, extensionVersion: '?', windows: [], tabs: [], recent: [], totals: { ops: 0, errors: 0 }, toolCatalog: [], disabledTools: [], devMode: 'auto' };
+  const defaults: State = { connected: false, connecting: false, stopped: false, shareAll: false, activityLog: false, port: 9223, hasToken: false, extensionVersion: '?', windows: [], tabs: [], recent: [], totals: { ops: 0, errors: 0 }, toolCatalog: [], disabledTools: [], devMode: 'auto' };
   const out: State = { ...defaults, ...x } as State;
   for (const k of ['windows', 'tabs', 'recent', 'toolCatalog', 'disabledTools'] as const) if (!Array.isArray(out[k])) (out as any)[k] = [];
   if (!out.totals) out.totals = { ops: 0, errors: 0 };
@@ -332,6 +429,7 @@ let rawState: Partial<State> | undefined;
 function paint(raw: State) {
   rawState = raw;
   const s = normalize(raw);
+  if (connectionAction) Object.assign(s, { connected: false, connecting: connectionAction === 'connect', stopped: connectionAction === 'stop', lastError: undefined });
   state = s;
   try { paintInner(s); }
   catch (e) {
@@ -349,21 +447,28 @@ function paintInner(s: State) {
   // preserve focus and caret across re-renders
   const a = document.activeElement as HTMLInputElement | null;
   const keep = a && a.id && 'selectionStart' in a ? { id: a.id, value: a.value, s: a.selectionStart, e: a.selectionEnd } : null;
+  const drafts = sameRoute ? [...main.querySelectorAll<HTMLInputElement>('#token, #port')].filter((el) => el.value !== el.defaultValue).map((el) => ({ id: el.id, value: el.value })) : [];
   renderShell(s);
   document.title = `${NAV.find((n) => n[0] === route)?.[2] ?? 'BrowserMCP'} · BrowserMCP`;
   // The worker only picks up new code when the extension is reloaded; this page reloads on its own. Detect the mismatch.
   const onDisk = chrome.runtime.getManifest().version;
-  const stale = !rawState || rawState.disabledTools === undefined || rawState.shareAll === undefined || s.extensionVersion !== onDisk;
+  const stale = !rawState || rawState.disabledTools === undefined || rawState.shareAll === undefined || rawState.connecting === undefined || s.extensionVersion !== onDisk;
   const view = (VIEWS[route] ?? viewOverview)(s);
   if (!sameRoute) view.classList.add('enter');
   const banner = stale ? h('div', { class: 'notice warn', style: 'margin:16px 16px 0' }, icon('alert'), h('span', {}, `The extension was updated on disk (worker v${s.extensionVersion ?? '?'}, files v${onDisk}). Reload it to pick up the new background code, then reopen this page.`), h('button', { class: 'btn sm', onclick: () => chrome.runtime.reload() }, icon('refresh'), 'Reload extension')) : null;
   if (sameRoute) patch(main, banner, view); else { main.replaceChildren(...[banner, view].filter((x): x is HTMLElement => !!x)); main.scrollTop = 0; }
+  for (const draft of drafts) { const el = $<HTMLInputElement>(draft.id); if (el) el.value = draft.value; }
   if (keep) { const el = $<HTMLInputElement>(keep.id); if (el) { el.value = keep.value; el.focus(); try { el.setSelectionRange(keep.s, keep.e); } catch {} } }
 }
 /** Force a rebuild (route change, local UI state change) even when worker state is unchanged. */
 const repaint = () => { lastKey = ''; if (state) paint(state); };
-const typing = () => { const a = document.activeElement as HTMLElement | null; return !!a && (a.tagName === 'INPUT') && a.id !== 'search' && a.id !== 'toolsearch'; };
+const refreshState = () => {
+  if (connectionAction) return;
+  const epoch = connectionEpoch;
+  ask({ type: 'getState' }).then((s) => { if (epoch === connectionEpoch) paint(s); });
+};
+document.querySelector<HTMLAnchorElement>('.skip-link')!.onclick = (e) => { e.preventDefault(); $('main').focus(); };
 window.addEventListener('hashchange', () => { route = location.hash.replace(/^#\/?/, '') || 'overview'; editing = false; repaint(); });
 document.addEventListener('keydown', (e) => { if (e.key === '/' && !(e.target as HTMLElement).matches('input')) { const s = $('search') ?? $('toolsearch'); if (s) { e.preventDefault(); s.focus(); } } });
-ask({ type: 'getState' }).then(paint);
-setInterval(() => { if (!typing()) ask({ type: 'getState' }).then(paint); }, 1000);
+refreshState();
+setInterval(refreshState, 1000);
