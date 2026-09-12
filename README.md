@@ -17,13 +17,15 @@
 
 Requires [Bun](https://bun.sh) and a Chromium-based browser (Chrome, Brave, Edge).
 
-One command does everything below: downloads the extension, registers the companion with your agent, and tells you how to pair.
+### Option 1: one command
+
+Downloads the extension, registers the companion with the agents you pick, and walks you through pairing. Add `--test` for a dry run that changes nothing.
 
 ```bash
 curl -fsSL https://browspark.krishm.dev/setup.sh | bash
 ```
 
-Or by hand:
+### Option 2: by hand
 
 **1. Register the companion** with your MCP client. It is published on npm as [`browspark-mcp`](https://www.npmjs.com/package/browspark-mcp); no clone needed.
 
@@ -33,7 +35,7 @@ claude mcp add browspark -- bunx browspark-mcp@latest
 
 Codex, OpenCode, Cursor, Kilo, Antigravity and Gemini are covered in the [connect guide](https://docs.browspark.krishm.dev/connect/agents).
 
-**2. Load the extension.** Clone this repo, run `bun install && bun run build`, then open `chrome://extensions`, turn on Developer mode, choose **Load unpacked** and select the `extension/` folder.
+**2. Get the extension.** Download `browspark-extension.zip` from the [latest release](https://github.com/uncaughterrs/browspark/releases/latest) and unzip it, or clone this repo and run `bun install && bun run build` to use the `extension/` folder. Then open `chrome://extensions`, turn on Developer mode, choose **Load unpacked** and select that folder.
 
 **3. Pair once.** Open the extension dashboard, ask the agent to call `browser_status`, paste the token it prints, and share the tabs the agent may use.
 
