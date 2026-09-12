@@ -3,7 +3,7 @@ title: "Introduction"
 description: "Browspark lets AI agents operate and debug websites in your own Chrome, with the user in control of what is shared."
 ---
 
-Browspark is a local [Model Context Protocol](https://modelcontextprotocol.io) server plus a Chrome extension. Any MCP client, such as Claude Code, Codex, OpenCode, Cursor, Kilo, Antigravity or Gemini, gets a set of `browser_*` and `devtools_*` tools that work on the tabs you share from the extension's dashboard. Nothing leaves your machine: the companion listens on `127.0.0.1` only.
+Browspark is a local [Model Context Protocol](https://modelcontextprotocol.io) server plus a Chrome extension. Any MCP client, such as Claude Code, Codex, OpenCode, Cursor, Kilo or Antigravity, gets a set of `browser_*` and `devtools_*` tools that work on the tabs you share from the extension's dashboard. Nothing leaves your machine: the companion listens on `127.0.0.1` only.
 
 <img src="/images/dashboard-overview-dark.png" alt="The Browspark dashboard, dark theme" />
 
@@ -40,7 +40,7 @@ The dashboard decides whether the agent may open a developer browser at all. See
     [Install the companion and load the extension](/get-started/installation). One command and one Chrome dialog.
   </Step>
   <Step title="Connect your agent">
-    [Add Browspark to your MCP client](/connect/agents), or use the [HTTP endpoint](/connect/http-and-gemini) for clients that take a URL.
+    [Add Browspark to your MCP client](/connect/agents), or use the [HTTP endpoint](/connect/http-endpoint) for clients that take a URL.
   </Step>
   <Step title="Pair and share">
     Paste the pairing token into the dashboard, share a tab, and ask the agent to open a website.

@@ -1,6 +1,6 @@
 ---
 title: "Multiple agents"
-description: "Run Claude Code, Codex, OpenCode, Cursor and Gemini against the same browser at once without collisions."
+description: "Run Claude Code, Codex, OpenCode, Cursor and HTTP clients against the same browser at once without collisions."
 ---
 
 You can connect as many agents as you like. They share one companion, one extension and one set of shared tabs, while each keeps its own tabs and recordings.
@@ -13,7 +13,7 @@ The first companion process to start owns port `9223`. Every companion started a
 flowchart LR
   A[Claude Code] --> C1[companion · owns :9223]
   B[OpenCode] --> C2[companion · relay] --> C1
-  G[Gemini] -- HTTP --> C1
+  G[HTTP client] -- HTTP --> C1
   C1 --> E[extension]
 ```
 

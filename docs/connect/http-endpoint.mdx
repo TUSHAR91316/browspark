@@ -1,6 +1,6 @@
 ---
-title: "HTTP endpoint and Gemini"
-description: "Connect clients that take a URL: Gemini connected apps, web agents, sandboxed IDEs."
+title: "HTTP endpoint"
+description: "Connect clients that take a URL instead of a command: web agents, hosted assistants, sandboxed IDEs."
 ---
 
 While the companion runs it serves MCP over **Streamable HTTP** at:
@@ -28,31 +28,11 @@ bunx browspark-mcp@latest --http-only
 
 `--http-only` skips the stdio transport so the process does not exit when stdin closes. Stop it with Ctrl-C; it closes any developer browsers it launched.
 
-## Gemini
+## Connecting a client
 
-Gemini can connect in two ways.
+Paste the URL from the dashboard's Settings page into whichever option of your client asks for an MCP server URL. Start the companion with `--http-only` first, or have a stdio client running. Nothing else is needed: the client only makes HTTP requests to localhost.
 
-<Tabs>
-  <Tab title="URL (recommended)">
-    Add a connected app of type **Cloud MCP** (or whichever option asks for a server URL) and paste the URL from the dashboard's Settings page. Start the companion with `--http-only` first, or have another client running. No sandbox configuration is needed because Gemini only makes HTTP requests to localhost.
-  </Tab>
-  <Tab title="Local command">
-    Gemini runs local MCP commands in a sandbox that, by default, cannot read your home directory. Two things are needed:
-
-    1. Set the sandbox to **Full Access** for this server so it can read the source tree and `~/.browspark`.
-    2. Use full executable paths, since the sandbox has a minimal `PATH`:
-    ```text
-    /Users/you/.bun/bin/bunx browspark-mcp@latest
-    ```
-    If the sandbox still cannot see the source tree, build the [single-file binary](/get-started/installation#single-file-build) and point Gemini at `dist/browspark`.
-
-    A "Timed out waiting for MCP server to answer handshake" error means the process could not start at all; check the two points above.
-  </Tab>
-</Tabs>
-
-## Any other HTTP client
-
-Connect with the MCP SDK's Streamable HTTP transport, for example:
+From code, use the MCP SDK's Streamable HTTP transport:
 
 ```ts
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';

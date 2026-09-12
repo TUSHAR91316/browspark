@@ -34,7 +34,7 @@
             "group": "Connect an agent",
             "pages": [
               "connect/agents",
-              "connect/http-and-gemini",
+              "connect/http-endpoint",
               "connect/multiple-agents"
             ]
           },

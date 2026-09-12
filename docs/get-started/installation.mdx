@@ -9,7 +9,7 @@ description: "Every install option in detail: source, packaged extension, compil
 |---|---|
 | Bun 1.x | Runtime, package manager, bundler and test runner. Nothing else is needed; there is no Node or npm step. |
 | Chromium-based browser | Chrome, Brave, Edge or Chromium for extension mode. Developer mode finds Chrome automatically or uses `BROWSPARK_CHROME`. |
-| An MCP client | Claude Code, Codex, OpenCode, Cursor, Kilo, Antigravity, Gemini, or anything that speaks MCP over stdio or Streamable HTTP. |
+| An MCP client | Claude Code, Codex, OpenCode, Cursor, Kilo, Antigravity, or anything that speaks MCP over stdio or Streamable HTTP. |
 
 ## One-command setup
 
@@ -31,11 +31,11 @@ bunx browspark-mcp@latest
 
 From a clone of the repo, `bun companion/src/index.ts` runs the same code from source.
 
-Started by an MCP client it speaks MCP over stdio. On every start it also opens `127.0.0.1:9223` for the extension's WebSocket bridge, the [HTTP MCP endpoint](/connect/http-and-gemini) and the [live view](/concepts/developer-browser#live-view). If that port is already taken by another companion, the new process becomes a relay to the existing one instead of failing. See [Multiple agents](/connect/multiple-agents).
+Started by an MCP client it speaks MCP over stdio. On every start it also opens `127.0.0.1:9223` for the extension's WebSocket bridge, the [HTTP MCP endpoint](/connect/http-endpoint) and the [live view](/concepts/developer-browser#live-view). If that port is already taken by another companion, the new process becomes a relay to the existing one instead of failing. See [Multiple agents](/connect/multiple-agents).
 
 ### Single-file build
 
-Clients that run MCP servers in a sandbox without access to your source tree (Gemini's local command option, some IDE sandboxes) can use a compiled binary:
+Clients that run MCP servers in a sandbox without access to your source tree (some IDE sandboxes and hosted agents) can use a compiled binary:
 
 ```bash
 bun run compile

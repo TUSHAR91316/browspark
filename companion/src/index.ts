@@ -80,7 +80,7 @@ function buildServer(label: string): McpServer {
 installFetchHandler({ sessions, capture });
 installLiveView(bridge, sessions);
 
-// MCP over Streamable HTTP for clients that take a URL (Gemini connected apps, web agents). Same token as pairing:
+// MCP over Streamable HTTP for clients that take a URL (web agents, hosted assistants). Same token as pairing:
 // Authorization: Bearer <token>, or ?token=<token> for clients that cannot set headers.
 const httpSessions = new Map<string, StreamableHTTPServerTransport>();
 bridge.mcpHandler = async (req, res) => {

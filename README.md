@@ -33,7 +33,7 @@ curl -fsSL https://browspark.krishm.dev/setup.sh | bash
 claude mcp add browspark -- bunx browspark-mcp@latest
 ```
 
-Codex, OpenCode, Cursor, Kilo, Antigravity and Gemini are covered in the [connect guide](https://docs.browspark.krishm.dev/connect/agents).
+Codex, OpenCode, Cursor, Kilo and Antigravity are covered in the [connect guide](https://docs.browspark.krishm.dev/connect/agents).
 
 **2. Get the extension.** Download `browspark-extension.zip` from the [latest release](https://github.com/uncaughterrs/browspark/releases/latest) and unzip it, or clone this repo and run `bun install && bun run build` to use the `extension/` folder. Then open `chrome://extensions`, turn on Developer mode, choose **Load unpacked** and select that folder.
 

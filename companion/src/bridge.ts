@@ -32,7 +32,7 @@ export class Bridge extends EventEmitter {
   private http?: Server;
   /** Set by installLiveView: handles a browser viewer connection for a tab. */
   viewerHandler?: (ws: WebSocket, tabId: number) => void;
-  /** Set by the entry point: MCP over Streamable HTTP at /mcp for URL-based clients (Gemini, web apps). */
+  /** Set by the entry point: MCP over Streamable HTTP at /mcp for URL-based clients (web agents, hosted assistants). */
   mcpHandler?: (req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse) => Promise<void>;
   private ws?: WebSocket;
   private nextId = 1;

@@ -63,6 +63,6 @@ By design. `browser_key` sends keys to the page. DevTools, tab switching and rel
 
 Set `BROWSPARK_CHROME` to the executable, for example `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`, or pass `chromePath` to `browser_session launch`.
 
-## Gemini: module not found or handshake timeout
+## Sandboxed client: module not found or handshake timeout
 
-The sandbox cannot see the source tree or `bun`. Use the HTTP URL from Settings, or set the sandbox to Full Access and use full executable paths, or point it at the compiled `dist/browspark`. See [HTTP endpoint and Gemini](/connect/http-and-gemini).
+The client's sandbox cannot see `bunx` or the package cache. Use the HTTP URL from Settings, or set the sandbox to Full Access and use full executable paths, or point it at the compiled `dist/browspark`. See [HTTP endpoint](/connect/http-endpoint).
