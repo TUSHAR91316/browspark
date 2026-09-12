@@ -64,5 +64,23 @@ Layout: `companion/` (MCP server, transports, devtools modules), `extension/` (M
 ## Contributing
 Before contributing, please read the guidelines in [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Credits
+
+### We believe in open source
+Browspark exists because other people published their work for anyone to build on, and it is published under the same terms. Every line of the companion, the extension, the docs and the landing page is in this repository, so you can read exactly what runs on your machine and what touches your browser.
+
+
+### Model Context Protocol
+The tools and the server are built on the [Model Context Protocol](https://modelcontextprotocol.io) and its TypeScript SDK. MCP is what lets one companion serve Claude Code, Codex, Cursor and every other client through the same interface.
+
+
+### Chromium
+Everything Browspark does in the browser goes through the [Chrome DevTools Protocol](https://chromedevtools.github.io/devtools-protocol/) and the extension `debugger` API. The developer tools it exposes are the same ones the DevTools panels use.
+
+
+### Supabase
+The dashboard and landing page take their visual direction from [Supabase](https://supabase.com): a neutral dark palette, a single green accent, and interfaces that stay out of the way. Thanks for showing that developer tools can be calm and good looking.
+
+
 ## License
 Browspark is licensed under the MIT License. See [LICENSE](LICENSE).
