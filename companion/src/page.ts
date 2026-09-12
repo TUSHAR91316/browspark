@@ -1,4 +1,5 @@
 // Page-level operations on top of raw CDP. Shared by extension mode and (later) direct CDP mode.
+import { Overlay } from './overlay.ts';
 import type { Sessions } from './session.ts';
 
 export interface Dialog { type: string; message: string; defaultPrompt?: string }
@@ -22,7 +23,7 @@ const SNAPSHOT_FN = String(function snapshot(this: unknown) {
     IFRAME: 'iframe', OPTION: 'option', TR: 'row', TH: 'columnheader', TD: 'cell',
   };
   const INPUT_ROLE: Record<string, string> = { checkbox: 'checkbox', radio: 'radio', button: 'button', submit: 'button', reset: 'button', range: 'slider', file: 'button', image: 'button' };
-  const SKIP = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'SVG', 'PATH', 'HEAD', 'META', 'LINK']);
+  const SKIP = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'SVG', 'PATH', 'HEAD', 'META', 'LINK', 'BROWSPARK-OVERLAY']);
   const lines: string[] = [];
   const clip = (s: string, n = 120) => { s = s.replace(/\s+/g, ' ').trim(); return s.length > n ? s.slice(0, n) + '…' : s; };
 
@@ -155,6 +156,8 @@ const MAC_EDIT_COMMANDS: Record<string, string> = { a: 'SelectAll', c: 'Copy', v
 
 export class Page {
   private enabled = new Set<number>();
+  /** Agent presence overlay (frame, cursor, Stop pill) drawn on the tab while commands flow. */
+  readonly overlay: Overlay;
   readonly dialogs = new Map<number, Dialog>();
   private loadWaiters = new Map<number, Set<() => void>>();
   private dialogWaiters = new Map<number, Set<(why: 'dialog' | 'paused') => void>>();
@@ -163,6 +166,7 @@ export class Page {
 
   constructor(s: Sessions) {
     this.s = s;
+    this.overlay = new Overlay(s);
     s.on('cdp.event', ({ tabId, method, params }) => {
       if (method === 'Page.javascriptDialogOpening') { this.dialogs.set(tabId, params as Dialog); for (const w of this.dialogWaiters.get(tabId) ?? []) w('dialog'); }
       if (method === 'Debugger.paused') for (const w of this.dialogWaiters.get(tabId) ?? []) w('paused');
@@ -183,6 +187,7 @@ export class Page {
       try { await this.s.cdp(tabId, 'Page.enable'); await this.s.cdp(tabId, 'Runtime.enable'); }
       catch (e) { this.enabled.delete(tabId); throw e; }
     }
+    this.overlay.beat(tabId);
     return this.s.cdp<T>(tabId, method, params);
   }
 
@@ -236,6 +241,7 @@ export class Page {
 
   async hover(tabId: number, ref: string) {
     const { x, y } = await this.callRef<{ x: number; y: number }>(tabId, ref, CENTER);
+    await this.overlay.cursor(tabId, x, y, 'hover');
     await this.cdp(tabId, 'Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
     return `Hovering ${ref} at (${Math.round(x)}, ${Math.round(y)})`;
   }
@@ -244,7 +250,9 @@ export class Page {
     const a = await this.callRef<{ x: number; y: number }>(tabId, fromRef, CENTER);
     const b = await this.callRef<{ x: number; y: number }>(tabId, toRef, CENTER);
     const mouse = (type: string, x: number, y: number, extra: object = {}) => this.cdp(tabId, 'Input.dispatchMouseEvent', { type, x, y, button: 'left', ...extra });
+    await this.overlay.cursor(tabId, a.x, a.y, 'click');
     await mouse('mouseMoved', a.x, a.y); await mouse('mousePressed', a.x, a.y, { clickCount: 1 });
+    await this.overlay.cursor(tabId, b.x, b.y, 'drag');
     const steps = 8; for (let i = 1; i <= steps; i++) await mouse('mouseMoved', a.x + (b.x - a.x) * i / steps, a.y + (b.y - a.y) * i / steps, { buttons: 1 });
     await mouse('mouseReleased', b.x, b.y, { clickCount: 1 });
     return `Dragged ${fromRef} to ${toRef}`;
@@ -271,7 +279,7 @@ export class Page {
       const cs = m.cssContentSize ?? m.contentSize;
       clip = { x: 0, y: 0, width: Math.ceil(cs.width), height: Math.min(Math.ceil(cs.height), 16384), scale: 1 };
     }
-    const r = await this.cdp(tabId, 'Page.captureScreenshot', { format, quality: format === 'jpeg' ? opts.quality ?? 80 : undefined, clip, captureBeyondViewport: !!clip });
+    const r = await this.overlay.withHidden(tabId, () => this.cdp(tabId, 'Page.captureScreenshot', { format, quality: format === 'jpeg' ? opts.quality ?? 80 : undefined, clip, captureBeyondViewport: !!clip }));
     return { data: r.data as string, mimeType: `image/${format}` };
   }
 
@@ -296,6 +304,7 @@ export class Page {
     const modifiers = (opts.modifiers ?? []).reduce((m, k) => m | (MODS[k.toLowerCase()] ?? 0), 0);
     const button = opts.button ?? 'left';
     const count = opts.count ?? 1;
+    await this.overlay.cursor(tabId, x, y, 'click');
     await this.cdp(tabId, 'Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, modifiers });
     const r = await this.inputRacingDialog(tabId, async () => {
       for (let i = 1; i <= count; i++) {
@@ -324,6 +333,7 @@ export class Page {
       throw new Error('Element is not fillable (' + tag.toLowerCase() + ')');
     `);
     if (kind === 'text') {
+      await this.overlay.typing(tabId);
       // insertText replaces the current selection and fires native input events.
       await this.cdp(tabId, 'Input.insertText', { text });
       if (text === '') await this.cdp(tabId, 'Input.dispatchKeyEvent', { type: 'keyDown', key: 'Delete', code: 'Delete', windowsVirtualKeyCode: 46 }).then(() => this.cdp(tabId, 'Input.dispatchKeyEvent', { type: 'keyUp', key: 'Delete', code: 'Delete', windowsVirtualKeyCode: 46 }));
@@ -331,7 +341,9 @@ export class Page {
     return `Filled ${ref}`;
   }
 
-  select(tabId: number, ref: string, values: string[]) {
+  async select(tabId: number, ref: string, values: string[]) {
+    await this.callRef<void>(tabId, ref, 'el.focus();');
+    await this.overlay.typing(tabId);
     return this.callRef<string>(tabId, ref, `
       if (el.tagName !== 'SELECT') throw new Error('Element is not a <select>');
       var want = ${JSON.stringify(values)}, hit = [];
@@ -355,6 +367,7 @@ export class Page {
       : process.platform === 'darwin' && modifiers === 12 && last.toLowerCase() === 'z' ? ['Redo'] : undefined;
     const base = { key: def.key, code: def.code, windowsVirtualKeyCode: def.keyCode, nativeVirtualKeyCode: def.keyCode, modifiers, commands };
     const text = modifiers & ~8 ? undefined : def.text; // no text when ctrl/alt/meta held
+    await this.overlay.typing(tabId);
     const r = await this.inputRacingDialog(tabId, async () => {
       await this.cdp(tabId, 'Input.dispatchKeyEvent', { ...base, type: text ? 'keyDown' : 'rawKeyDown', text, unmodifiedText: text });
       await this.cdp(tabId, 'Input.dispatchKeyEvent', { ...base, type: 'keyUp' });
@@ -365,6 +378,7 @@ export class Page {
   }
 
   async type(tabId: number, text: string) {
+    await this.overlay.typing(tabId);
     await this.cdp(tabId, 'Input.insertText', { text });
     return `Typed ${text.length} characters`;
   }
@@ -382,7 +396,7 @@ export class Page {
   }
 
   async screenshot(tabId: number) {
-    const r = await this.cdp(tabId, 'Page.captureScreenshot', { format: 'png' });
+    const r = await this.overlay.withHidden(tabId, () => this.cdp(tabId, 'Page.captureScreenshot', { format: 'png' }));
     return r.data as string;
   }
 
@@ -483,7 +497,7 @@ export class Page {
 
 /** In-page HTML → Markdown for the "fetch a page as markdown" use case. Keeps headings, lists, links, code, tables, images. */
 const HTML_TO_MD = String(function (root: Element) {
-  const SKIP = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'SVG', 'NAV', 'HEADER', 'FOOTER', 'ASIDE', 'IFRAME', 'BUTTON', 'FORM', 'INPUT', 'SELECT', 'TEXTAREA']);
+  const SKIP = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'SVG', 'NAV', 'HEADER', 'FOOTER', 'ASIDE', 'IFRAME', 'BUTTON', 'FORM', 'INPUT', 'SELECT', 'TEXTAREA', 'BROWSPARK-OVERLAY']);
   const BLOCK = new Set(['P', 'DIV', 'SECTION', 'ARTICLE', 'MAIN', 'UL', 'OL', 'LI', 'PRE', 'BLOCKQUOTE', 'TABLE', 'TR', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'HR', 'DL', 'DT', 'DD', 'FIGURE', 'FIGCAPTION', 'DETAILS', 'SUMMARY']);
   const esc = (s: string) => s.replace(/\s+/g, ' ');
   const vis = (el: Element) => { const cs = getComputedStyle(el); return cs.display !== 'none' && cs.visibility !== 'hidden'; };

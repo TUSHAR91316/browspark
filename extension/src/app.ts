@@ -281,7 +281,7 @@ function viewTabs(s: State) {
 
   const row = (t: TabInfo) => {
     const eligible = canShare(t);
-    const cb = h('input', { type: 'checkbox', checked: t.shared && eligible, 'aria-label': `Share ${t.title || t.url}`, disabled: !eligible || s.shareAll, title: !eligible ? `Chrome does not allow automation on ${t.unsupported}s` : s.shareAll ? 'Shared because "Share everything" is on' : t.shared ? 'Stop sharing' : isNewTab(t.url) ? 'Share this New Tab so the agent can navigate it to a website' : 'Share with agent', onchange: (e: Event) => ask({ type: 'setShared', tabIds: [t.id], shared: checked(e) }).then(paint) }) as HTMLInputElement;
+    const cb = h('input', { type: 'checkbox', checked: t.shared && eligible, 'aria-label': `Share ${t.title || t.url}`, disabled: !eligible, title: !eligible ? `Chrome does not allow automation on ${t.unsupported}s` : t.shared ? 'Stop sharing' : isNewTab(t.url) ? 'Share this New Tab so the agent can navigate it to a website' : 'Share with agent', onchange: (e: Event) => ask({ type: 'setShared', tabIds: [t.id], shared: checked(e) }).then(paint) }) as HTMLInputElement;
     const fav = h('div', { class: 'fav' });
     if (t.favIconUrl) { const img = h('img', { src: t.favIconUrl, alt: '' }) as HTMLImageElement; img.onerror = () => fav.replaceChildren(initial(t)); fav.append(img); } else fav.textContent = initial(t);
     return h('div', { class: `tab ${!eligible ? 'off' : t.shared ? 'shared' : ''}`, 'data-key': String(t.id) },
@@ -298,12 +298,12 @@ function viewTabs(s: State) {
   const allCb = h('input', { type: 'checkbox', checked: s.shareAll, 'aria-label': 'Share everything', onchange: (e: Event) => ask({ type: 'setShareAll', on: checked(e) }).then(paint) }) as HTMLInputElement;
   return h('div', { class: 'page' },
     pageHeader('Tabs', 'Choose which tabs your agent can use across all windows. Tabs opened by the agent are shared automatically.',
-      h('button', { class: 'btn', disabled: s.shareAll || !shareable.some((t) => !t.shared), onclick: () => setMany(shareable.filter((t) => !t.shared).map((t) => t.id), true) }, `Share ${q || ui.tabFilter !== 'all' ? 'matching' : 'listed'}`),
-      h('button', { class: 'btn', disabled: s.shareAll || !list.some((t) => t.shared), onclick: () => setMany(list.filter((t) => t.shared).map((t) => t.id), false) }, 'Unshare'),
+      h('button', { class: 'btn', disabled: !shareable.some((t) => !t.shared), onclick: () => setMany(shareable.filter((t) => !t.shared).map((t) => t.id), true) }, `Share ${q || ui.tabFilter !== 'all' ? 'matching' : 'listed'}`),
+      h('button', { class: 'btn', disabled: !list.some((t) => t.shared), onclick: () => setMany(list.filter((t) => t.shared).map((t) => t.id), false) }, 'Unshare'),
       stopResume(s)),
     h('div', { class: `callout ${s.shareAll ? 'sharing-all' : ''}`, style: 'margin-bottom:16px' },
       icon(s.shareAll ? 'globe' : 'shield'),
-      h('div', { class: 'body' }, h('b', {}, 'Share everything'), h('div', { class: 'muted' }, s.shareAll ? 'All supported tabs across every window are shared, including new tabs. Turn off to choose tabs individually.' : 'Allow access to all supported tabs across every window, including tabs you open later.')),
+      h('div', { class: 'body' }, h('b', {}, 'Share everything'), h('div', { class: 'muted' }, s.shareAll ? 'Supported tabs across every window are shared, including new tabs. Stopped or unshared tabs stay private until you share them again.' : 'Allow access to supported tabs across every window, including new tabs. Explicitly stopped or unshared tabs stay private.')),
       h('label', { class: 'switch ctl' }, allCb)),
     h('div', { class: 'card' },
       h('div', { class: 'toolbar' },
@@ -399,6 +399,10 @@ function viewSettings(s: State) {
         h('div', { class: 'ctl' }, h('div', { class: 'seg', role: 'group', 'aria-label': 'Developer browser mode' }, ...([['auto', 'Only when needed'], ['always', 'Always'], ['never', 'Never']] as const).map(([v, label]) =>
           h('button', { class: s.devMode === v ? 'on' : '', 'aria-pressed': String(s.devMode === v), onclick: () => ask({ type: 'setDevMode', mode: v }).then(paint) }, label)))))),
     h('div', { class: 'card', style: 'margin-bottom:16px' },
+      h('div', { class: 'card-h' }, h('h2', {}, 'Agent overlay')),
+      h('div', { class: 'setting' }, h('div', {}, h('h3', {}, 'Show the agent at work'), h('p', {}, 'A soft cyan halo around the tab, a cursor that moves to each click, and a Stop button while the agent is driving it. Stop revokes the tab instantly.')),
+        h('div', { class: 'ctl' }, h('label', { class: 'switch' }, h('input', { type: 'checkbox', checked: s.overlay, 'aria-label': 'Agent overlay', onchange: (e: Event) => ask({ type: 'setOverlay', on: (e.target as HTMLInputElement).checked }).then(paint) }), h('span', {}))))),
+    h('div', { class: 'card', style: 'margin-bottom:16px' },
       h('div', { class: 'card-h' }, h('h2', {}, 'Privacy')),
       h('div', { class: 'setting' }, h('div', {}, h('h3', {}, 'Activity log'), h('p', {}, s.activityLog ? 'Keeps the last 200 commands in memory for this session.' : 'Off. No command history is kept. Operations and Errors are hidden on Overview.')), h('div', { class: 'ctl' }, h('label', { class: 'switch' }, h('input', { type: 'checkbox', checked: s.activityLog, 'aria-label': 'Activity log', onchange: (e: Event) => ask({ type: 'setActivityLog', on: checked(e) }).then(paint) }))))),
     h('div', { class: 'card danger-card' },
@@ -419,7 +423,7 @@ function tick() {
 /** Older workers (before an extension reload) omit newer fields; never let that blank the page. */
 function normalize(s: Partial<State> | undefined): State {
   const x = (s ?? {}) as Partial<State>;
-  const defaults: State = { connected: false, connecting: false, stopped: false, shareAll: false, activityLog: false, port: 9223, hasToken: false, extensionVersion: '?', windows: [], tabs: [], recent: [], totals: { ops: 0, errors: 0 }, toolCatalog: [], disabledTools: [], devMode: 'auto' };
+  const defaults: State = { connected: false, connecting: false, stopped: false, shareAll: false, activityLog: false, overlay: true, port: 9223, hasToken: false, extensionVersion: '?', windows: [], tabs: [], recent: [], totals: { ops: 0, errors: 0 }, toolCatalog: [], disabledTools: [], devMode: 'auto' };
   const out: State = { ...defaults, ...x } as State;
   for (const k of ['windows', 'tabs', 'recent', 'toolCatalog', 'disabledTools'] as const) if (!Array.isArray(out[k])) (out as any)[k] = [];
   if (!out.totals) out.totals = { ops: 0, errors: 0 };

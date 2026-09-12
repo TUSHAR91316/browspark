@@ -141,7 +141,7 @@ export function registerBrowserTools(ctx: Ctx) {
     const id = await tab(tabId);
     const sizes: Record<string, [number, number]> = { A4: [8.27, 11.69], Letter: [8.5, 11], Legal: [8.5, 14] };
     const [w, h] = sizes[format ?? 'A4'];
-    const r = await sessions.cdp(id, 'Page.printToPDF', { landscape: !!landscape, printBackground: printBackground ?? true, paperWidth: w, paperHeight: h, scale: scale ?? 1, preferCSSPageSize: false });
+    const r = await page.overlay.withHidden(id, () => sessions.cdp(id, 'Page.printToPDF', { landscape: !!landscape, printBackground: printBackground ?? true, paperWidth: w, paperHeight: h, scale: scale ?? 1, preferCSSPageSize: false }));
     const buf = Buffer.from(r.data, 'base64');
     if (path) { writeFileSync(path, buf); return `Wrote PDF (${buf.length} bytes) to ${path}`; }
     const art = saveArtifact('pdf', 'pdf', buf, (await page.evaluate<string>(id, 'document.title').catch(() => 'page')).slice(0, 40));

@@ -5,7 +5,7 @@ description: "Which tabs an agent can see, how a target tab is chosen, and what 
 
 ## Shared tabs
 
-An agent can only reach tabs you share. Sharing happens in the dashboard's [Tabs page](/dashboard/tabs): share individual tabs, or switch on **Share everything** to include every current and future tab. **Stop** on a tab revokes access immediately and detaches the debugger. The shared list lives in `chrome.storage.session`, so it resets when the browser restarts; Share everything is persistent.
+An agent can only reach tabs you share. Sharing happens in the dashboard's [Tabs page](/dashboard/tabs): share individual tabs, or switch on **Share everything** to include current and future tabs. **Stop** or **Unshare** revokes that tab even with Share everything enabled; explicitly share it again to resume. Per-tab grants and revocations live in `chrome.storage.session`, so they reset when the browser restarts; Share everything is persistent.
 
 Tabs from every Chrome window count. `browser_tabs` and `browser_status` list them with their `windowId`.
 
@@ -38,6 +38,14 @@ To hide the bar entirely start the browser with `--silent-debugger-extension-api
 ```bash
 open -a "Google Chrome" --args --silent-debugger-extension-api
 ```
+
+## The agent overlay
+
+While the agent drives a shared tab, the tab shows a soft cyan halo around the page, a compact charcoal pill naming the agent, and a small dark cursor with a gray outline that travels to each element before it is clicked. Travel eases in and out over roughly 0.3–1.2 seconds depending on distance; reduced-motion preferences make it instant. The pill uses the dashboard's dark palette with a mint status dot. Clicks produce a subtle ring, and fields being typed into get a thin cyan outline. The frame fades a few seconds after the last command and returns on the next one.
+
+The pill has a **Stop** button. Pressing it revokes the tab on the spot, exactly like unsharing it from the dashboard: the debugger detaches, the agent's next command is refused, and you share the tab again when you want to resume.
+
+The overlay uses an isolated script world and a closed shadow root to separate its controls and styles from the page. Stop remains available to screen readers; decorative effects are hidden from them. Agent snapshots and text reads exclude the overlay, and screenshots and PDFs temporarily hide it. It appears on the main frame only, and it is switched off from **Settings → Agent overlay**. Developer-mode tabs show the frame and cursor without the Stop button, since there is nothing to unshare there.
 
 ## Activation
 

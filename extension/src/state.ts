@@ -19,6 +19,8 @@ export interface State {
   companionVersion?: string;
   /** When the agent may launch the developer-mode browser. */
   devMode: 'auto' | 'always' | 'never';
+  /** Cyan halo, cursor and Stop pill on tabs while the agent works. */
+  overlay: boolean;
   /** Pairing token, shown so the user can build the HTTP endpoint URL for URL-based clients. */
   token?: string;
   port: number;
@@ -39,6 +41,7 @@ export type PopupMsg =
   | { type: 'setActivityLog'; on: boolean }
   | { type: 'setToolEnabled'; name: string; enabled: boolean }
   | { type: 'setDevMode'; mode: 'auto' | 'always' | 'never' }
+  | { type: 'setOverlay'; on: boolean }
   | { type: 'setToolsEnabled'; names: string[]; enabled: boolean }
   | { type: 'connect' }
   | { type: 'stop' }

@@ -1,20 +1,22 @@
 import {
-  DEFAULT_PORT, PROTOCOL_VERSION, isReq, isNewTab, unsupportedReason,
+  DEFAULT_PORT, PROTOCOL_VERSION, STOP_BINDING, isReq, isNewTab, unsupportedReason,
   type CdpParams, type Evt, type HelloParams, type Msg, type Req, type Res, type TabInfo, type ToolInfo,
 } from '../../shared/protocol.ts';
 import type { OpLog, PopupMsg, State } from './state.ts';
 
 const shared = new Set<number>();
+const excluded = new Set<number>(); // explicit per-tab revocations override Share everything
 let shareAll = false; // user opted to share every tab, including ones opened later
 let activityLog = false; // off by default: no per-command records are kept
 let toolCatalog: ToolInfo[] = [];
 let disabledTools = new Set<string>();
 let companionVersion: string | undefined;
-const sendToolPolicy = () => evt('tools.policy', { disabled: [...disabledTools], haveCatalog: toolCatalog.length > 0 && !!companionVersion, devMode });
-const isShared = (tabId: number) => shareAll || shared.has(tabId);
+const sendToolPolicy = () => evt('tools.policy', { disabled: [...disabledTools], haveCatalog: toolCatalog.length > 0 && !!companionVersion, devMode, overlay });
+const isShared = (tabId: number) => !excluded.has(tabId) && (shareAll || shared.has(tabId));
 const attached = new Set<number>();
 const agentTabs = new Set<number>();     // ordinary browser tabs the agent opened
 let devMode: 'auto' | 'always' | 'never' = 'auto';
+let overlay = true; // agent presence overlay on tabs while commands flow
 const held = new Set<number>();          // tabs with an active inspection session: never idle-detach
 const ownedDownloads = new Map<string, { guid: string; tabId: number; url: string; filename: string; state: string; receivedBytes: number; totalBytes: number; startedAt: number }>();
 const windowBounds = new Map<number, { width?: number; height?: number; state?: string }>(); // originals, restored after emulation
@@ -34,9 +36,9 @@ let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
 let connectionTimer: ReturnType<typeof setTimeout> | undefined;
 
 const cfg = async () => {
-  const s = await chrome.storage.local.get(['token', 'port', 'shareAll', 'stopped', 'activityLog', 'toolCatalog', 'disabledTools', 'devMode']);
-  const ss = await chrome.storage.session.get(['shared']); // per-tab grants must not outlive the browser session
-  return { token: (s.token as string) || '', port: (s.port as number) || DEFAULT_PORT, shared: (ss.shared as number[]) || [], shareAll: !!s.shareAll, stopped: !!s.stopped, activityLog: !!s.activityLog, toolCatalog: (s.toolCatalog as ToolInfo[]) || [], disabledTools: (s.disabledTools as string[]) || [], devMode: ((s.devMode as string) || 'auto') as 'auto' | 'always' | 'never' };
+  const s = await chrome.storage.local.get(['token', 'port', 'shareAll', 'stopped', 'activityLog', 'toolCatalog', 'disabledTools', 'devMode', 'overlay']);
+  const ss = await chrome.storage.session.get(['shared', 'excluded']); // per-tab grants must not outlive the browser session
+  return { token: (s.token as string) || '', port: (s.port as number) || DEFAULT_PORT, shared: (ss.shared as number[]) || [], excluded: (ss.excluded as number[]) || [], shareAll: !!s.shareAll, stopped: !!s.stopped, activityLog: !!s.activityLog, toolCatalog: (s.toolCatalog as ToolInfo[]) || [], disabledTools: (s.disabledTools as string[]) || [], devMode: ((s.devMode as string) || 'auto') as 'auto' | 'always' | 'never', overlay: s.overlay !== false };
 };
 const send = (m: Msg) => { if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(m)); };
 const evt = (event: Evt['event'], params?: unknown) => send({ event, params });
@@ -261,7 +263,7 @@ async function state(): Promise<State> {
   const { port, token } = await cfg();
   const windows = (await chrome.windows.getAll()).filter((w) => w.id !== undefined).map((w) => ({ id: w.id!, incognito: w.incognito }));
   return {
-    connected: ws?.readyState === WebSocket.OPEN && connectedAt !== undefined, connecting: connecting && !lastError, stopped, shareAll, activityLog, toolCatalog, disabledTools: [...disabledTools], companionVersion, devMode, token, port, hasToken: !!token, lastError, connectedAt,
+    connected: ws?.readyState === WebSocket.OPEN && connectedAt !== undefined, connecting: connecting && !lastError, stopped, shareAll, activityLog, toolCatalog, disabledTools: [...disabledTools], companionVersion, devMode, overlay, token, port, hasToken: !!token, lastError, connectedAt,
     extensionVersion: chrome.runtime.getManifest().version, windows, tabs: await listTabs(), recent, totals,
   };
 }
@@ -280,10 +282,11 @@ chrome.runtime.onMessage.addListener((msg: PopupMsg, _s, reply) => {
       case 'stop': await stop(); break;
       case 'clearLog': recent.length = 0; break;
       case 'setShared':
-        for (const id of msg.tabIds) { if (msg.shared) shared.add(id); else { shared.delete(id); await detach(id); } }
-        await chrome.storage.session.set({ shared: [...shared] });
+        for (const id of msg.tabIds) { if (msg.shared) { excluded.delete(id); shared.add(id); } else { excluded.add(id); shared.delete(id); held.delete(id); await detach(id); } }
+        await chrome.storage.session.set({ shared: [...shared], excluded: [...excluded] });
         pushTabs(); break;
       case 'setDevMode': devMode = msg.mode; await chrome.storage.local.set({ devMode }); sendToolPolicy(); break;
+      case 'setOverlay': overlay = msg.on; await chrome.storage.local.set({ overlay }); sendToolPolicy(); break;
       case 'setToolEnabled':
         if (msg.enabled) disabledTools.delete(msg.name); else disabledTools.add(msg.name);
         await chrome.storage.local.set({ disabledTools: [...disabledTools] }); sendToolPolicy(); break;
@@ -312,6 +315,7 @@ chrome.runtime.onMessage.addListener((msg: PopupMsg, _s, reply) => {
 chrome.debugger.onEvent.addListener((source, method, params) => {
   const { tabId, sessionId } = source as { tabId?: number; sessionId?: string };
   if (tabId === undefined) return;
+  if (method === 'Runtime.bindingCalled' && (params as { name?: string })?.name === STOP_BINDING) { stopTab(tabId); return; }
   if (method === 'Page.downloadWillBegin' && isShared(tabId)) {
     const p = params as { guid: string; url: string; suggestedFilename: string };
     ownedDownloads.set(p.guid, { guid: p.guid, tabId, url: p.url, filename: p.suggestedFilename, state: 'inProgress', receivedBytes: 0, totalBytes: 0, startedAt: Date.now() });
@@ -323,6 +327,13 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
   }
   evt('cdp.event', { tabId, method, params, sessionId });
 });
+/** The user pressed Stop on the overlay: revoke the tab exactly as unsharing it from the dashboard would. */
+async function stopTab(tabId: number) {
+  excluded.add(tabId); shared.delete(tabId); agentTabs.delete(tabId); held.delete(tabId);
+  await chrome.storage.session.set({ shared: [...shared], excluded: [...excluded] });
+  if (attached.has(tabId)) { attached.delete(tabId); try { await chrome.debugger.detach({ tabId }); } catch {} evt('detached', { tabId, reason: 'stopped by user' }); }
+  pushTabs();
+}
 chrome.debugger.onDetach.addListener(({ tabId }, reason) => {
   if (tabId === undefined) return;
   attached.delete(tabId);
@@ -330,7 +341,8 @@ chrome.debugger.onDetach.addListener(({ tabId }, reason) => {
   pushTabs();
 });
 chrome.tabs.onRemoved.addListener((tabId) => {
-  if (shared.delete(tabId)) chrome.storage.session.set({ shared: [...shared] });
+  const wasShared = shared.delete(tabId), wasExcluded = excluded.delete(tabId);
+  if (wasShared || wasExcluded) chrome.storage.session.set({ shared: [...shared], excluded: [...excluded] });
   attached.delete(tabId); agentTabs.delete(tabId); held.delete(tabId); lastUsed.delete(tabId);
   pushTabs();
 });
@@ -350,4 +362,4 @@ setInterval(() => evt('ping'), 20_000);
 chrome.alarms.create('reconnect', { periodInMinutes: 0.5 });
 chrome.alarms.onAlarm.addListener(() => { if (!ws && !stopped) connect(); });
 
-const ready = cfg().then((c) => { for (const id of c.shared) shared.add(id); shareAll = c.shareAll; activityLog = c.activityLog; toolCatalog = c.toolCatalog; disabledTools = new Set(c.disabledTools); devMode = c.devMode; stopped = c.stopped; if (!stopped) connect(); });
+const ready = cfg().then((c) => { for (const id of c.shared) shared.add(id); for (const id of c.excluded) excluded.add(id); shareAll = c.shareAll; activityLog = c.activityLog; toolCatalog = c.toolCatalog; disabledTools = new Set(c.disabledTools); devMode = c.devMode; stopped = c.stopped; overlay = c.overlay; if (!stopped) connect(); });

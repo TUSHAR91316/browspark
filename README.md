@@ -40,7 +40,7 @@ Codex, OpenCode, Cursor, Kilo and Antigravity are covered in the [connect guide]
 **3. Pair once.** Open the extension dashboard, ask the agent to call `browser_status`, paste the token it prints, and share the tabs the agent may use.
 
 ## What it does
-- **Extension mode.** The agent drives tabs in your own browser, keeping your signed-in sessions. Only tabs you share are reachable, and you can revoke access instantly.
+- **Extension mode.** The agent drives tabs in your own browser, keeping your signed-in sessions. Only tabs you share are reachable, a soft cyan halo and a moving cursor show the agent at work, and a Stop button on the tab revokes access instantly.
 - **Developer mode.** The companion launches a separate Chrome with a persistent profile and talks CDP directly: every domain, raw commands, Lighthouse.
 - **Developer tools as first-class tools.** Console, Network, Sources, Debugger, Elements, Performance, CPU and memory profiling, storage, service workers, coverage, emulation, accessibility, security, Lighthouse and a recorder that exports Playwright tests.
 

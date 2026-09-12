@@ -71,7 +71,7 @@ async function relayTo(url: string): Promise<never> {
 const VERSION = '0.2.1';
 const sendCatalog = () => bridge.request('tools.catalog', { tools: toolCatalog, version: VERSION }).catch((e) => console.error(`browspark: could not send tool catalog: ${e.message}`));
 bridge.on('connected', () => { console.error('browspark: extension connected'); sendCatalog(); });
-bridge.on('tools.policy', (p: ToolPolicy) => { setDisabledTools(p.disabled ?? []); devGate.policy = p.devMode ?? 'auto'; console.error(`browspark: ${p.disabled?.length ?? 0} tool(s) disabled from the dashboard; developer browser: ${devGate.policy}`); if (!p.haveCatalog) sendCatalog(); });
+bridge.on('tools.policy', (p: ToolPolicy) => { setDisabledTools(p.disabled ?? []); devGate.policy = p.devMode ?? 'auto'; page.overlay.enabled = p.overlay !== false; console.error(`browspark: ${p.disabled?.length ?? 0} tool(s) disabled from the dashboard; developer browser: ${devGate.policy}`); if (!p.haveCatalog) sendCatalog(); });
 bridge.on('disconnected', () => console.error('browspark: extension disconnected'));
 
 const sessions = new Sessions(bridge);

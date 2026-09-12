@@ -15,7 +15,9 @@ export type EvtName = 'hello' | 'tabs' | 'cdp.event' | 'detached' | 'ping' | 'to
 export interface ToolInfo { name: string; description: string }
 /** Extension -> companion: tools the user switched off in the dashboard. */
 export type DevModePolicy = 'auto' | 'always' | 'never';
-export interface ToolPolicy { disabled: string[]; /** Extension already holds a catalog from this companion version. */ haveCatalog?: boolean; /** auto: developer browser only when a capability needed it; always: whenever the agent asks; never. */ devMode?: DevModePolicy }
+export interface ToolPolicy { disabled: string[]; /** Extension already holds a catalog from this companion version. */ haveCatalog?: boolean; /** auto: developer browser only when a capability needed it; always: whenever the agent asks; never. */ devMode?: DevModePolicy; /** Draw the agent presence overlay (frame, cursor, Stop) on tabs while the agent works. Default on. */ overlay?: boolean }
+/** Name of the Runtime binding the overlay's Stop button calls; the extension unshares the tab when it fires. */
+export const STOP_BINDING = '__browsparkStop';
 
 export interface TabInfo {
   id: number;

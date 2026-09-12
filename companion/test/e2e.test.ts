@@ -67,7 +67,9 @@ beforeAll(async () => {
       res.setHeader('Content-Disposition', 'attachment; filename="browspark-test.txt"');
       res.end('download fixture'); return;
     }
-    const p = join(ROOT, 'test-apps', req.url === '/' ? 'basic.html' : req.url!);
+    const strictTypes = req.url === '/trusted-types.html';
+    if (strictTypes) res.setHeader('Content-Security-Policy', "require-trusted-types-for 'script'; trusted-types 'none'");
+    const p = join(ROOT, 'test-apps', req.url === '/' || strictTypes ? 'basic.html' : req.url!);
     try { res.setHeader('content-type', extname(p) === '.html' ? 'text/html' : 'text/plain'); res.end(readFileSync(p)); } catch { res.statusCode = 404; res.end(); }
   }).listen(0, '127.0.0.1');
   await new Promise((r) => http.once('listening', r));
@@ -161,7 +163,7 @@ test('setup client selection shows valid configuration and survives navigation a
   const previousHash = await evaluate('location.hash');
   const previousClient = await evaluate('localStorage.getItem("setupClient")');
   const port = await evaluate('chrome.runtime.sendMessage({type:"getState"}).then(state => state.port)');
-  const args = ['/absolute/path/to/browspark/companion/src/index.ts', ...(port === 9223 ? [] : ['--port', String(port)])];
+  const args = ['browspark-mcp@latest', ...(port === 9223 ? [] : ['--port', String(port)])];
   const clients = [['claude', 'Claude'], ['codex', 'Codex'], ['opencode', 'OpenCode'], ['cursor', 'Cursor'], ['kilo', 'Kilo'], ['antigravity', 'Antigravity']] as const;
   const selected = (id: string) => `document.querySelector('.setup-clients button[data-client="${id}"]')?.getAttribute('aria-pressed') === 'true'`;
   try {
@@ -177,15 +179,15 @@ test('setup client selection shows valid configuration and survives navigation a
       const snippet = await evaluate(`document.querySelector('.setup-code code').textContent`);
       if (id === 'claude' || id === 'codex') {
         assert.match(snippet, new RegExp(`^${id} mcp add\\b`));
-        assert.ok(snippet.endsWith(`bun "${args[0]}"${port === 9223 ? '' : ` --port ${port}`}`));
+        assert.ok(snippet.endsWith(`bunx ${args.join(' ')}`), snippet);
       }
       else {
         const config = JSON.parse(snippet);
         if (id === 'opencode' || id === 'kilo') {
           assert.equal(config.mcp.browspark.type, 'local');
-          assert.deepEqual(config.mcp.browspark.command, ['bun', ...args]);
+          assert.deepEqual(config.mcp.browspark.command, ['bunx', ...args]);
         } else {
-          assert.equal(config.mcpServers.browspark.command, 'bun');
+          assert.equal(config.mcpServers.browspark.command, 'bunx');
           assert.deepEqual(config.mcpServers.browspark.args, args);
           if (id === 'cursor') assert.equal(config.mcpServers.browspark.type, 'stdio');
         }
@@ -264,6 +266,97 @@ test('snapshot, fill, select, click, read, key, wait, scroll, frames', async () 
   assert.match(await ok('browser_scroll', { direction: 'down', amount: 5000 }), /Scrolled down/);
   const shot = await call('browser_screenshot');
   assert.ok(shot.img?.data.length > 1000 && shot.img.mimeType === 'image/png');
+});
+
+for (const strictTypes of [false, true]) test(`agent overlay appears, stays out of captures, and Stop revokes the tab${strictTypes ? ' with Trusted Types enforced' : ''}`, async () => {
+  await ok('browser_navigate', { tabId, url: appUrl + (strictTypes ? 'trusted-types.html' : '') });
+  // A second CDP session on the app tab, alongside the extension's debugger, to look at the page from outside.
+  const { targetInfos } = await cdp.send('Target.getTargets');
+  const target = targetInfos.find((t: any) => t.type === 'page' && t.url.startsWith(appUrl) && !t.url.includes('page2'));
+  assert.ok(target, 'app tab target');
+  const { sessionId } = await cdp.send('Target.attachToTarget', { targetId: target.targetId, flatten: true });
+  const inPage = async (expression: string, contextId?: number) => {
+    const r = await cdp.send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true, contextId }, sessionId);
+    assert.ok(!r.exceptionDetails, JSON.stringify(r.exceptionDetails));
+    return r.result.value;
+  };
+  try {
+    if (strictTypes) assert.equal(await inPage(`(() => { try { document.createElement('div').innerHTML = '<span></span>'; return false; } catch (e) { return e instanceof TypeError; } })()`), true, 'fixture must enforce Trusted Types');
+    const snap = await ok('browser_snapshot');
+    const name = /textbox "Name"[^\n]*\[ref=(e\d+)\]/.exec(snap)![1];
+    assert.doesNotMatch(snap, /browspark-overlay|Stop/, 'overlay host is invisible to snapshots');
+    await ok('browser_click', { ref: name });
+    assert.equal(await inPage(`!!document.querySelector('browspark-overlay')`), true, 'overlay mounted after a click');
+    assert.equal(await inPage(`document.querySelector('browspark-overlay').shadowRoot`), null, 'shadow root is closed to the page');
+    if (!strictTypes) {
+      // Inspect the closed shadow through CDP, without exposing it to page scripts.
+      const { root } = await cdp.send('DOM.getDocument', { depth: -1, pierce: true }, sessionId);
+      const findCursor = (node: any): any => node.nodeName.toLowerCase() === 'svg' && node.attributes?.some((value: string) => value.split(' ').includes('cursor')) ? node
+        : [...(node.children ?? []), ...(node.shadowRoots ?? [])].map(findCursor).find(Boolean);
+      const { object } = await cdp.send('DOM.resolveNode', { nodeId: findCursor(root).nodeId }, sessionId);
+      const cursorPosition = async () => (await cdp.send('Runtime.callFunctionOn', {
+        objectId: object.objectId, returnByValue: true,
+        functionDeclaration: `function() { const r = this.getBoundingClientRect(); return { x: r.left + 2, y: r.top + 2 }; }`,
+      }, sessionId)).result.value;
+      await inPage(`document.getElementById('name').style.cssText = 'position:fixed;left:900px;top:600px;width:160px'; window.overlayClicked = false; document.getElementById('name').addEventListener('click', () => window.overlayClicked = true, { once: true });`);
+      const destination = await inPage(`(() => { const r = document.getElementById('name').getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }; })()`);
+      const origin = await cursorPosition();
+      const click = ok('browser_click', { ref: name });
+      // Keep the pending tool call settled even if an assertion fails.
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        assert.equal(await inPage('window.overlayClicked'), false, 'click waits while the cursor travels');
+        const midway = await cursorPosition();
+        assert.ok(midway.x > origin.x && midway.x < destination.x, 'cursor visibly moves through intermediate positions');
+      } finally { await click; }
+      assert.equal(await inPage('window.overlayClicked'), true, 'click lands after travel');
+      const arrived = await cursorPosition();
+      assert.ok(Math.abs(arrived.x - destination.x) < 1 && Math.abs(arrived.y - destination.y) < 1, 'cursor hotspot reaches the click position');
+
+      await cdp.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] }, sessionId);
+      try {
+        const { frameTree } = await cdp.send('Page.getFrameTree', undefined, sessionId);
+        const { executionContextId } = await cdp.send('Page.createIsolatedWorld', { frameId: frameTree.frame.id, worldName: 'browspark' }, sessionId);
+        assert.equal(await inPage(`__bs.cursor(80, 80, 'hover', 'e2e')`, executionContextId), 0, 'reduced motion skips travel time');
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        assert.deepEqual(await cursorPosition(), { x: 80, y: 80 }, 'reduced motion positions the cursor immediately');
+      } finally {
+        await cdp.send('Emulation.setEmulatedMedia', { features: [] }, sessionId);
+        await inPage(`document.getElementById('name').removeAttribute('style')`);
+      }
+    }
+    await ok('browser_screenshot');
+    assert.equal(await inPage(`getComputedStyle(document.querySelector('browspark-overlay')).display`), 'block', 'overlay restored after a screenshot');
+
+    // The isolated world is shared by name, so this session can call the same Stop binding the overlay's button calls.
+    const { frameTree } = await cdp.send('Page.getFrameTree', undefined, sessionId);
+    const { executionContextId } = await cdp.send('Page.createIsolatedWorld', { frameId: frameTree.frame.id, worldName: 'browspark' }, sessionId);
+    assert.equal(await inPage(`typeof __bs === 'object' && typeof __browsparkStop === 'function'`, executionContextId), true, 'overlay API and Stop binding live in the isolated world');
+    const ax = await cdp.send('Accessibility.getFullAXTree', undefined, sessionId);
+    const stopButton = ax.nodes.find((n: any) => !n.ignored && n.role?.value === 'button' && n.name?.value === 'Stop Browspark on this tab');
+    assert.ok(stopButton?.backendDOMNodeId, 'Stop is exposed as a named button to assistive technology');
+    if (!strictTypes) await evaluate(`chrome.runtime.sendMessage({type:'setShareAll',on:true})`);
+    const { object: stopObject } = await cdp.send('DOM.resolveNode', { backendNodeId: stopButton.backendDOMNodeId }, sessionId);
+    await cdp.send('Runtime.callFunctionOn', { objectId: stopObject.objectId, functionDeclaration: 'function() { this.click(); }' }, sessionId);
+    await waitFor(`chrome.runtime.sendMessage({type:'getState'}).then(s => !s.tabs.find(t => t.id === ${tabId}).shared)`);
+    if (!strictTypes) assert.equal(await evaluate(`chrome.runtime.sendMessage({type:'getState'}).then(s => s.shareAll)`), true, 'Stop revokes one tab while Share everything stays enabled');
+    const denied = await call('browser_click', { tabId, ref: name });
+    assert.ok(denied.err, 'commands are refused after Stop: ' + denied.txt);
+    await evaluate(`chrome.runtime.sendMessage(${JSON.stringify({ type: 'setShared', tabIds: [tabId], shared: true })})`);
+    await waitFor(`chrome.runtime.sendMessage({type:'getState'}).then(s => s.tabs.find(t => t.id === ${tabId}).shared)`);
+    const resumed = await ok('browser_snapshot', { tabId });
+    assert.doesNotMatch(resumed, /browspark-overlay|Stop Browspark/, 'agent snapshots exclude the accessible control');
+    await ok('browser_click', { tabId, ref: name });
+    assert.equal(await inPage(`!!document.querySelector('browspark-overlay') && __bs.stopped === false`, executionContextId), true, 're-sharing restores the overlay without reloading');
+    const resumedAX = await cdp.send('Accessibility.getFullAXTree', undefined, sessionId);
+    assert.ok(resumedAX.nodes.some((n: any) => !n.ignored && n.name?.value === 'Stop Browspark on this tab'), 'Stop is available again after re-sharing');
+  } finally {
+    await evaluate(`chrome.runtime.sendMessage({type:'setShareAll',on:false})`);
+    await evaluate(`chrome.runtime.sendMessage(${JSON.stringify({ type: 'setShared', tabIds: [tabId], shared: true })})`);
+    await waitFor(`chrome.runtime.sendMessage({type:'getState'}).then(s => s.tabs.find(t => t.id === ${tabId}).shared)`);
+    await cdp.send('Target.detachFromTarget', { sessionId }).catch(() => {});
+    if (strictTypes) await ok('browser_navigate', { tabId, url: appUrl });
+  }
 });
 
 test('downloads stay scoped to their originating shared tab on the same origin', async () => {
