@@ -2,16 +2,15 @@
 import { z } from 'zod';
 import { type Ctx, clients, tool, tabArg, matcher, paginate } from '../context.ts';
 
-/** Domains probed for capability reporting. Each probe is cheap and side-effect free (or immediately undone). */
+/** Read-only probes; commands without a query deliberately omit required arguments, so validation rejects them before mutation. */
 const PROBES: [string, string, unknown?][] = [
-  ['Runtime', 'Runtime.evaluate', { expression: '1' }], ['Log', 'Log.enable'], ['Network', 'Network.enable'], ['Page', 'Page.getFrameTree'], ['DOM', 'DOM.getDocument', { depth: 0 }],
-  ['CSS', 'CSS.enable'], ['Debugger', 'Debugger.enable'], ['DOMDebugger', 'DOMDebugger.getEventListeners', { objectId: 'x' }], ['Input', 'Input.dispatchKeyEvent', { type: 'char', text: '' }],
-  ['Emulation', 'Emulation.setEmulatedMedia', {}], ['Fetch', 'Fetch.enable', { patterns: [] }], ['Overlay', 'Overlay.enable'], ['Accessibility', 'Accessibility.enable'], ['Audits', 'Audits.enable'],
-  ['Security', 'Security.enable'], ['Profiler', 'Profiler.enable'], ['HeapProfiler', 'HeapProfiler.enable'], ['Tracing', 'Tracing.getCategories'], ['Performance', 'Performance.enable'],
-  ['Storage', 'Storage.getUsageAndQuota', { origin: 'http://localhost' }], ['DOMStorage', 'DOMStorage.enable'], ['IndexedDB', 'IndexedDB.enable'], ['CacheStorage', 'CacheStorage.requestCacheNames', { securityOrigin: 'http://localhost' }],
-  ['ServiceWorker', 'ServiceWorker.enable'], ['Animation', 'Animation.enable'], ['Media', 'Media.enable'], ['WebAudio', 'WebAudio.enable'], ['WebAuthn', 'WebAuthn.enable'], ['Target', 'Target.getTargets'], ['Browser', 'Browser.getVersion'],
+  ['Runtime', 'Runtime.evaluate', { expression: '1' }], ['Log', 'Log.startViolationsReport'], ['Network', 'Network.getResponseBody'], ['Page', 'Page.getFrameTree'], ['DOM', 'DOM.getDocument', { depth: 0 }],
+  ['CSS', 'CSS.getMediaQueries'], ['Debugger', 'Debugger.getScriptSource'], ['DOMDebugger', 'DOMDebugger.getEventListeners'], ['Input', 'Input.dispatchKeyEvent'],
+  ['Emulation', 'Emulation.canEmulate'], ['Fetch', 'Fetch.getResponseBody'], ['Overlay', 'Overlay.getHighlightObjectForTest'], ['Accessibility', 'Accessibility.getRootAXNode'], ['Audits', 'Audits.getEncodedResponse'],
+  ['Security', 'Security.setIgnoreCertificateErrors'], ['Profiler', 'Profiler.setSamplingInterval'], ['HeapProfiler', 'HeapProfiler.getHeapObjectId'], ['Tracing', 'Tracing.getCategories'], ['Performance', 'Performance.getMetrics'],
+  ['Storage', 'Storage.getUsageAndQuota'], ['DOMStorage', 'DOMStorage.getDOMStorageItems'], ['IndexedDB', 'IndexedDB.requestDatabase'], ['CacheStorage', 'CacheStorage.requestEntries'],
+  ['ServiceWorker', 'ServiceWorker.setForceUpdateOnPageLoad'], ['Animation', 'Animation.getPlaybackRate'], ['WebAudio', 'WebAudio.getRealtimeData'], ['WebAuthn', 'WebAuthn.getCredentials'], ['Target', 'Target.getTargets'], ['Browser', 'Browser.getVersion'],
 ];
-const UNDO: Record<string, string> = { 'Fetch.enable': 'Fetch.disable', 'Overlay.enable': 'Overlay.disable', 'Accessibility.enable': 'Accessibility.disable', 'Profiler.enable': 'Profiler.disable', 'HeapProfiler.enable': 'HeapProfiler.disable', 'Performance.enable': 'Performance.disable', 'DOMStorage.enable': 'DOMStorage.disable', 'IndexedDB.enable': 'IndexedDB.disable', 'Media.enable': 'Media.disable', 'WebAudio.enable': 'WebAudio.disable', 'WebAuthn.enable': 'WebAuthn.disable' };
 const capCache = new Map<string, Record<string, string>>();
 
 export function registerSessionTools(ctx: Ctx) {
@@ -61,20 +60,19 @@ export function registerSessionTools(ctx: Ctx) {
     if (refresh) capCache.delete(key);
     let caps = capCache.get(key);
     if (!caps) {
-      caps = {};
+      caps = { Media: 'unprobed: this domain only supports enable/disable' };
       for (const [domain, method, params] of PROBES) {
         try { await sessions.cdp(id, method, params, 5000); caps[domain] = 'supported'; }
         catch (e) {
           const m = (e as Error).message;
           // A validation error means the domain answered; only "not allowed"/"not found" means unsupported.
-          caps[domain] = /not allowed|isn't allowed|not found|wasn't found|Domain.*not|restricted|Not allowed/i.test(m) ? `unsupported: ${m.slice(0, 80)}` : 'supported';
+          caps[domain] = /not allowed|isn't allowed|wasn't found|method.*not found|Domain.*not|restricted/i.test(m) ? `unsupported: ${m.slice(0, 80)}` : 'supported';
         }
-        if (UNDO[method]) await sessions.cdp(id, UNDO[method]).catch(() => {});
       }
       capCache.set(key, caps);
     }
     const version = mode === 'dev' ? sessions.devOfTab(id)?.version : (await sessions.cdp(id, 'Browser.getVersion').catch(() => undefined))?.product ?? (await ctx.page.evaluate(id, 'navigator.userAgent').catch(() => 'unknown'));
-    const unsupported = Object.entries(caps).filter(([, v]) => v !== 'supported').map(([k]) => k);
+    const unsupported = Object.entries(caps).filter(([, v]) => v.startsWith('unsupported:')).map(([k]) => k);
     return {
       mode, browser: version, tools: [...(ctx.server as any)._registeredTools ? Object.keys((ctx.server as any)._registeredTools) : []],
       domains: caps, unsupportedOperations: [

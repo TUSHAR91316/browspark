@@ -4,8 +4,7 @@ import { type Ctx, tool, tabArg, matcher, paginate, pageArgs, clip } from '../co
 import { saveArtifact, readArtifact, listArtifacts } from '../artifacts.ts';
 
 interface Recording { chunks: any[]; done: boolean; startedAt: number; screenshots: boolean }
-const tracing = new Map<number, Recording>();
-const heapChunks = new Map<number, string[]>();
+const buffers = new WeakMap<Ctx['sessions'], { tracing: Map<number, Recording>; heapChunks: Map<number, string[]> }>();
 const summaries = new Map<string, any>(); // artifact id -> summary (perf, profile, heap)
 
 const TRACE_CATEGORIES = ['-*', 'devtools.timeline', 'disabled-by-default-devtools.timeline', 'disabled-by-default-devtools.timeline.frame', 'v8.execute', 'blink.user_timing', 'loading', 'latencyInfo', 'disabled-by-default-devtools.timeline.stack', 'disabled-by-default-v8.cpu_profiler'];
@@ -105,11 +104,35 @@ const mergeRanges = (rs: { s: number; e: number }[]) => { rs.sort((a, b) => a.s 
 export function registerProfilingTools(ctx: Ctx) {
   const { sessions, capture, page } = ctx;
   const tab = (id?: number) => sessions.resolve(id);
-  sessions.on('cdp.event', ({ tabId, method, params }) => {
-    if (method === 'Tracing.dataCollected') tracing.get(tabId)?.chunks.push(...params.value);
-    else if (method === 'Tracing.tracingComplete') { const r = tracing.get(tabId); if (r) r.done = true; }
-    else if (method === 'HeapProfiler.addHeapSnapshotChunk') heapChunks.get(tabId)?.push(params.chunk);
-  });
+  if (!buffers.has(sessions)) {
+    const tracing = new Map<number, Recording>(), heapChunks = new Map<number, string[]>();
+    buffers.set(sessions, { tracing, heapChunks });
+    // Sessions is shared by every MCP client. Each protocol event must be appended once.
+    sessions.on('cdp.event', ({ tabId, method, params, sessionId }) => {
+      if (sessionId) return;
+      if (method === 'Tracing.dataCollected') tracing.get(tabId)?.chunks.push(...params.value);
+      else if (method === 'Tracing.tracingComplete') { const r = tracing.get(tabId); if (r) r.done = true; }
+      else if (method === 'HeapProfiler.addHeapSnapshotChunk') heapChunks.get(tabId)?.push(params.chunk);
+    });
+  }
+  const { tracing, heapChunks } = buffers.get(sessions)!;
+  const rememberRecording = (id: number, kind: string, stop: () => Promise<unknown>) => {
+    const st = capture.get(id); if (!st) return;
+    const rec = { kind, startedAt: Date.now(), done: false };
+    st.recordings.push(rec);
+    st.cleanups.push(async () => { if (!rec.done) { await stop(); rec.done = true; } });
+  };
+  const finishRecording = (id: number, kind: string) => {
+    const rec = capture.get(id)?.recordings.find((r) => r.kind === kind && !r.done);
+    if (rec) rec.done = true;
+    return rec;
+  };
+  const endTrace = async (id: number, rec: Recording) => {
+    if (!rec.done) await sessions.cdp(id, 'Tracing.end');
+    for (let i = 0; i < 300 && !rec.done; i++) await new Promise((r) => setTimeout(r, 100));
+    if (!rec.done) throw new Error('Tracing.tracingComplete never arrived (30s)');
+    tracing.delete(id);
+  };
   const artifactOf = (idOrPath?: string) => { if (!idOrPath) throw new Error('recordingId (artifact id or path) required'); return readArtifact(idOrPath); };
 
   tool(ctx, 'devtools_performance', 'Performance panel. start/stop a trace recording (Chrome trace format, opens in DevTools Performance and Perfetto). stop returns a summary: time by category, long tasks with their heaviest children, script time by URL, observed LCP/FCP/CLS, user timings. search finds trace events by name/args. compare diffs two recordings. vitals reads live Web Vitals (LCP, CLS, INP, FID, FCP, TTFB, long tasks) observed in the page since the session started. metrics returns Chrome runtime metrics.', {
@@ -123,23 +146,24 @@ export function registerProfilingTools(ctx: Ctx) {
       case 'start': {
         if (tracing.get(id) && !tracing.get(id)!.done) throw new Error('A trace is already recording on this tab; stop it first.');
         const cats = a.categories ?? [...TRACE_CATEGORIES, ...(a.screenshots ? ['disabled-by-default-devtools.screenshot'] : [])];
-        tracing.set(id, { chunks: [], done: false, startedAt: Date.now(), screenshots: !!a.screenshots });
-        await sessions.cdp(id, 'Tracing.start', { traceConfig: { includedCategories: cats.filter((c) => !c.startsWith('-')), excludedCategories: cats.filter((c) => c.startsWith('-')).map((c) => c.slice(1)) }, transferMode: 'ReportEvents', bufferUsageReportingInterval: 0 });
-        capture.get(id)?.recordings.push({ kind: 'trace', startedAt: Date.now(), done: false });
+        const rec = { chunks: [], done: false, startedAt: Date.now(), screenshots: !!a.screenshots };
+        tracing.set(id, rec);
+        try {
+          await sessions.cdp(id, 'Tracing.start', { traceConfig: { includedCategories: cats.filter((c) => !c.startsWith('-')), excludedCategories: cats.filter((c) => c.startsWith('-')).map((c) => c.slice(1)) }, transferMode: 'ReportEvents', bufferUsageReportingInterval: 0 });
+        } catch (e) { tracing.delete(id); throw e; }
+        rememberRecording(id, 'trace', async () => { try { if (tracing.get(id) === rec) await endTrace(id, rec); } finally { if (tracing.get(id) === rec) tracing.delete(id); } });
         if (a.reload) await page.navigate(id, 'reload');
         return `Tracing started on tab ${id}${a.reload ? ' and page reloaded' : ''}. Perform the interaction, then stop. Note: raw traces can include browser-wide activity, not strictly this tab.`;
       }
       case 'stop': {
         const rec = tracing.get(id); if (!rec || rec.done) throw new Error('No trace recording on this tab');
         const st = capture.get(id);
-        await sessions.cdp(id, 'Tracing.end');
-        for (let i = 0; i < 300 && !rec.done; i++) await new Promise((r) => setTimeout(r, 100));
-        if (!rec.done) throw new Error('Tracing.tracingComplete never arrived (30s)');
-        tracing.delete(id);
+        await endTrace(id, rec);
+        const r = finishRecording(id, 'trace');
         const summary = summarizeTrace(rec.chunks);
         const art = saveArtifact('trace', 'json', JSON.stringify({ traceEvents: rec.chunks, metadata: { source: 'browspark', tabId: id } }), `tab${id}`);
         summaries.set(art.id, summary);
-        const r = st?.recordings.find((x) => x.kind === 'trace' && !x.done); if (r) { r.done = true; r.artifact = art.path; }
+        if (r) r.artifact = art.path;
         if (st) capture.push(st, 'companion.recordingComplete', `trace ${art.id}`, { artifact: art.path });
         const live = await page.evaluate(id, 'window.__bmcpVitals || {}').catch(() => ({}));
         return { recordingId: art.id, artifact: art.path, bytes: art.bytes, ...summary, liveVitals: live, note: 'Open the artifact in Chrome DevTools > Performance > Load profile, or ui.perfetto.dev' };
@@ -167,11 +191,12 @@ export function registerProfilingTools(ctx: Ctx) {
   }, async (a) => {
     const id = await tab(a.tabId);
     switch (a.action) {
-      case 'start': await sessions.cdp(id, 'Profiler.enable'); await sessions.cdp(id, 'Profiler.setSamplingInterval', { interval: a.samplingIntervalUs ?? 100 }); await sessions.cdp(id, 'Profiler.start'); capture.get(id)?.recordings.push({ kind: 'cpuprofile', startedAt: Date.now(), done: false }); return `CPU profiling started on tab ${id}. Trigger the slow code, then stop.`;
+      case 'start': await sessions.cdp(id, 'Profiler.enable'); await sessions.cdp(id, 'Profiler.setSamplingInterval', { interval: a.samplingIntervalUs ?? 100 }); await sessions.cdp(id, 'Profiler.start'); rememberRecording(id, 'cpuprofile', () => sessions.cdp(id, 'Profiler.stop')); return `CPU profiling started on tab ${id}. Trigger the slow code, then stop.`;
       case 'stop': {
         const { profile } = await sessions.cdp(id, 'Profiler.stop');
+        const r = finishRecording(id, 'cpuprofile');
         const art = saveArtifact('cpuprofile', 'cpuprofile', JSON.stringify(profile), `tab${id}`);
-        const st = capture.get(id); const r = st?.recordings.find((x) => x.kind === 'cpuprofile' && !x.done); if (r) { r.done = true; r.artifact = art.path; }
+        const st = capture.get(id); if (r) r.artifact = art.path;
         if (st) capture.push(st, 'companion.recordingComplete', `cpuprofile ${art.id}`, { artifact: art.path });
         return { profileId: art.id, artifact: art.path, ...analyzeCpuProfile(profile, a.limit ?? 20) };
       }
@@ -191,8 +216,11 @@ export function registerProfilingTools(ctx: Ctx) {
         await sessions.cdp(id, 'HeapProfiler.enable');
         if (a.gc !== false) await sessions.cdp(id, 'HeapProfiler.collectGarbage').catch(() => {});
         heapChunks.set(id, []);
-        await sessions.cdp(id, 'HeapProfiler.takeHeapSnapshot', { reportProgress: false, treatGlobalObjectsAsRoots: true, captureNumericValue: false }, 300_000);
-        const json = heapChunks.get(id)!.join(''); heapChunks.delete(id);
+        let json: string;
+        try {
+          await sessions.cdp(id, 'HeapProfiler.takeHeapSnapshot', { reportProgress: false, treatGlobalObjectsAsRoots: true, captureNumericValue: false }, 300_000);
+          json = heapChunks.get(id)!.join('');
+        } finally { heapChunks.delete(id); }
         const art = saveArtifact('heapsnapshot', 'heapsnapshot', json, `tab${id}`);
         const s = summarizeHeap(json, a.limit ?? 40); summaries.set(art.id, s);
         const st = capture.get(id); if (st) capture.push(st, 'companion.recordingComplete', `heapsnapshot ${art.id}`, { artifact: art.path });
@@ -208,11 +236,14 @@ export function registerProfilingTools(ctx: Ctx) {
       case 'sampling': {
         if (a.phase === 'stop') {
           const { profile } = await sessions.cdp(id, 'HeapProfiler.stopSampling');
+          const r = finishRecording(id, 'heapprofile');
           const art = saveArtifact('heapprofile', 'heapprofile', JSON.stringify(profile), `tab${id}`);
+          if (r) r.artifact = art.path;
           const agg = new Map<string, number>(); const walk = (n: any) => { const k = `${n.callFrame.functionName || '(anonymous)'} ${n.callFrame.url ? clip(n.callFrame.url.replace(/^.*\//, ''), 40) + ':' + (n.callFrame.lineNumber + 1) : ''}`; agg.set(k, (agg.get(k) ?? 0) + n.selfSize); for (const c of n.children ?? []) walk(c); }; walk(profile.head);
           return { profileId: art.id, artifact: art.path, topAllocators: [...agg.entries()].sort((x, y) => y[1] - x[1]).slice(0, a.limit ?? 20).map(([fn, bytes]) => ({ function: fn, bytes })) };
         }
         await sessions.cdp(id, 'HeapProfiler.enable'); await sessions.cdp(id, 'HeapProfiler.startSampling', { samplingInterval: a.intervalBytes ?? 32768 });
+        rememberRecording(id, 'heapprofile', () => sessions.cdp(id, 'HeapProfiler.stopSampling'));
         return 'Allocation sampling started. Exercise the code, then sampling with phase:"stop".';
       }
       case 'usage': { const u = await sessions.cdp(id, 'Runtime.getHeapUsage'); return { usedBytes: u.usedSize, totalBytes: u.totalSize, usedMB: Math.round(u.usedSize / 1048576 * 10) / 10 }; }
@@ -236,6 +267,7 @@ export function registerProfilingTools(ctx: Ctx) {
     switch (a.action) {
       case 'start': {
         await sessions.cdp(id, 'Profiler.enable'); await sessions.cdp(id, 'Profiler.startPreciseCoverage', { callCount: false, detailed: true, allowTriggeredUpdates: false });
+        rememberRecording(id, 'coverage', () => Promise.all([sessions.cdp(id, 'Profiler.stopPreciseCoverage'), sessions.cdp(id, 'CSS.stopRuleUsageTracking').catch(() => {})]));
         await sessions.cdp(id, 'DOM.enable').catch(() => {}); await sessions.cdp(id, 'CSS.enable').catch(() => {}); await sessions.cdp(id, 'CSS.startRuleUsageTracking').catch(() => {});
         if (a.reload !== false) await page.navigate(id, 'reload');
         return `Coverage recording started${a.reload !== false ? ' and page reloaded' : ' (no reload: only code compiled from now on is tracked precisely)'}. Exercise the page, then stop.`;
@@ -243,6 +275,7 @@ export function registerProfilingTools(ctx: Ctx) {
       case 'stop': {
         const js = await sessions.cdp(id, 'Profiler.takePreciseCoverage'); await sessions.cdp(id, 'Profiler.stopPreciseCoverage');
         const css = await sessions.cdp(id, 'CSS.stopRuleUsageTracking').catch(() => ({ ruleUsage: [] }));
+        finishRecording(id, 'coverage');
         const files: any[] = [];
         for (const s of js.result) {
           if (!s.url) continue;

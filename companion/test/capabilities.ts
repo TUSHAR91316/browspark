@@ -17,7 +17,7 @@ try {
   const devTab = Number(/\[(\d+)\] dev/.exec(await ok('browser_tabs'))![1]);
   const devCaps = await okJson('devtools_capabilities', { tabId: devTab, refresh: true });
   const domains = [...new Set([...Object.keys(extCaps.domains), ...Object.keys(devCaps.domains)])];
-  const mark = (v: string) => (v === 'supported' ? '✅' : `❌ ${v.replace(/^unsupported: /, '').replace(/[{}"]/g, '').slice(0, 60)}`);
+  const mark = (v: string) => (v === 'supported' ? '✅' : `${v.startsWith('unprobed:') ? '—' : '❌'} ${v.replace(/^(unsupported|unprobed): /, '').replace(/[{}"]/g, '').slice(0, 60)}`);
   const rows = domains.map((d) => `| ${d} | ${mark(extCaps.domains[d] ?? 'unsupported: not probed')} | ${mark(devCaps.domains[d] ?? 'unsupported: not probed')} |`);
   const md = `# Capability matrix
 

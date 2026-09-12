@@ -60,6 +60,29 @@ describe.skipIf(skip)('devtools e2e (extension mode)', () => {
     const warn = await okJson('devtools_console', { tabId, level: ['warning'] }); assert.ok(warn.items.some((m: any) => m.text === 'careful'));
   });
 
+  test('capability probes preserve active profiling and emulation reset restores overrides', async () => {
+    const timezone = (await okJson('devtools_evaluate', { tabId, expression: 'Intl.DateTimeFormat().resolvedOptions().timeZone' })).value;
+    const animations = await supported('Animation');
+    try {
+      await ok('devtools_emulation', { tabId, action: 'media', colorScheme: 'dark' });
+      await ok('devtools_emulation', { tabId, action: 'locale', locale: 'fr-FR', timezone: 'Pacific/Honolulu' });
+      if (animations) await ok('devtools_emulation', { tabId, action: 'animations', playbackRate: 0 });
+      await ok('devtools_profile', { tabId, action: 'start' });
+      await ok('devtools_capabilities', { tabId, refresh: true });
+      assert.equal((await okJson('devtools_evaluate', { tabId, expression: 'matchMedia("(prefers-color-scheme: dark)").matches' })).value, true);
+      assert.equal((await okJson('devtools_evaluate', { tabId, expression: 'Intl.DateTimeFormat().resolvedOptions().timeZone' })).value, 'Pacific/Honolulu');
+      const profile = await okJson('devtools_profile', { tabId, action: 'stop' });
+      assert.ok(existsSync(profile.artifact), 'capability probes leave the active CPU profile intact');
+      await ok('devtools_emulation', { tabId, action: 'reset' });
+      if (animations) assert.equal((await okJson('devtools_emulation', { tabId, action: 'animations' })).playbackRate, 1);
+      assert.equal((await okJson('devtools_evaluate', { tabId, expression: 'Intl.DateTimeFormat().resolvedOptions().timeZone' })).value, timezone);
+      assert.deepEqual(await okJson('devtools_emulation', { tabId, action: 'status' }), {});
+    } finally {
+      await call('devtools_profile', { tabId, action: 'stop' });
+      await call('devtools_emulation', { tabId, action: 'reset' });
+    }
+  });
+
   test('scenario 2: failing request, payload, body search, mock', async () => {
     await clickBtn('Fetch 404');
     await ok('browser_wait', { tabId, text: '404 {"error"' });
@@ -408,6 +431,11 @@ describe.skipIf(skip)('developer mode e2e', () => {
     const v = await c.okJson('devtools_cdp', { method: 'Browser.getVersion', target: 'browser' }); assert.match(v.product, /Chrome/);
     const caps = await c.okJson('devtools_capabilities', { tabId: id }); assert.equal(caps.mode, 'dev'); assert.ok(caps.domains.Tracing.startsWith('supported') && caps.domains.HeapProfiler.startsWith('supported'));
     await c.ok('devtools_session', { action: 'start', tabId: id });
+    await c.ok('devtools_emulation', { tabId: id, action: 'animations', playbackRate: 0 });
+    await c.ok('devtools_capabilities', { tabId: id, refresh: true });
+    assert.equal((await c.okJson('devtools_emulation', { tabId: id, action: 'animations' })).playbackRate, 0, 'capability probes preserve frozen animations');
+    await c.ok('devtools_emulation', { tabId: id, action: 'reset' });
+    assert.equal((await c.okJson('devtools_emulation', { tabId: id, action: 'animations' })).playbackRate, 1, 'reset restores animation playback');
     await c.ok('devtools_performance', { tabId: id, action: 'start', reload: true });
     const perf = await c.okJson('devtools_performance', { tabId: id, action: 'stop' }); assert.ok(perf.events > 100 && existsSync(perf.artifact));
     const heap = await c.okJson('devtools_memory', { tabId: id, action: 'snapshot' }); assert.ok(heap.nodes > 1000);

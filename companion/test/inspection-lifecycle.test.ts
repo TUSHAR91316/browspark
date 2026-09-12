@@ -120,3 +120,37 @@ test('closing a stdio relay terminates its upstream inspection membership', asyn
     assert.equal((await inspection()).active, false);
   } finally { await relay.close().catch(() => {}); ws?.terminate(); await owner.close().catch(() => {}); }
 }, 10_000);
+
+test('capability reporting leaves active browser state intact and uses protocol-valid passive probes', async () => {
+  const f = fixture(), client = f.connect('lifecycle-probes');
+  const domains = ['browser', 'js'].flatMap((kind) => JSON.parse(readFileSync(new URL(`../../node_modules/devtools-protocol/json/${kind}_protocol.json`, import.meta.url), 'utf8')).domains);
+  const active = { media: 'print', profiler: true, heap: true, fetch: true, webauthn: true, subscriptions: true };
+  const before = { ...active };
+  f.sessions.cdp = async (tabId, method, params) => {
+    f.calls.push({ tabId, method, params });
+    const [domain, name] = method.split('.');
+    const command = domains.find((d: any) => d.domain === domain)?.commands?.find((c: any) => c.name === name);
+    assert.ok(command, `Unknown protocol method: ${method}`);
+    if ((command.parameters ?? []).some((p: any) => !p.optional && params?.[p.name] === undefined)) throw new Error('Invalid parameters');
+    if (method === 'Emulation.setEmulatedMedia') active.media = '';
+    if (method === 'Profiler.disable') active.profiler = false;
+    if (method === 'HeapProfiler.disable') active.heap = false;
+    if (method === 'Fetch.disable') active.fetch = false;
+    if (method === 'WebAuthn.disable') active.webauthn = false;
+    if (/\.disable$/.test(method)) active.subscriptions = false;
+    if (method === 'Browser.getVersion') throw new Error("'Browser.getVersion' wasn't found");
+    return {};
+  };
+  try {
+    const caps = JSON.parse(await client.call('devtools_capabilities', { tabId: 1, refresh: true }));
+    assert.deepEqual(active, before);
+    assert.ok(!f.calls.some((c) => /\.(enable|disable)$/.test(c.method)), 'reporting cannot toggle existing domain subscriptions');
+    for (const domain of ['Emulation', 'Profiler', 'HeapProfiler', 'Fetch', 'WebAuthn', 'Log', 'Security']) assert.equal(caps.domains[domain], 'supported', domain);
+    assert.match(caps.domains.Media, /^unprobed:/);
+    assert.ok(!caps.unsupportedOperations.includes('Media.* commands'));
+    assert.ok(caps.unsupportedOperations.includes('Browser.* commands'));
+    const count = f.calls.length;
+    await client.call('devtools_capabilities', { tabId: 1 });
+    assert.equal(f.calls.length, count, 'cached capabilities do not repeat probes');
+  } finally { clients.delete(client.client.id); }
+});

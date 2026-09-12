@@ -61,7 +61,21 @@ export function registerEnvironmentTools(ctx: Ctx) {
       case 'vision': await cdp('Emulation.setEmulatedVisionDeficiency', { type: a.deficiency ?? 'none' }); remember('vision', a.deficiency, () => cdp('Emulation.setEmulatedVisionDeficiency', { type: 'none' })); return `Vision deficiency: ${a.deficiency ?? 'none'}`;
       case 'animations': { await cdp('Animation.enable').catch(() => {}); if (a.playbackRate !== undefined) { await cdp('Animation.setPlaybackRate', { playbackRate: a.playbackRate }); remember('animationRate', a.playbackRate, () => cdp('Animation.setPlaybackRate', { playbackRate: 1 })); } const rate = await cdp('Animation.getPlaybackRate').catch(() => ({ playbackRate: undefined })); return { playbackRate: rate.playbackRate, observed: (st?.animations ?? []).slice(-30).map((x) => ({ ...x, ts: new Date(x.ts).toISOString() })), note: st ? undefined : 'Start a devtools session to observe animations.' }; }
       case 'status': return state;
-      case 'reset': { if (state.windowResized) await sessions.windowSize(id).catch(() => {}); await cdp('Emulation.clearDeviceMetricsOverride').catch(() => {}); await cdp('Emulation.setTouchEmulationEnabled', { enabled: false }).catch(() => {}); await cdp('Emulation.setCPUThrottlingRate', { rate: 1 }).catch(() => {}); await cdp('Network.emulateNetworkConditions', NET.none).catch(() => {}); await cdp('Emulation.clearGeolocationOverride').catch(() => {}); await cdp('Emulation.setEmulatedMedia', { media: '', features: [] }).catch(() => {}); await cdp('Emulation.setEmulatedVisionDeficiency', { type: 'none' }).catch(() => {}); if (state.originalUA) await cdp('Emulation.setUserAgentOverride', { userAgent: state.originalUA }).catch(() => {}); emuState.set(id, {}); return 'Emulation reset'; }
+      case 'reset': {
+        if (state.windowResized) await sessions.windowSize(id).catch(() => {});
+        await cdp('Emulation.clearDeviceMetricsOverride').catch(() => {});
+        await cdp('Emulation.setTouchEmulationEnabled', { enabled: false }).catch(() => {});
+        await cdp('Emulation.setCPUThrottlingRate', { rate: 1 }).catch(() => {});
+        await cdp('Network.emulateNetworkConditions', NET.none).catch(() => {});
+        await cdp('Emulation.clearGeolocationOverride').catch(() => {});
+        await cdp('Emulation.setEmulatedMedia', { media: '', features: [] }).catch(() => {});
+        await cdp('Emulation.setEmulatedVisionDeficiency', { type: 'none' }).catch(() => {});
+        await cdp('Emulation.setLocaleOverride', {}).catch(() => {});
+        await cdp('Emulation.setTimezoneOverride', { timezoneId: '' }).catch(() => {});
+        await cdp('Animation.setPlaybackRate', { playbackRate: 1 }).catch(() => {});
+        if (state.originalUA) await cdp('Emulation.setUserAgentOverride', { userAgent: state.originalUA }).catch(() => {});
+        emuState.set(id, {}); return 'Emulation reset';
+      }
     }
   });
 
