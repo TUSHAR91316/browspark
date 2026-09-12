@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 # Browspark setup: downloads the extension and registers the companion with your agent.
 #   curl -fsSL https://browspark.krishm.dev/setup.sh | bash
+#   bash setup.sh --test   # dry run: downloads to a temp folder, writes no config
 set -euo pipefail
 
+TEST=0; [ "${1:-}" = "--test" ] && TEST=1
+
 ZIP_URL="${BROWSPARK_ZIP_URL:-https://github.com/uncaughterrs/browspark/releases/latest/download/browspark-extension.zip}"
-EXT_DIR="$HOME/browspark-extension"
+EXT_DIR="$HOME/browspark-extension"; [ "$TEST" = 1 ] && EXT_DIR="$(mktemp -d -t browspark-test)"
 PKG="browspark-mcp@latest"
 
 # Palette: the dashboard's neutral dark theme with its green accent.
@@ -21,9 +24,12 @@ fail() { printf '  %s✗%s %s\n' "$R" "$X" "$*" >&2; exit 1; }
 dim()  { printf '  %s%s%s\n' "$D" "$*" "$X"; }
 step() { printf '\n%s%s%s  %s%s%s\n' "$G" "$1" "$X" "$B" "$2" "$X"; }
 ask()  { printf '  %s›%s %s ' "$G" "$X" "$1" >&2; local a; read -r a < /dev/tty; printf '%s' "$a"; }
+# In --test mode, print the change instead of making it.
+run()  { if [ "$TEST" = 1 ]; then dim "would run: $*" >&2; else "$@"; fi; }
 
 printf '\n  %s●%s %s%sBrowspark%s\n' "$G" "$X" "$B" "$W" "$X"
 dim "Your browser. Now agent-ready."
+[ "$TEST" = 1 ] && warn "Test mode: nothing outside a temp folder is changed."
 
 # 01 ───────────────────────────────────────────────────────────────────────────
 step 01 "Checking requirements"
@@ -34,7 +40,7 @@ else
   warn "Bun is not installed. The companion runs on Bun even when launched with npx or pnpm."
   a=$(ask "Install Bun from bun.sh now? [y/N]")
   case "$a" in
-    y|Y) curl -fsSL https://bun.sh/install | bash >/dev/null; export PATH="$HOME/.bun/bin:$PATH"; command -v bun >/dev/null || fail "Bun install did not complete. See https://bun.sh"; ok "Bun $(bun --version)";;
+    y|Y) run bash -c 'curl -fsSL https://bun.sh/install | bash >/dev/null'; export PATH="$HOME/.bun/bin:$PATH"; command -v bun >/dev/null || fail "Bun install did not complete. See https://bun.sh"; ok "Bun $(bun --version)";;
     *) fail "Install Bun first: curl -fsSL https://bun.sh/install | bash";;
   esac
 fi
@@ -42,7 +48,7 @@ fi
 # 02 ───────────────────────────────────────────────────────────────────────────
 step 02 "Downloading the extension"
 tmp=$(mktemp -t browspark.XXXXXX)
-trap 'rm -f "$tmp"' EXIT
+trap 'rm -f "$tmp"; [ "$TEST" = 1 ] && rm -rf "$EXT_DIR"' EXIT
 curl -fsSL "$ZIP_URL" -o "$tmp" || fail "Download failed: $ZIP_URL"
 rm -rf "$EXT_DIR" && mkdir -p "$EXT_DIR" && unzip -qo "$tmp" -d "$EXT_DIR"
 [ -f "$EXT_DIR/manifest.json" ] || fail "The archive did not contain an extension."
@@ -100,29 +106,29 @@ for agent in $CHOSEN; do
   case $agent in
     claude)
       if command -v claude >/dev/null; then
-        claude mcp remove -s user browspark >/dev/null 2>&1 || true
-        claude mcp add --transport stdio --scope user browspark -- $RUN >/dev/null && ok "Claude Code (user scope)"
+        [ "$TEST" = 1 ] || claude mcp remove -s user browspark >/dev/null 2>&1 || true
+        run claude mcp add --transport stdio --scope user browspark -- $RUN >/dev/null && ok "Claude Code (user scope)"
       else
         warn "Claude Code CLI not found. Run later:  claude mcp add --transport stdio --scope user browspark -- $RUN"
       fi;;
     codex)
       if command -v codex >/dev/null; then
-        codex mcp remove browspark >/dev/null 2>&1 || true
-        codex mcp add browspark -- $RUN >/dev/null && ok "Codex (~/.codex/config.toml)"
+        [ "$TEST" = 1 ] || codex mcp remove browspark >/dev/null 2>&1 || true
+        run codex mcp add browspark -- $RUN >/dev/null && ok "Codex (~/.codex/config.toml)"
       else
         f="$HOME/.codex/config.toml"; mkdir -p "$(dirname "$f")"
         if grep -q '^\[mcp_servers\.browspark\]' "$f" 2>/dev/null; then warn "Codex: browspark already in $f, left unchanged."
-        else printf '\n[mcp_servers.browspark]\ncommand = "%s"\nargs = %s\n' "$CMD" "$args_json" >> "$f"; ok "Codex ($f)"; fi
+        else run bash -c "printf '\n[mcp_servers.browspark]\ncommand = \"%s\"\nargs = %s\n' '$CMD' '$args_json' >> '$f'"; ok "Codex ($f)"; fi
       fi;;
     opencode)
       f="$HOME/.config/opencode/opencode.json"
-      merge_json "$f" mcp.browspark "$local_cfg" && ok "OpenCode ($f)";;
+      run merge_json "$f" mcp.browspark "$local_cfg" && ok "OpenCode ($f)";;
     cursor)
       f="$HOME/.cursor/mcp.json"
-      merge_json "$f" mcpServers.browspark "$stdio_cfg" && ok "Cursor ($f)";;
+      run merge_json "$f" mcpServers.browspark "$stdio_cfg" && ok "Cursor ($f)";;
     kilo)
       f="$HOME/.config/kilo/kilo.jsonc"
-      if merge_json "$f" mcp.browspark "$local_cfg" 2>/dev/null; then ok "Kilo ($f)"
+      if run merge_json "$f" mcp.browspark "$local_cfg" 2>/dev/null; then ok "Kilo ($f)"
       else warn "Kilo: $f has comments, so add this under \"mcp\" yourself:"; dim "\"browspark\": $local_cfg"; fi;;
     antigravity)
       warn "Antigravity: open Agent panel → … → MCP Servers → Manage → View raw config and add under \"mcpServers\":"
@@ -137,4 +143,5 @@ say "     and pick ${G}$EXT_DIR${X}"
 say "  2. Start your agent and ask it to run ${B}browser_status${X}. It prints a pairing token."
 say "  3. Click the Browspark toolbar icon, paste the token, hit ${B}Connect${X}, then share the tabs"
 say "     your agent may use."
-printf '\n  %s●%s %sYou are good to go.%s  %shttps://docs.browspark.krishm.dev%s\n\n' "$G" "$X" "$B" "$X" "$D" "$X"
+if [ "$TEST" = 1 ]; then printf '\n  %s●%s %sTest passed.%s Run without --test to apply.\n\n' "$G" "$X" "$B" "$X"
+else printf '\n  %s●%s %sYou are good to go.%s  %shttps://docs.browspark.krishm.dev%s\n\n' "$G" "$X" "$B" "$X" "$D" "$X"; fi
