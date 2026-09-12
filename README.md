@@ -16,7 +16,7 @@ bun install && bun run build
 ```
 
 1. Load the extension: `chrome://extensions` → Developer mode → Load unpacked → the `extension/` folder. Or `bun run package` and load `dist/browsermcp-extension.zip` unpacked.
-2. Register the companion with your MCP client. It runs straight from source on Bun.
+2. Register the companion with your MCP client. The dashboard's Overview setup includes instructions for Claude Code, Codex, OpenCode, Cursor, Kilo, and Antigravity. It runs straight from source on Bun.
 
 ```bash
 claude mcp add browsermcp -- bun /absolute/path/to/browsermcp/companion/src/index.ts
@@ -72,7 +72,7 @@ Exports use Chrome's own formats: `.json` traces (DevTools Performance, Perfetto
 
 - Chrome shows a "BrowserMCP started debugging this browser" bar on shared tabs. It is Chromium's own notice for the debugger API and cannot be suppressed by the extension. Launch the browser with `--silent-debugger-extension-api` to hide it (`open -a "Brave Browser" --args --silent-debugger-extension-api` on macOS, after quitting it), or use developer mode, which has no bar.
 - Chrome does not let extensions or CDP drive the DevTools window (open it, toggle the device toolbar, pick a panel). The agent's tools send the same protocol commands DevTools' panels send. To watch in the standard UI, open DevTools on the tab yourself in extension mode, or launch developer mode, which opens DevTools on every tab by default; both coexist with the agent.
-- Tabs the agent opens go into a separate, unfocused agent window and become its default target, so you keep browsing in your own window. The agent only touches your tabs when you share them and point it there.
+- Shared tabs from all Chrome windows are available. Select a `tabId` from `browser_tabs`; without one, tools use the agent's own usable tab or the only usable tab, and require an explicit choice when ambiguous. Tabs the agent opens are ordinary Chrome tabs, shared automatically, and become that agent's default target.
 - The debugger (and the bar) attaches when the agent sends a command and detaches after 30 seconds without one, unless a `devtools_session` is running on that tab. Tune with `idleDetachMs` in the extension's storage.
 - Input and screenshots need a rendered tab, so the extension activates the target tab within its window first.
 - Refs point at live nodes; a ref whose node left the DOM reports as stale. Re-snapshot after navigation.
