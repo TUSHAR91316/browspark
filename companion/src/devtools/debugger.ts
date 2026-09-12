@@ -9,9 +9,11 @@ import { resolveNode } from './elements.ts';
 export function registerDebuggerTools(ctx: Ctx) {
   const { sessions, capture } = ctx;
   const tab = (id?: number) => sessions.resolve(id);
+  const domBreakpoint = (kind: string) => ({ dom: 'DOM', event: 'EventListener', xhr: 'XHR' } as Record<string, string>)[kind];
 
-  const waitPause = async (id: number, st: TabState, timeoutMs = 5000) => {
-    const before = st.seq;
+  // `since` is the event watermark taken before the command was sent: a pause that lands before we start waiting must still count.
+  const waitPause = async (id: number, st: TabState, timeoutMs = 5000, since = st.seq) => {
+    const before = since;
     const e = await capture.waitFor(id, (e) => e.method === 'Debugger.paused', timeoutMs, before);
     return e ? await stack(id, st) : { paused: false, note: `Not paused within ${timeoutMs}ms; the code may not have run yet. Use devtools_events wait with method "Debugger.paused".`, recentDebuggerEvents: st.events.filter((x) => x.method.startsWith('Debugger.') || x.method.startsWith('companion.')).slice(-6).map((x) => `${x.id} ${x.method} ${x.summary}`), pausedFlag: !!st.paused };
   };
@@ -42,6 +44,13 @@ export function registerDebuggerTools(ctx: Ctx) {
   }, async (a) => {
     const id = await tab(a.tabId);
     const st = capture.require(id);
+    const removeBreakpoint = async (breakpointId: string) => {
+      const b = st.breakpoints.get(breakpointId);
+      if (!b) throw new Error(`Unknown breakpoint ${breakpointId}`);
+      if (!b.enabled) return;
+      const kind = domBreakpoint(b.kind);
+      await sessions.cdp(id, kind ? `DOMDebugger.remove${kind}Breakpoint` : 'Debugger.removeBreakpoint', kind ? b.raw : { breakpointId });
+    };
     const findScript = () => a.scriptId ? st.scripts.get(a.scriptId) : a.url ? [...st.scripts.values()].find((s) => s.url === a.url) ?? [...st.scripts.values()].find((s) => s.url.includes(a.url!)) : undefined;
     const locate = async () => {
       if (a.line === undefined) throw new Error('line required');
@@ -62,16 +71,19 @@ export function registerDebuggerTools(ctx: Ctx) {
       case 'remove': {
         const ids = a.all ? [...st.breakpoints.keys()] : a.breakpointId ? [a.breakpointId] : [];
         if (!ids.length) throw new Error('breakpointId or all:true required');
-        for (const b of ids) { await sessions.cdp(id, 'Debugger.removeBreakpoint', { breakpointId: b }).catch(() => {}); st.breakpoints.delete(b); }
+        for (const b of ids) { await removeBreakpoint(b); st.breakpoints.delete(b); }
         return `Removed ${ids.length} breakpoint(s)`;
       }
       case 'disable': case 'enable': {
         if (a.all) { await sessions.cdp(id, 'Debugger.setBreakpointsActive', { active: a.action === 'enable' }); for (const b of st.breakpoints.values()) b.enabled = a.action === 'enable'; return `All breakpoints ${a.action}d`; }
         const b = a.breakpointId && st.breakpoints.get(a.breakpointId); if (!b) throw new Error('breakpointId (or all:true) required');
-        if (a.action === 'disable') { await sessions.cdp(id, 'Debugger.removeBreakpoint', { breakpointId: a.breakpointId }).catch(() => {}); b.enabled = false; return `Disabled ${a.breakpointId} (kept; enable re-arms it)`; }
+        if (a.action === 'disable') { await removeBreakpoint(a.breakpointId!); b.enabled = false; return `Disabled ${a.breakpointId} (kept; enable re-arms it)`; }
         if (b.enabled) return 'Already enabled';
-        const r = await sessions.cdp(id, 'Debugger.setBreakpointByUrl', b.raw as object); st.breakpoints.delete(a.breakpointId!); st.breakpoints.set(r.breakpointId, { ...b, enabled: true });
-        return `Enabled as ${r.breakpointId}`;
+        const kind = domBreakpoint(b.kind);
+        const r = await sessions.cdp(id, kind ? `DOMDebugger.set${kind}Breakpoint` : 'Debugger.setBreakpointByUrl', b.raw);
+        const breakpointId = kind ? a.breakpointId! : r.breakpointId;
+        st.breakpoints.delete(a.breakpointId!); st.breakpoints.set(breakpointId, { ...b, enabled: true });
+        return `Enabled as ${breakpointId}`;
       }
       case 'exceptions': { await sessions.cdp(id, 'Debugger.setPauseOnExceptions', { state: a.state ?? 'uncaught' }); st.cleanups.push(() => sessions.cdp(id, 'Debugger.setPauseOnExceptions', { state: 'none' })); return `Pause on exceptions: ${a.state ?? 'uncaught'}`; }
       case 'dom': {
@@ -79,7 +91,7 @@ export function registerDebuggerTools(ctx: Ctx) {
         const type = a.domType ?? 'subtree-modified';
         await sessions.cdp(id, a.remove ? 'DOMDebugger.removeDOMBreakpoint' : 'DOMDebugger.setDOMBreakpoint', { nodeId, type });
         const key = `dom:${nodeId}:${type}`;
-        if (a.remove) st.breakpoints.delete(key); else st.breakpoints.set(key, { kind: 'dom', description: `${type} on ${a.ref ?? a.selector}`, enabled: true });
+        if (a.remove) st.breakpoints.delete(key); else st.breakpoints.set(key, { kind: 'dom', description: `${type} on ${a.ref ?? a.selector}`, enabled: true, raw: { nodeId, type } });
         if (!a.remove) st.cleanups.push(() => sessions.cdp(id, 'DOMDebugger.removeDOMBreakpoint', { nodeId, type }).catch(() => {}));
         return `${a.remove ? 'Removed' : 'Set'} DOM breakpoint ${type} on ${a.ref ?? a.selector}`;
       }
@@ -87,29 +99,31 @@ export function registerDebuggerTools(ctx: Ctx) {
         if (!a.eventName) throw new Error('eventName required');
         await sessions.cdp(id, a.remove ? 'DOMDebugger.removeEventListenerBreakpoint' : 'DOMDebugger.setEventListenerBreakpoint', { eventName: a.eventName, targetName: a.targetName });
         const key = `event:${a.eventName}:${a.targetName ?? '*'}`;
-        if (a.remove) st.breakpoints.delete(key); else { st.breakpoints.set(key, { kind: 'event', description: `event ${a.eventName}${a.targetName ? ' on ' + a.targetName : ''}`, enabled: true }); st.cleanups.push(() => sessions.cdp(id, 'DOMDebugger.removeEventListenerBreakpoint', { eventName: a.eventName, targetName: a.targetName }).catch(() => {})); }
+        if (a.remove) st.breakpoints.delete(key); else { st.breakpoints.set(key, { kind: 'event', description: `event ${a.eventName}${a.targetName ? ' on ' + a.targetName : ''}`, enabled: true, raw: { eventName: a.eventName, targetName: a.targetName } }); st.cleanups.push(() => sessions.cdp(id, 'DOMDebugger.removeEventListenerBreakpoint', { eventName: a.eventName, targetName: a.targetName }).catch(() => {})); }
         return `${a.remove ? 'Removed' : 'Set'} event listener breakpoint for ${a.eventName}`;
       }
       case 'xhr': {
         const url = a.urlSubstring ?? a.url ?? '';
         await sessions.cdp(id, a.remove ? 'DOMDebugger.removeXHRBreakpoint' : 'DOMDebugger.setXHRBreakpoint', { url });
         const key = `xhr:${url}`;
-        if (a.remove) st.breakpoints.delete(key); else { st.breakpoints.set(key, { kind: 'xhr', description: `XHR/fetch URL contains "${url}"`, enabled: true }); st.cleanups.push(() => sessions.cdp(id, 'DOMDebugger.removeXHRBreakpoint', { url }).catch(() => {})); }
+        if (a.remove) st.breakpoints.delete(key); else { st.breakpoints.set(key, { kind: 'xhr', description: `XHR/fetch URL contains "${url}"`, enabled: true, raw: { url } }); st.cleanups.push(() => sessions.cdp(id, 'DOMDebugger.removeXHRBreakpoint', { url }).catch(() => {})); }
         return `${a.remove ? 'Removed' : 'Set'} XHR/fetch breakpoint for "${url || 'any'}"`;
       }
-      case 'pause': await sessions.cdp(id, 'Debugger.pause'); return waitPause(id, st, a.timeoutMs ?? 3000);
+      case 'pause': { const since = st.seq; await sessions.cdp(id, 'Debugger.pause'); return waitPause(id, st, a.timeoutMs ?? 3000, since); }
       case 'resume': if (!st.paused) return 'Not paused'; await sessions.cdp(id, 'Debugger.resume'); return 'Resumed';
       case 'stepInto': case 'stepOver': case 'stepOut': {
         if (!st.paused) throw new Error('Not paused');
+        const since = st.seq;
         await sessions.cdp(id, `Debugger.${a.action}`, a.action === 'stepInto' ? { breakOnAsyncCall: true } : undefined);
-        return waitPause(id, st, a.timeoutMs ?? 5000);
+        return waitPause(id, st, a.timeoutMs ?? 5000, since);
       }
       case 'continueTo': {
         if (!st.paused) throw new Error('Not paused');
         const loc = await locate();
         const scriptId = loc.scriptId ?? findScript()?.scriptId; if (!scriptId) throw new Error('Could not resolve scriptId for continueTo');
+        const since = st.seq;
         await sessions.cdp(id, 'Debugger.continueToLocation', { location: { scriptId, lineNumber: loc.line - 1, columnNumber: loc.column !== undefined ? loc.column - 1 : undefined } });
-        return waitPause(id, st, a.timeoutMs ?? 5000);
+        return waitPause(id, st, a.timeoutMs ?? 5000, since);
       }
       case 'stack': return stack(id, st);
       case 'scope': {

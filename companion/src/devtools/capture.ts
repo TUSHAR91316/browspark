@@ -135,7 +135,7 @@ export class Capture {
     st.active = false; st.stoppedAt = Date.now();
     const notes: string[] = [];
     const cdp = (m: string, p?: unknown) => this.sessions.cdp(tabId, m, p).catch((e) => { notes.push(`${m}: ${e.message}`); });
-    for (const bp of st.breakpoints.keys()) await cdp('Debugger.removeBreakpoint', { breakpointId: bp });
+    for (const [bp, info] of st.breakpoints) if (info.enabled && (info.kind === 'line' || info.kind === 'logpoint')) await cdp('Debugger.removeBreakpoint', { breakpointId: bp });
     st.breakpoints.clear();
     if (st.paused) await cdp('Debugger.resume');
     st.overrides.clear();
