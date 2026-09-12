@@ -41,6 +41,8 @@ While a session is active the companion collects console messages, exceptions, n
 
 ## Sources and source maps
 
+Source maps load inline or through the inspected page. CSP, CORS, and browser network restrictions still apply; the companion does not retry blocked requests from your computer.
+
 `devtools_sources` lists scripts, stylesheets, documents, frames and execution contexts, gets file contents (`original: true` returns the original source through the source map), searches across sources by filename, text or regex, and maps positions between original and generated code. `override` serves your own body for a URL after reload, until the session stops.
 
 ## Debugger

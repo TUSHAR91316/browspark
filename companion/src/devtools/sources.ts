@@ -17,8 +17,9 @@ export async function sourceMapFor(ctx: Ctx, tabId: number, st: TabState, script
     let text: string | undefined;
     if (url.startsWith('data:')) text = decodeDataUrl(url);
     else {
+      // script.url can be forged with sourceURL. Keep requests in the page so CSP,
+      // browser network restrictions and the tab's Fetch policy remain authoritative.
       text = await ctx.page.evaluate<string>(tabId, `fetch(${JSON.stringify(url)}).then(r => r.ok ? r.text() : Promise.reject(new Error(r.status)))`).catch(() => undefined);
-      if (!text) text = await fetch(url).then((r) => (r.ok ? r.text() : undefined)).catch(() => undefined);
     }
     if (!text) return undefined;
     try { return parseSourceMap(text); } catch { return undefined; }
