@@ -110,7 +110,7 @@ export class Capture {
       this.states.set(tabId, st);
     } else { st.active = true; st.stoppedAt = undefined; st.opts = { ...st.opts, ...opts }; }
     st.users.add(user);
-    await this.sessions.hold(tabId, true);
+    await this.sessions.hold(tabId, 'session', true);
     const cdp = (m: string, p?: unknown) => this.sessions.cdp(tabId, m, p).catch((e) => { this.push(st!, 'companion.enableFailed', `${m}: ${e.message}`); });
     await cdp('Page.enable'); await cdp('Runtime.enable'); await cdp('Log.enable'); await cdp('Network.enable', { maxResourceBufferSize: 50_000_000, maxTotalBufferSize: 200_000_000 });
     await cdp('Debugger.enable'); await cdp('DOM.enable'); await cdp('CSS.enable'); await cdp('Audits.enable'); await cdp('Security.enable'); await cdp('ServiceWorker.enable'); await cdp('Animation.enable');
@@ -146,7 +146,7 @@ export class Capture {
     await cdp('Debugger.setBlackboxPatterns', { patterns: [] });
     await cdp('Overlay.hideHighlight');
     for (const m of ['Animation.disable', 'ServiceWorker.disable', 'Security.disable', 'Audits.disable', 'CSS.disable', 'DOM.disable', 'Debugger.disable', 'Network.disable', 'Log.disable']) await cdp(m);
-    await this.sessions.hold(tabId, false);
+    await this.sessions.hold(tabId, 'session', false);
     return notes;
   }
 

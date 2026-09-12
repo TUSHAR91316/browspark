@@ -2,7 +2,7 @@
 import { z } from 'zod';
 import { type Ctx, image, tool, tabArg, refArg, text, devGate, ownerOf } from './context.ts';
 import { recorder } from './devtools/recorder.ts';
-import { policies, defaultPolicy, setDefaultPolicy, applyFetch, forgetTab, type Policy } from './devtools/intercept.ts';
+import { policies, defaultPolicy, setDefaultPolicy, setPolicy, forgetTab, type Policy } from './devtools/intercept.ts';
 import { saveArtifact } from './artifacts.ts';
 import { writeFileSync } from 'node:fs';
 import type { Download } from './cdp.ts';
@@ -59,7 +59,13 @@ export function registerBrowserTools(ctx: Ctx) {
     mode: z.enum(['extension', 'dev']).optional().describe('Where to open a new tab; default dev if running, else extension'), context: z.string().optional().describe('Developer context for new'),
     onlyUsable: z.boolean().optional().describe('Default true. false lists every tab including unshared ones.'),
   }, async ({ action, tabId, url, mode, context, onlyUsable }) => {
-    if (action === 'new') { const id = await sessions.newTab(url ?? 'about:blank', mode ?? (sessions.bridge.connected ? 'extension' : undefined), context); if (defaultPolicy) { policies.set(id, defaultPolicy); await applyFetch(sessions, id, []).catch(() => {}); } return `Opened tab ${id}${url ? ` at ${url}` : ''}${defaultPolicy ? ' (default domain policy applied)' : ''}`; }
+    if (action === 'new') {
+      // Open blank, arm the default policy, then navigate: the first request must already be intercepted.
+      const id = await sessions.newTab('about:blank', mode ?? (sessions.bridge.connected ? 'extension' : undefined), context);
+      if (defaultPolicy) await setPolicy(sessions, id, defaultPolicy);
+      if (url && url !== 'about:blank') await page.navigate(id, 'goto', url);
+      return `Opened tab ${id}${url ? ` at ${url}` : ''}${defaultPolicy ? ' (default domain policy applied)' : ''}`;
+    }
     if (action === 'close') { const id = await tab(tabId); await sessions.closeTab(id); return `Closed tab ${id}`; }
     if (action === 'activate') { const id = await tab(tabId); await sessions.activate(id); return `Activated tab ${id}`; }
     const tabs = await sessions.tabs(true);
@@ -89,7 +95,7 @@ export function registerBrowserTools(ctx: Ctx) {
   }, async ({ url, what, context, keepTab, timeoutMs }) => {
     const id = await sessions.newTab('about:blank', context ? 'dev' : sessions.bridge.connected ? 'extension' : undefined, context, false);
     try {
-      if (defaultPolicy) { policies.set(id, defaultPolicy); await applyFetch(sessions, id, []).catch(() => {}); }
+      if (defaultPolicy) await setPolicy(sessions, id, defaultPolicy);
       await page.navigate(id, 'goto', url, timeoutMs ?? 20_000);
       const title = await page.evaluate<string>(id, 'document.title');
       const content = await page.read(id, what);
@@ -103,10 +109,10 @@ export function registerBrowserTools(ctx: Ctx) {
   }, async ({ action, tabId, allow, block, default: dflt }) => {
     if (action === 'status') return { default: defaultPolicy ?? null, tabs: Object.fromEntries([...policies.entries()]) };
     const id = tabId !== undefined || !dflt ? await tab(tabId) : undefined;
-    if (action === 'clear') { if (id !== undefined) { policies.delete(id); await applyFetch(sessions, id, [...(capture.get(id)?.overrides.keys() ?? [])]); } if (dflt) setDefaultPolicy(undefined); return `Policy cleared${id !== undefined ? ` for tab ${id}` : ''}${dflt ? ' and as default' : ''}`; }
+    if (action === 'clear') { if (id !== undefined) await setPolicy(sessions, id, undefined); if (dflt) setDefaultPolicy(undefined); return `Policy cleared${id !== undefined ? ` for tab ${id}` : ''}${dflt ? ' and as default' : ''}`; }
     if (!allow?.length && !block?.length) throw new Error('allow or block required');
     const p: Policy = { ...(allow?.length && { allow }), ...(block?.length && { block }) };
-    if (id !== undefined) { policies.set(id, p); await applyFetch(sessions, id, [...(capture.get(id)?.overrides.keys() ?? [])]); }
+    if (id !== undefined) await setPolicy(sessions, id, p);
     if (dflt) setDefaultPolicy(p);
     return `Policy ${JSON.stringify(p)} applied${id !== undefined ? ` to tab ${id}` : ''}${dflt ? ' and as default for new agent tabs' : ''}`;
   });

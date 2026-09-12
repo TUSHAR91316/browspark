@@ -7,6 +7,7 @@ import type { Bridge } from './bridge.ts';
 import { DirectChrome, type LaunchOptions } from './cdp.ts';
 import { isNewTab, type TabInfo } from '../../shared/protocol.ts';
 import { currentClient, clients } from './context.ts';
+import { onDetached as interceptDetached, pendingRestore, restoreFetch } from './devtools/intercept.ts';
 
 export type Mode = 'extension' | 'dev';
 export interface TabRecord { id: number; mode: Mode; url: string; title: string; shared: boolean; attached: boolean; unsupported?: string; windowId?: number; agent?: boolean; context?: string }
@@ -30,7 +31,7 @@ export class Sessions extends EventEmitter {
     super();
     this.bridge = bridge;
     bridge.on('cdp.event', (e) => this.emit('cdp.event', e));
-    bridge.on('detached', (e) => this.emit('detached', e));
+    bridge.on('detached', (e) => { interceptDetached(e.tabId); this.holds.delete(e.tabId); this.emit('detached', e); });
     bridge.on('disconnected', () => this.emit('disconnected'));
     this.on('detached', ({ tabId, reason }) => { if (/closed/.test(reason)) for (const c of clients.values()) c.ownedTabs.delete(tabId); });
   }
@@ -66,8 +67,10 @@ export class Sessions extends EventEmitter {
 
   modeOf(tabId: number): Mode { return this.devOfTab(tabId) ? 'dev' : 'extension'; }
 
-  cdp<T = any>(tabId: number, method: string, params?: unknown, timeoutMs?: number): Promise<T> {
+  async cdp<T = any>(tabId: number, method: string, params?: unknown, timeoutMs?: number): Promise<T> {
     const d = this.devOfTab(tabId);
+    // A tab whose debugger detached with policies or mocks in force gets its interception back before anything else runs.
+    if (!d && pendingRestore(tabId) && !method.startsWith('Fetch.')) await restoreFetch(this, tabId).catch(() => {});
     return d ? d.cdp<T>(tabId, method, params, timeoutMs) : this.bridge.cdp<T>(tabId, method, params, timeoutMs);
   }
 
@@ -140,10 +143,15 @@ export class Sessions extends EventEmitter {
     const d = this.devOfTab(tabId);
     return d ? d.windowSize(tabId, width, height) : this.bridge.request('window.size', { tabId, width, height });
   }
-  /** Keep the debugger attached to a tab regardless of idle time (active inspection session). */
-  async hold(tabId: number, hold: boolean) {
-    if (this.devOfTab(tabId) || !this.bridge.connected) return;
-    await this.bridge.request('tabs.hold', { tabId, hold }).catch(() => {});
+  private holds = new Map<number, Set<string>>();
+  /** Keep the debugger attached to a tab regardless of idle time. Reasons are counted, so a policy and an inspection session release independently. */
+  async hold(tabId: number, reason: string, on: boolean) {
+    const set = this.holds.get(tabId) ?? new Set<string>();
+    const before = set.size > 0;
+    if (on) set.add(reason); else set.delete(reason);
+    if (set.size) this.holds.set(tabId, set); else this.holds.delete(tabId);
+    if (before === set.size > 0 || this.devOfTab(tabId) || !this.bridge.connected) return;
+    await this.bridge.request('tabs.hold', { tabId, hold: set.size > 0 }).catch(() => {});
   }
   async activate(tabId: number) {
     const d = this.devOfTab(tabId);
