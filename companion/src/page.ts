@@ -284,7 +284,7 @@ export class Page {
         for (var [k, f] of Object.entries(spec.fields)) {
           var sel = typeof f === 'string' ? f : f.selector, attr = typeof f === 'string' ? undefined : f.attr;
           var el = !sel || sel === '.' ? it : it.querySelector(sel);
-          row[k] = !el ? null : attr ? (attr === 'href' || attr === 'src' ? el[attr] : el.getAttribute(attr)) : (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
+          row[k] = !el ? null : attr ? (attr === 'href' || attr === 'src' ? el[attr] : el.getAttribute(attr)) : (el.innerText || el.textContent || '').replace(/\\s+/g, ' ').trim();
         }
         out.push(row);
       }

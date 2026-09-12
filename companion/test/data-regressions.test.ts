@@ -29,6 +29,31 @@ function fixture() {
   return { sessions, ctx, capture, call };
 }
 
+test('extraction preserves letters and normalizes spaces, tabs, and line breaks', async () => {
+  const document = { querySelectorAll: () => [{ innerText: ' Mississippi   state\nuses\ttabs ' }] };
+  const page = { evaluate: async (_id: number, expression: string) => Function('document', `return ${expression}`)(document) };
+  const result = await Page.prototype.extract.call(page as unknown as Page, 1, { items: 'p', fields: { text: '.' } });
+  assert.deepEqual(result, [{ text: 'Mississippi state uses tabs' }]);
+});
+
+test('IndexedDB clearStore resolves after completion and closes the database', async () => {
+  const { ctx, call } = fixture();
+  let cleared = false, closed = false;
+  const tx: any = { objectStore: () => ({ clear: () => {
+    queueMicrotask(() => { cleared = true; tx.oncomplete?.(); });
+  } }) };
+  const db = { transaction: () => tx, close: () => { closed = true; } };
+  const indexedDB = { open: () => {
+    const request: any = { result: db };
+    queueMicrotask(() => request.onsuccess());
+    return request;
+  } };
+  ctx.page.evaluate = async <T>(_id: number, expression: string): Promise<T> => Function('indexedDB', `return ${expression}`)(indexedDB);
+  registerApplicationTools(ctx);
+  assert.equal(await call('devtools_storage', { area: 'indexeddb', action: 'clearStore', database: 'app', store: 'items' }), 'Cleared app/items');
+  assert.ok(cleared && closed);
+}, 500);
+
 test('generic breakpoint removal and individual toggles use the matching CDP domain', async () => {
   const { sessions, ctx, capture, call } = fixture();
   const active = new Map<string, unknown>();
@@ -75,4 +100,21 @@ test('failed breakpoint removal preserves the local entry and reports the failur
   assert.ok(result.isError);
   assert.match((result.content[0] as { text: string }).text, /transport lost/);
   assert.ok(st.breakpoints.has('line'));
+});
+
+test('WebSockets and HTTP share the network limit, including indexes and dropped counts', async () => {
+  const { sessions, capture } = fixture();
+  const st = await capture.start(1, { maxNetwork: 2 });
+  const emit = (method: string, params: object) => sessions.emit('cdp.event', { tabId: 1, method, params });
+  for (const requestId of ['ws1', 'ws2', 'ws3']) emit('Network.webSocketCreated', { requestId, url: `wss://example.test/${requestId}` });
+  assert.deepEqual(st.network.map((r) => r.id), ['ws2', 'ws3']);
+  assert.deepEqual([...st.netIndex.keys()], ['ws2', 'ws3']);
+  assert.equal(st.dropped.network, 1);
+  emit('Network.requestWillBeSent', { requestId: 'http', wallTime: 1, request: { url: 'https://example.test/', method: 'GET' } });
+  emit('Network.webSocketFrameReceived', { requestId: 'ws1', response: { opcode: 1, payloadData: 'ignored' } });
+  emit('Network.webSocketFrameReceived', { requestId: 'ws3', response: { opcode: 1, payloadData: 'retained' } });
+  assert.deepEqual(st.network.map((r) => r.id), ['ws3', 'http']);
+  assert.deepEqual([...st.netIndex.keys()], ['ws3', 'http']);
+  assert.equal(st.dropped.network, 2);
+  assert.equal(st.netIndex.get('ws3')!.ws![0].payload, 'retained');
 });

@@ -192,6 +192,8 @@ describe.skipIf(skip)('devtools e2e (extension mode)', () => {
     const data = await okJson('devtools_storage', { tabId, area: 'indexeddb', action: 'data', database: 'appdb', store: 'todos' }); assert.match(data.entries[0].value, /write tests/);
     await ok('devtools_storage', { tabId, area: 'indexeddb', action: 'put', database: 'appdb', store: 'todos', json: { id: 2, title: 'second' } });
     assert.equal((await okJson('devtools_storage', { tabId, area: 'indexeddb', action: 'data', database: 'appdb', store: 'todos' })).entries.length, 2);
+    await ok('devtools_storage', { tabId, area: 'indexeddb', action: 'clearStore', database: 'appdb', store: 'todos' });
+    assert.equal((await okJson('devtools_storage', { tabId, area: 'indexeddb', action: 'data', database: 'appdb', store: 'todos' })).entries.length, 0);
     assert.ok((await okJson('devtools_storage', { tabId, area: 'cache' })).some((c: any) => c.cacheName === 'v1'));
     assert.ok((await okJson('devtools_storage', { tabId, area: 'cache', action: 'entries', cacheName: 'v1' })).entries.some((e: any) => e.url.endsWith('/cached.txt')));
     const usage = await okJson('devtools_storage', { tabId, area: 'usage' }); assert.ok(usage.quotaBytes > 0);

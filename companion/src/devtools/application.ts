@@ -41,7 +41,7 @@ export function registerApplicationTools(ctx: Ctx) {
         if (act === 'stores') return await page.evaluate(id, `${open}.then(db => { const out = { name: db.name, version: db.version, stores: [] }; for (const n of db.objectStoreNames) { const tx = db.transaction(n); const s = tx.objectStore(n); out.stores.push({ name: n, keyPath: s.keyPath, autoIncrement: s.autoIncrement, indexes: [...s.indexNames].map(i => { const x = s.index(i); return { name: i, keyPath: x.keyPath, unique: x.unique, multiEntry: x.multiEntry }; }) }); } db.close(); return out; })`);
         if (act === 'deleteDatabase') { await page.evaluate(id, `new Promise((res, rej) => { const q = indexedDB.deleteDatabase(${JSON.stringify(a.database)}); q.onsuccess = () => res(1); q.onerror = () => rej(q.error); q.onblocked = () => rej(new Error('blocked: close other tabs using it')); })`); return `Deleted database ${a.database}`; }
         if (!a.store) throw new Error('store required');
-        const tx = (mode: string, body: string) => `${open}.then(db => new Promise((res, rej) => { const tx = db.transaction(${JSON.stringify(a.store)}, '${mode}'); const st = tx.objectStore(${JSON.stringify(a.store)}); ${body} tx.onerror = () => rej(tx.error); tx.oncomplete = () => db.close(); }))`;
+        const tx = (mode: string, body: string) => `${open}.then(db => new Promise((res, rej) => { const tx = db.transaction(${JSON.stringify(a.store)}, '${mode}'); const st = tx.objectStore(${JSON.stringify(a.store)}); tx.onerror = () => rej(tx.error); tx.oncomplete = () => db.close(); ${body} }))`;
         if (act === 'clearStore') { await page.evaluate(id, tx('readwrite', 'st.clear(); tx.oncomplete = () => { db.close(); res(1); };')); return `Cleared ${a.database}/${a.store}`; }
         if (act === 'put') { if (a.json === undefined) throw new Error('json required'); await page.evaluate(id, tx('readwrite', `const r = st.put(${JSON.stringify(a.json)}${a.key !== undefined ? ', ' + JSON.stringify(a.key) : ''}); r.onsuccess = () => res(String(r.result)); r.onerror = () => rej(r.error);`)); return `Put into ${a.database}/${a.store}`; }
         if (act === 'delete') { if (a.key === undefined) throw new Error('key required'); await page.evaluate(id, tx('readwrite', `const r = st.delete(${JSON.stringify(a.key)}); r.onsuccess = () => res(1); r.onerror = () => rej(r.error);`)); return `Deleted key ${a.key}`; }
@@ -69,6 +69,9 @@ export function registerApplicationTools(ctx: Ctx) {
         const origin = await originOf(id, a.origin);
         const r = await cdp('Storage.clearDataForOrigin', { origin, storageTypes: a.types.join(',') }).catch(() => undefined);
         if (r) return `Cleared ${a.types.join(', ')} for ${origin}`;
+        // The in-page fallback can only touch the current document's origin; refuse anything else rather than clearing the wrong app.
+        const here = await page.evaluate<string>(id, 'location.origin');
+        if (here !== new URL(origin).origin) throw new Error(`Storage domain unavailable in this mode, and the page's origin (${here}) is not ${origin}; navigate the tab there first`);
         const done: string[] = [];
         for (const t of a.types) {
           if (t === 'local_storage' || t === 'all') { await page.evaluate(id, 'localStorage.clear()'); done.push('local_storage'); }

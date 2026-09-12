@@ -213,8 +213,7 @@ export class Capture {
         r = { id: p.requestId, seq: ++st.seq, ts: Math.round(p.wallTime * 1000), url: p.request.url, method: p.request.method, type: p.type ?? 'Other', frameId: p.frameId, documentURL: p.documentURL,
           initiator: p.initiator && { type: p.initiator.type, url: p.initiator.url, line: p.initiator.lineNumber !== undefined ? p.initiator.lineNumber + 1 : undefined, stack: frames(p.initiator.stack) },
           requestHeaders: headersOf(p.request.headers), postData: p.request.postData, hasPostData: p.request.hasPostData, dataLength: 0, redirects: [] };
-        st.network.push(r); st.netIndex.set(r.id, r);
-        if (st.network.length > st.opts.maxNetwork) { const gone = st.network.shift()!; st.netIndex.delete(gone.id); st.dropped.network++; }
+        this.addNetwork(st, r);
         this.push(st, method, `${r.method} ${r.url}`, { requestId: r.id });
         break;
       }
@@ -244,7 +243,7 @@ export class Capture {
       }
       case 'Network.webSocketCreated': {
         const r: NetReq = { id: p.requestId, seq: ++st.seq, ts: Date.now(), url: p.url, method: 'GET', type: 'WebSocket', requestHeaders: {}, dataLength: 0, redirects: [], ws: [], initiator: p.initiator && { type: p.initiator.type, url: p.initiator.url, stack: frames(p.initiator.stack) } };
-        st.network.push(r); st.netIndex.set(r.id, r); this.push(st, method, `WS ${p.url}`, { requestId: r.id }); break;
+        this.addNetwork(st, r); this.push(st, method, `WS ${p.url}`, { requestId: r.id }); break;
       }
       case 'Network.webSocketWillSendHandshakeRequest': { const r = st.netIndex.get(p.requestId); if (r) r.requestHeaders = headersOf(p.request.headers); break; }
       case 'Network.webSocketHandshakeResponseReceived': { const r = st.netIndex.get(p.requestId); if (r) { r.status = p.response.status; r.statusText = p.response.statusText; r.responseHeaders = headersOf(p.response.headers); } break; }
@@ -283,6 +282,11 @@ export class Capture {
       default: if (/^(Fetch\.|Media\.|WebAudio\.|WebAuthn\.|Target\.)/.test(method)) this.push(st, method, JSON.stringify(p).slice(0, 200), p);
     }
     void tabId;
+  }
+
+  private addNetwork(st: TabState, r: NetReq) {
+    st.network.push(r); st.netIndex.set(r.id, r);
+    while (st.network.length > st.opts.maxNetwork) { const gone = st.network.shift()!; st.netIndex.delete(gone.id); st.dropped.network++; }
   }
 
   private addConsole(st: TabState, m: Omit<ConsoleMsg, 'id' | 'ts'>) {
