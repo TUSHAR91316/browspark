@@ -6,7 +6,7 @@
         <br>
         A local MCP server and Chrome extension for operating and debugging websites, with the full developer toolbox built in.
     </p>
-    <a href="https://browspark.krishm.dev/">browspark.krishm.dev</a>
+    <a href="https://browspark.krishm.dev/">Website</a>
     ·
     <a href="https://docs.browspark.krishm.dev/">Documentation</a>
 </div>
