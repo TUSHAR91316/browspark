@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Browspark setup: downloads the extension and registers the companion with your agent.
 #   curl -fsSL https://browspark.krishm.dev/setup.sh | bash
-#   bash setup.sh --test   # dry run: downloads to a temp folder, writes no config
+#   bash setup.sh --test   # dry run: no download, writes no config
 set -euo pipefail
 
 TEST=0; [ "${1:-}" = "--test" ] && TEST=1
 
 ZIP_URL="${BROWSPARK_ZIP_URL:-https://github.com/uncaughterrs/browspark/releases/latest/download/browspark-extension.zip}"
-EXT_DIR="$HOME/browspark-extension"; [ "$TEST" = 1 ] && EXT_DIR="$(mktemp -d -t browspark-test)"
+EXT_DIR="$HOME/browspark-extension"
 PKG="browspark-mcp@latest"
 
 # Palette: the dashboard's neutral dark theme with its green accent.
@@ -29,7 +29,7 @@ run()  { if [ "$TEST" = 1 ]; then dim "would run: $*" >&2; else "$@"; fi; }
 
 printf '\n  %s●%s %s%sBrowspark%s\n' "$G" "$X" "$B" "$W" "$X"
 dim "Your browser. Now agent-ready."
-[ "$TEST" = 1 ] && warn "Test mode: nothing outside a temp folder is changed."
+[ "$TEST" = 1 ] && warn "Test mode: nothing is downloaded or changed."
 
 # 01 ───────────────────────────────────────────────────────────────────────────
 step 01 "Checking requirements"
@@ -47,12 +47,17 @@ fi
 
 # 02 ───────────────────────────────────────────────────────────────────────────
 step 02 "Downloading the extension"
-tmp=$(mktemp -t browspark.XXXXXX)
-trap 'rm -f "$tmp"; [ "$TEST" = 1 ] && rm -rf "$EXT_DIR"' EXIT
-curl -fsSL "$ZIP_URL" -o "$tmp" || fail "Download failed: $ZIP_URL"
-rm -rf "$EXT_DIR" && mkdir -p "$EXT_DIR" && unzip -qo "$tmp" -d "$EXT_DIR"
-[ -f "$EXT_DIR/manifest.json" ] || fail "The archive did not contain an extension."
-ok "Saved to $EXT_DIR"
+if [ "$TEST" = 1 ]; then
+  dim "would download: $ZIP_URL"
+  dim "would unzip to:  $EXT_DIR"
+else
+  tmp=$(mktemp -t browspark.XXXXXX)
+  trap 'rm -f "$tmp"' EXIT
+  curl -fsSL "$ZIP_URL" -o "$tmp" || fail "Download failed: $ZIP_URL"
+  rm -rf "$EXT_DIR" && mkdir -p "$EXT_DIR" && unzip -qo "$tmp" -d "$EXT_DIR"
+  [ -f "$EXT_DIR/manifest.json" ] || fail "The archive did not contain an extension."
+  ok "Saved to $EXT_DIR"
+fi
 
 # 03 ───────────────────────────────────────────────────────────────────────────
 step 03 "Choose how to run the companion"
