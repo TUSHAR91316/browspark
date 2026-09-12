@@ -1,6 +1,7 @@
 {
   "name": "browspark-mcp",
   "version": "0.2.9",
+  "license": "MIT",
   "type": "module",
   "files": [
     "companion/src",

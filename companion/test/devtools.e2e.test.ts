@@ -1,4 +1,4 @@
-// End-to-end developer tooling scenarios from plan.md §5, in extension mode plus a developer-mode block.
+// End-to-end developer tooling scenarios, in extension mode plus a developer-mode block.
 // Run with: E2E=1 bun test
 import { describe, test, beforeAll, afterAll, afterEach } from 'bun:test';
 import assert from 'node:assert/strict';
