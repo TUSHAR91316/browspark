@@ -1,0 +1,140 @@
+#!/usr/bin/env bash
+# Browspark setup: downloads the extension and registers the companion with your agent.
+#   curl -fsSL https://browspark.krishm.dev/setup.sh | bash
+set -euo pipefail
+
+ZIP_URL="${BROWSPARK_ZIP_URL:-https://github.com/uncaughterrs/browspark/releases/latest/download/browspark-extension.zip}"
+EXT_DIR="$HOME/browspark-extension"
+PKG="browspark-mcp@latest"
+
+# Palette: the dashboard's neutral dark theme with its green accent.
+if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
+  G=$'\e[38;2;77;171;154m' B=$'\e[1m' D=$'\e[38;5;245m' W=$'\e[38;2;236;236;236m' Y=$'\e[38;2;222;170;80m' R=$'\e[38;2;224;96;96m' X=$'\e[0m'
+else
+  G='' B='' D='' W='' Y='' R='' X=''
+fi
+
+say()  { printf '%s\n' "$*"; }
+ok()   { printf '  %s✓%s %s\n' "$G" "$X" "$*"; }
+warn() { printf '  %s!%s %s\n' "$Y" "$X" "$*"; }
+fail() { printf '  %s✗%s %s\n' "$R" "$X" "$*" >&2; exit 1; }
+dim()  { printf '  %s%s%s\n' "$D" "$*" "$X"; }
+step() { printf '\n%s%s%s  %s%s%s\n' "$G" "$1" "$X" "$B" "$2" "$X"; }
+ask()  { printf '  %s›%s %s ' "$G" "$X" "$1" >&2; local a; read -r a < /dev/tty; printf '%s' "$a"; }
+
+printf '\n  %s●%s %s%sBrowspark%s\n' "$G" "$X" "$B" "$W" "$X"
+dim "Your browser. Now agent-ready."
+
+# 01 ───────────────────────────────────────────────────────────────────────────
+step 01 "Checking requirements"
+for t in curl unzip; do command -v "$t" >/dev/null || fail "$t is required."; done
+if command -v bun >/dev/null; then
+  ok "Bun $(bun --version)"
+else
+  warn "Bun is not installed. The companion runs on Bun even when launched with npx or pnpm."
+  a=$(ask "Install Bun from bun.sh now? [y/N]")
+  case "$a" in
+    y|Y) curl -fsSL https://bun.sh/install | bash >/dev/null; export PATH="$HOME/.bun/bin:$PATH"; command -v bun >/dev/null || fail "Bun install did not complete. See https://bun.sh"; ok "Bun $(bun --version)";;
+    *) fail "Install Bun first: curl -fsSL https://bun.sh/install | bash";;
+  esac
+fi
+
+# 02 ───────────────────────────────────────────────────────────────────────────
+step 02 "Downloading the extension"
+tmp=$(mktemp -t browspark.XXXXXX)
+trap 'rm -f "$tmp"' EXIT
+curl -fsSL "$ZIP_URL" -o "$tmp" || fail "Download failed: $ZIP_URL"
+rm -rf "$EXT_DIR" && mkdir -p "$EXT_DIR" && unzip -qo "$tmp" -d "$EXT_DIR"
+[ -f "$EXT_DIR/manifest.json" ] || fail "The archive did not contain an extension."
+ok "Saved to $EXT_DIR"
+
+# 03 ───────────────────────────────────────────────────────────────────────────
+step 03 "Choose how to run the companion"
+dim "1) bun    bunx $PKG"
+dim "2) pnpm   pnpm dlx $PKG"
+dim "3) npm    npx -y $PKG"
+a=$(ask "Package manager [1]:")
+case "${a:-1}" in
+  2) CMD=pnpm; ARGS="dlx $PKG";;
+  3) CMD=npx;  ARGS="-y $PKG";;
+  *) CMD=bunx; ARGS="$PKG";;
+esac
+command -v "$CMD" >/dev/null || warn "$CMD is not on your PATH yet; the config is written anyway."
+RUN="$CMD $ARGS"
+ok "$RUN"
+
+# 04 ───────────────────────────────────────────────────────────────────────────
+step 04 "Choose your agents"
+AGENTS="claude codex opencode cursor kilo antigravity"
+i=0; for n in $AGENTS; do i=$((i+1)); dim "$i) $n"; done
+a=$(ask "Numbers separated by spaces, or 'all' [1]:")
+a=${a:-1}
+[ "$a" = all ] && a="1 2 3 4 5 6"
+CHOSEN=""
+for n in $a; do
+  j=0; for name in $AGENTS; do j=$((j+1)); [ "$j" = "$n" ] && CHOSEN="$CHOSEN $name"; done
+done
+[ -n "$CHOSEN" ] || fail "No agent selected."
+
+# Merge {path: value} into a JSON config, creating the file if needed. Uses Bun so no jq is required.
+merge_json() { # file dotted.path json
+  mkdir -p "$(dirname "$1")"
+  bun -e '
+    const [file, path, value] = process.argv.slice(1);
+    let root = {};
+    try { root = JSON.parse(await Bun.file(file).text()); } catch (e) { if (await Bun.file(file).exists()) { console.error(`cannot parse ${file}: ${e.message}`); process.exit(2); } }
+    const keys = path.split("."); let o = root;
+    for (const k of keys.slice(0, -1)) o = o[k] ??= {};
+    o[keys.at(-1)] = JSON.parse(value);
+    await Bun.write(file, JSON.stringify(root, null, 2) + "\n");
+  ' "$1" "$2" "$3"
+}
+args_json=$(printf '%s\n' $ARGS | bun -e 'console.log(JSON.stringify((await Bun.stdin.text()).trim().split("\n")))')
+cmd_json=$(printf '%s\n' $CMD $ARGS | bun -e 'console.log(JSON.stringify((await Bun.stdin.text()).trim().split("\n")))')
+local_cfg="{\"type\":\"local\",\"command\":$cmd_json,\"enabled\":true}"
+stdio_cfg="{\"type\":\"stdio\",\"command\":\"$CMD\",\"args\":$args_json}"
+
+# 05 ───────────────────────────────────────────────────────────────────────────
+step 05 "Registering the companion"
+for agent in $CHOSEN; do
+  case $agent in
+    claude)
+      if command -v claude >/dev/null; then
+        claude mcp remove -s user browspark >/dev/null 2>&1 || true
+        claude mcp add --transport stdio --scope user browspark -- $RUN >/dev/null && ok "Claude Code (user scope)"
+      else
+        warn "Claude Code CLI not found. Run later:  claude mcp add --transport stdio --scope user browspark -- $RUN"
+      fi;;
+    codex)
+      if command -v codex >/dev/null; then
+        codex mcp remove browspark >/dev/null 2>&1 || true
+        codex mcp add browspark -- $RUN >/dev/null && ok "Codex (~/.codex/config.toml)"
+      else
+        f="$HOME/.codex/config.toml"; mkdir -p "$(dirname "$f")"
+        if grep -q '^\[mcp_servers\.browspark\]' "$f" 2>/dev/null; then warn "Codex: browspark already in $f, left unchanged."
+        else printf '\n[mcp_servers.browspark]\ncommand = "%s"\nargs = %s\n' "$CMD" "$args_json" >> "$f"; ok "Codex ($f)"; fi
+      fi;;
+    opencode)
+      f="$HOME/.config/opencode/opencode.json"
+      merge_json "$f" mcp.browspark "$local_cfg" && ok "OpenCode ($f)";;
+    cursor)
+      f="$HOME/.cursor/mcp.json"
+      merge_json "$f" mcpServers.browspark "$stdio_cfg" && ok "Cursor ($f)";;
+    kilo)
+      f="$HOME/.config/kilo/kilo.jsonc"
+      if merge_json "$f" mcp.browspark "$local_cfg" 2>/dev/null; then ok "Kilo ($f)"
+      else warn "Kilo: $f has comments, so add this under \"mcp\" yourself:"; dim "\"browspark\": $local_cfg"; fi;;
+    antigravity)
+      warn "Antigravity: open Agent panel → … → MCP Servers → Manage → View raw config and add under \"mcpServers\":"
+      dim "\"browspark\": {\"command\":\"$CMD\",\"args\":$args_json}";;
+  esac
+done
+
+# 06 ───────────────────────────────────────────────────────────────────────────
+step 06 "Load the extension and pair"
+say "  1. Open ${B}chrome://extensions${X}, switch on ${B}Developer mode${X}, click ${B}Load unpacked${X}"
+say "     and pick ${G}$EXT_DIR${X}"
+say "  2. Start your agent and ask it to run ${B}browser_status${X}. It prints a pairing token."
+say "  3. Click the Browspark toolbar icon, paste the token, hit ${B}Connect${X}, then share the tabs"
+say "     your agent may use."
+printf '\n  %s●%s %sYou are good to go.%s  %shttps://docs.browspark.krishm.dev%s\n\n' "$G" "$X" "$B" "$X" "$D" "$X"

@@ -17,6 +17,14 @@
 
 Requires [Bun](https://bun.sh) and a Chromium-based browser (Chrome, Brave, Edge).
 
+One command does everything below: downloads the extension, registers the companion with your agent, and tells you how to pair.
+
+```bash
+curl -fsSL https://browspark.krishm.dev/setup.sh | bash
+```
+
+Or by hand:
+
 **1. Register the companion** with your MCP client. It is published on npm as [`browspark-mcp`](https://www.npmjs.com/package/browspark-mcp); no clone needed.
 
 ```bash

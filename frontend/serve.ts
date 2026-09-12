@@ -19,7 +19,7 @@ const server = Bun.serve({
     try { pathname = decodeURIComponent(new URL(request.url).pathname); }
     catch { return reply('Bad request', 400); }
     if (pathname === '/') pathname = '/index.html';
-    if (!['/index.html', '/styles.css', '/main.js', ...(!preview ? ['/highlight.js'] : [])].includes(pathname) && !pathname.startsWith('/assets/')) {
+    if (!['/index.html', '/styles.css', '/main.js', '/setup.sh', ...(!preview ? ['/highlight.js'] : [])].includes(pathname) && !pathname.startsWith('/assets/')) {
       return reply('Not found', 404);
     }
     try {

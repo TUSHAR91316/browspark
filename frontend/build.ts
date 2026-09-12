@@ -13,5 +13,6 @@ const result = await Bun.build({
 });
 if (!result.success) throw new AggregateError(result.logs, 'Frontend build failed.');
 await cp(resolve(root, 'index.html'), resolve(outdir, 'index.html'));
+await cp(resolve(root, '..', 'setup.sh'), resolve(outdir, 'setup.sh'));
 await cp(resolve(root, 'assets'), resolve(outdir, 'assets'), { recursive: true });
 console.log('Built static site in frontend/dist.');
