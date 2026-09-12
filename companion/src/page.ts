@@ -399,10 +399,18 @@ export class Page {
   }
 
   async navigate(tabId: number, action: 'goto' | 'reload' | 'back' | 'forward', url?: string, timeoutMs = 20_000) {
-    const loaded = this.waitForLoad(tabId, timeoutMs);
     if (action === 'goto') {
       if (!url) throw new Error('url is required for goto');
-      const r = await this.cdp(tabId, 'Page.navigate', { url: /^[a-z]+:/i.test(url) ? url : 'https://' + url });
+      url = /^[a-z]+:/i.test(url) ? url : 'https://' + url;
+      if (this.s.modeOf(tabId) === 'extension') {
+        // Prepare New Tab before attaching; the destination still uses CDP and its domain policies.
+        await this.s.bridge.request('tabs.prepare', { tabId });
+        this.s.bridge.tabs = [];
+      }
+    }
+    const loaded = this.waitForLoad(tabId, timeoutMs);
+    if (action === 'goto') {
+      const r = await this.cdp(tabId, 'Page.navigate', { url });
       if (r.errorText) throw new Error(`Navigation failed: ${r.errorText}`);
     } else if (action === 'reload') {
       await this.cdp(tabId, 'Page.reload');

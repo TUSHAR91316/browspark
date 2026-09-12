@@ -5,11 +5,11 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { Bridge } from './bridge.ts';
 import { DirectChrome, type LaunchOptions } from './cdp.ts';
-import type { TabInfo } from '../../shared/protocol.ts';
+import { isNewTab, type TabInfo } from '../../shared/protocol.ts';
 import { currentClient, clients } from './context.ts';
 
 export type Mode = 'extension' | 'dev';
-export interface TabRecord { id: number; mode: Mode; url: string; title: string; shared: boolean; attached: boolean; unsupported?: string; active?: boolean; windowId?: number; agent?: boolean; context?: string }
+export interface TabRecord { id: number; mode: Mode; url: string; title: string; shared: boolean; attached: boolean; unsupported?: string; windowId?: number; agent?: boolean; context?: string }
 
 const profilesDir = () => process.env.BROWSERMCP_PROFILES ?? join(homedir(), '.browsermcp', 'profiles');
 export const profileDirFor = (context: string) => (context === 'default' ? process.env.BROWSERMCP_PROFILE ?? join(homedir(), '.browsermcp', 'profile') : join(profilesDir(), context));
@@ -77,17 +77,17 @@ export class Sessions extends EventEmitter {
     const out: TabRecord[] = [];
     if (this.bridge.connected) {
       const ext = refresh || !this.bridge.tabs.length ? (this.bridge.tabs = await this.bridge.request<TabInfo[]>('tabs.list')) : this.bridge.tabs;
-      for (const t of ext) out.push({ id: t.id, mode: 'extension', url: t.url, title: t.title, shared: t.shared, attached: t.attached, unsupported: t.unsupported, active: t.active, windowId: t.windowId, agent: t.agent });
+      for (const t of ext) out.push({ id: t.id, mode: 'extension', url: t.url, title: t.title, shared: t.shared, attached: t.attached, unsupported: t.unsupported, windowId: t.windowId, agent: t.agent });
     }
     for (const d of this.runningDevs()) for (const t of d.listTabs()) out.push({ id: t.id, mode: 'dev', url: t.url, title: t.title, shared: true, attached: !!t.sessionId, agent: true, context: d.name });
     return out;
   }
 
   /** Resolve and authorize a tab. Extension tabs must be shared by the user; dev tabs are always allowed. */
-  async resolve(tabId?: number): Promise<number> {
+  async resolve(tabId?: number, allowNewTab = false): Promise<number> {
     if (tabId !== undefined && this.devOfTab(tabId)) return tabId;
     if (tabId === undefined) {
-      const usable = (await this.tabs()).filter((t) => t.shared && !t.unsupported);
+      const usable = (await this.tabs()).filter((t) => t.shared && (!t.unsupported || (allowNewTab && isNewTab(t.url))));
       // Prefer tabs this particular agent opened, so several agents never default to each other's pages.
       const me = currentClient();
       const mine = me ? usable.filter((t) => me.ownedTabs.has(t.id)) : [];
@@ -95,9 +95,6 @@ export class Sessions extends EventEmitter {
       const own = usable.filter((t) => t.agent && ![...clients.values()].some((c) => c !== me && c.ownedTabs.has(t.id)));
       if (own.length && !me) return own[own.length - 1].id;
       if (usable.length === 1) return usable[0].id;
-      // Several shared tabs: work where the user is looking, in their current window.
-      const active = usable.find((t) => t.active && t.mode === 'extension');
-      if (active) return active.id;
       if (!usable.length) throw new Error(this.bridge.connected ? 'No usable tabs in the user\'s browser. Ask the user to share a tab in the extension dashboard (or open your own with browser_tabs {action:"new", url}). Do not launch the developer browser unless the user asked for it.' : this.runningDevs().length ? 'No usable tabs; open one with browser_tabs {action:"new", url}.' : 'Nothing is connected. Call browser_status for pairing instructions and ask the user to pair the extension. Do not launch the developer browser unless the user asked for it.');
       throw new Error(`tabId is required; usable tabs: ${usable.map((t) => `${t.id} (${t.mode}${t.context ? ':' + t.context : ''}: ${t.title || t.url})`).join(', ')}`);
     }
@@ -106,7 +103,7 @@ export class Sessions extends EventEmitter {
     if (!t) t = (await this.tabs(true)).find((x) => x.id === tabId);
     if (!t) throw new Error(`Tab ${tabId} does not exist (it may have been closed). Call browser_tabs.`);
     if (!t.shared) throw new Error(`Tab ${tabId} is not shared. The user must share it from the extension dashboard.`);
-    if (t.unsupported) throw new Error(`Tab ${tabId} is a ${t.unsupported}; Chrome does not allow automation there.`);
+    if (t.unsupported && !(allowNewTab && isNewTab(t.url))) throw new Error(`Tab ${tabId} is a ${t.unsupported}; Chrome does not allow automation there.`);
     return tabId;
   }
 

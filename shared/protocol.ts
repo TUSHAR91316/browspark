@@ -9,7 +9,7 @@ export interface Res { id: number; result?: unknown; error?: string }
 export interface Evt { event: EvtName; params?: unknown }
 export type Msg = Req | Res | Evt;
 
-export type ReqMethod = 'tabs.list' | 'tabs.create' | 'tabs.close' | 'tabs.activate' | 'tabs.hold' | 'window.size' | 'downloads.list' | 'tools.catalog' | 'cdp';
+export type ReqMethod = 'tabs.list' | 'tabs.create' | 'tabs.close' | 'tabs.activate' | 'tabs.hold' | 'tabs.prepare' | 'window.size' | 'downloads.list' | 'tools.catalog' | 'cdp';
 export type EvtName = 'hello' | 'tabs' | 'cdp.event' | 'detached' | 'ping' | 'tools.policy';
 
 export interface ToolInfo { name: string; description: string }
@@ -24,8 +24,7 @@ export interface TabInfo {
   shared: boolean;
   attached: boolean;
   windowId: number;
-  active: boolean;
-  /** Opened by the agent (lives in the agent window). */
+  /** Opened by the agent and shared automatically. */
   agent?: boolean;
   favIconUrl?: string;
   /** Set when chrome.debugger cannot attach (chrome://, web store, etc.). */
@@ -40,6 +39,9 @@ export interface DetachedParams { tabId: number; reason: string }
 export const isReq = (m: Msg): m is Req => 'method' in m && 'id' in m;
 export const isRes = (m: Msg): m is Res => 'id' in m && !('method' in m);
 export const isEvt = (m: Msg): m is Evt => 'event' in m;
+
+/** Native New Tab pages can be shared for navigation, but not inspected directly. */
+export const isNewTab = (url: string) => /^chrome:\/\/(?:newtab|new-tab-page)\/?(?:[?#][^\s]*)?$/i.test(url);
 
 /** Pages chrome.debugger refuses to attach to. */
 export function unsupportedReason(url: string): string | undefined {

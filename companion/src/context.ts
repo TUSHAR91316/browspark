@@ -18,7 +18,7 @@ export const json = (v: unknown): Result => text(typeof v === 'string' ? v : JSO
 export const run = (fn: () => Promise<Result | string | object | undefined | null | number | boolean>) =>
   fn().then((r) => (r === undefined || r === null ? text('(no result)') : typeof r !== 'object' ? text(String(r)) : 'content' in r && Array.isArray((r as Result).content) ? (r as Result) : json(r))).catch((e) => { noteUnsupported(e instanceof Error ? e.message : String(e)); return fail(e); });
 
-export const tabArg = z.number().int().optional().describe('Target tab id from browser_tabs. Optional: defaults to the tab the agent opened most recently, else the user\'s active shared tab in their current window.');
+export const tabArg = z.number().int().optional().describe('Target tab id from browser_tabs, which lists tabs across all windows. Defaults to the agent\'s most recently opened usable tab, or the only usable tab. Otherwise select a listed tabId.');
 export const refArg = z.string().describe('Element ref from browser_snapshot, e.g. "e12"');
 export const pageArgs = { offset: z.number().int().min(0).optional().describe('Pagination offset, default 0'), limit: z.number().int().min(1).max(500).optional().describe('Page size, default 50') };
 

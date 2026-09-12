@@ -6,13 +6,14 @@ import { policies, defaultPolicy, setDefaultPolicy, applyFetch, forgetTab, type 
 import { saveArtifact } from './artifacts.ts';
 import { writeFileSync } from 'node:fs';
 import type { Download } from './cdp.ts';
+import { isNewTab } from '../../shared/protocol.ts';
 
 export function registerBrowserTools(ctx: Ctx) {
   const { sessions, page, capture, registry } = ctx;
   const tab = (id?: number) => sessions.resolve(id);
   const owner = (id: number) => { const o = ownerOf(id); return o && o !== ctx.client ? ` (opened by agent "${o.name}")` : o ? ' (opened by you)' : ''; };
 
-  tool(ctx, 'browser_status', 'Connection status for both modes, pairing instructions, usable tabs, and open dialogs. Call this first if anything fails.', {}, async () => {
+  tool(ctx, 'browser_status', 'Connection status for both modes, pairing instructions, shared tabs across all windows, and open dialogs. Select a listed tabId to target a tab. Call this first if anything fails.', {}, async () => {
     const b = sessions.bridge;
     const lines = [`Companion bridge: ws://127.0.0.1:${b.port}`, `You are agent "${ctx.client.name}"${(await import('./context.ts')).clients.size > 1 ? `; other agents connected: ${[...(await import('./context.ts')).clients.values()].filter((c) => c !== ctx.client).map((c) => c.name).join(', ')}` : ''}.`];
     if (b.connected) lines.push(`Extension mode: connected to ${b.browser ?? 'an unknown Chromium browser'} (extension v${b.extensionVersion}). Tabs below are that browser's tabs. The user can open DevTools (F12) on a shared tab to watch your console, network, debugger, and emulation work in the standard panels; that does not conflict with you.`);
@@ -21,8 +22,8 @@ export function registerBrowserTools(ctx: Ctx) {
     if (!devs.length) lines.push('Developer mode: not running. Only launch it (browser_session) if the user asks for a separate browser or a tool says an operation needs it; otherwise work in the user\'s shared tabs.');
     for (const d of devs) lines.push(`Developer mode [${d.name}]: ${d.version}, pid ${d.pid}${d.headless ? ', headless' : ''}, profile ${d.profileDir}, downloads ${d.downloadDir}${d.proxy ? `, proxy ${d.proxy}` : ''}\n  CDP endpoint for Playwright/Puppeteer connectOverCDP: ${d.wsEndpoint}\n  Live view: http://127.0.0.1:${b.port}/live/<tabId>?token=${b.token}`);
     const tabs = (await sessions.tabs(true).catch(() => [])).filter((t) => t.shared);
-    lines.push(tabs.length ? `Usable tabs (${tabs.length}); to work on something else, open a tab with browser_tabs {action:"new"} in the user's window:` : 'Usable tabs: none — ask the user to share a tab, or open one with browser_tabs {action:"new", url}.');
-    for (const t of tabs) lines.push(`  [${t.id}] ${t.mode}${owner(t.id)} ${t.unsupported ? `(unsupported: ${t.unsupported}) ` : ''}${t.title || '(untitled)'} — ${t.url}${t.attached ? ' (attached)' : ''}${capture.get(t.id)?.active ? ' (inspecting)' : ''}${page.dialogs.has(t.id) ? ` — DIALOG OPEN: ${page.dialogs.get(t.id)!.type} "${page.dialogs.get(t.id)!.message}"` : ''}`);
+    lines.push(tabs.length ? `Usable tabs (${tabs.length}) across all windows; select a listed tabId:` : 'Usable tabs: none — ask the user to share a tab from any window, or open one with browser_tabs {action:"new", url}.');
+    for (const t of tabs) lines.push(`  [${t.id}] ${t.mode}${owner(t.id)} ${isNewTab(t.url) ? '(new tab: navigate to a website) ' : t.unsupported ? `(unsupported: ${t.unsupported}) ` : ''}${t.title || '(untitled)'} — ${t.url}${t.windowId !== undefined ? ` (window ${t.windowId})` : ''}${t.attached ? ' (attached)' : ''}${capture.get(t.id)?.active ? ' (inspecting)' : ''}${page.dialogs.has(t.id) ? ` — DIALOG OPEN: ${page.dialogs.get(t.id)!.type} "${page.dialogs.get(t.id)!.message}"` : ''}`);
     return lines.join('\n');
   });
 
@@ -52,7 +53,7 @@ export function registerBrowserTools(ctx: Ctx) {
     return `Launched context "${name}": ${d.version} (pid ${d.pid}) on devtools port ${d.port}, profile ${d.profileDir}${(devtools ?? !headless) ? ', DevTools opens on every tab' : ''}${proxy ? `, proxy ${proxy}` : ''}${d.loadedExtensions.length ? `, extensions: ${d.loadedExtensions.map((e) => e.id).join(', ')}` : ''}. CDP endpoint: ${d.wsEndpoint}. Tabs: ${tabs.map((t) => `[${t.id}] ${t.url}`).join(', ')}`;
   });
 
-  tool(ctx, 'browser_tabs', 'List, open, close, or activate tabs. By default tools act on the user\'s active shared tab in their current window; open a new tab (action:new, same window) only when the task needs a separate page. Never launch a separate browser just to get a tab. Dev-mode tabs are always usable.', {
+  tool(ctx, 'browser_tabs', 'List, open, close, or activate tabs across all windows. Select a listed tabId to target a shared tab. Without tabId, tools use the agent\'s own usable tab or the only usable tab; multiple shared tabs require an explicit choice. Open a new tab only when the task needs a separate page. Never launch a separate browser just to get a tab. Dev-mode tabs are always usable.', {
     action: z.enum(['list', 'new', 'close', 'activate']).default('list'),
     tabId: tabArg, url: z.string().optional().describe('URL for new'),
     mode: z.enum(['extension', 'dev']).optional().describe('Where to open a new tab; default dev if running, else extension'), context: z.string().optional().describe('Developer context for new'),
@@ -64,12 +65,12 @@ export function registerBrowserTools(ctx: Ctx) {
     const tabs = await sessions.tabs(true);
     const list = onlyUsable === false ? tabs : tabs.filter((t) => t.shared);
     if (!list.length) return onlyUsable === false ? 'No tabs.' : 'No usable tabs. Ask the user to share a tab in the extension dashboard, or launch the development browser.';
-    return list.map((t) => `[${t.id}] ${t.mode}${t.context ? ':' + t.context : ''}${owner(t.id)} ${t.shared ? 'shared' : 'not shared'}${t.unsupported ? ` (unsupported: ${t.unsupported})` : ''}${t.active && !t.agent ? " (user's active tab)" : ''}${t.attached ? ' debugging' : ''} — ${t.title} — ${t.url}`).join('\n');
+    return list.map((t) => `[${t.id}] ${t.mode}${t.context ? ':' + t.context : ''}${owner(t.id)} ${t.shared ? 'shared' : 'not shared'}${isNewTab(t.url) ? ' (new tab: navigate to a website)' : t.unsupported ? ` (unsupported: ${t.unsupported})` : ''}${t.windowId !== undefined ? ` (window ${t.windowId})` : ''}${t.attached ? ' debugging' : ''} — ${t.title} — ${t.url}`).join('\n');
   });
 
   tool(ctx, 'browser_navigate', 'Navigate a tab: goto a URL, reload, back, or forward. Waits for the load event.', {
     tabId: tabArg, action: z.enum(['goto', 'reload', 'back', 'forward']).default('goto'), url: z.string().optional().describe('Required for goto'), timeoutMs: z.number().int().optional(),
-  }, async ({ tabId, action, url, timeoutMs }) => { const id = await tab(tabId); const r = await page.navigate(id, action, url, timeoutMs); recorder.record(id, 'browser_navigate', { action, url }); return r; });
+  }, async ({ tabId, action, url, timeoutMs }) => { const id = await sessions.resolve(tabId, action === 'goto'); const r = await page.navigate(id, action, url, timeoutMs); recorder.record(id, 'browser_navigate', { action, url }); return r; });
 
   tool(ctx, 'browser_snapshot', 'Accessible snapshot of the page as an indented tree. Interactive elements get refs like [ref=e12] for click/fill/select/read/wait and the devtools_elements tool. Refs stay valid until the DOM changes; re-snapshot after navigation. diff:true returns only lines that changed since the previous snapshot of this tab.', {
     tabId: tabArg, diff: z.boolean().optional(),
