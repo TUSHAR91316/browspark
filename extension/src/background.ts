@@ -16,6 +16,7 @@ const attached = new Set<number>();
 const agentTabs = new Set<number>();     // ordinary browser tabs the agent opened
 let devMode: 'auto' | 'always' | 'never' = 'auto';
 const held = new Set<number>();          // tabs with an active inspection session: never idle-detach
+const ownedDownloads = new Map<string, { guid: string; tabId: number; url: string; filename: string; state: string; receivedBytes: number; totalBytes: number; startedAt: number }>();
 const windowBounds = new Map<number, { width?: number; height?: number; state?: string }>(); // originals, restored after emulation
 const lastUsed = new Map<number, number>();
 const IDLE_DETACH_MS_DEFAULT = 30_000;
@@ -132,10 +133,9 @@ async function handle(req: Req): Promise<Res> {
       return { id: req.id, result: { restored: !!orig } };
     }
     if (req.method === 'downloads.list') {
-      // Downloads started from shared tabs (the agent may not see the user's other downloads).
-      const items = await chrome.downloads.search({ orderBy: ['-startTime'], limit: 50 });
-      const shown = items.filter((d) => shareAll || (d.referrer && [...shared].length));
-      return { id: req.id, result: shown.map((d) => ({ guid: String(d.id), url: d.finalUrl || d.url, filename: d.filename.split('/').pop() ?? d.filename, path: d.filename, state: d.state === 'complete' ? 'completed' : d.state === 'interrupted' ? 'canceled' : 'inProgress', receivedBytes: d.bytesReceived, totalBytes: d.totalBytes, startedAt: Date.parse(d.startTime) })) };
+      // CDP identifies the originating tab. The downloads API has no tab id, so
+      // matching its URLs/referrers can leak another tab's files on the same site.
+      return { id: req.id, result: [...ownedDownloads.values()].filter((d) => isShared(d.tabId)).reverse() };
     }
     if (req.method === 'tabs.hold') {
       const { tabId, hold } = req.params as { tabId: number; hold: boolean };
@@ -311,7 +311,17 @@ chrome.runtime.onMessage.addListener((msg: PopupMsg, _s, reply) => {
 
 chrome.debugger.onEvent.addListener((source, method, params) => {
   const { tabId, sessionId } = source as { tabId?: number; sessionId?: string };
-  if (tabId !== undefined) evt('cdp.event', { tabId, method, params, sessionId });
+  if (tabId === undefined) return;
+  if (method === 'Page.downloadWillBegin' && isShared(tabId)) {
+    const p = params as { guid: string; url: string; suggestedFilename: string };
+    ownedDownloads.set(p.guid, { guid: p.guid, tabId, url: p.url, filename: p.suggestedFilename, state: 'inProgress', receivedBytes: 0, totalBytes: 0, startedAt: Date.now() });
+    if (ownedDownloads.size > 50) ownedDownloads.delete(ownedDownloads.keys().next().value!);
+  } else if (method === 'Page.downloadProgress') {
+    const p = params as { guid: string; state: string; receivedBytes: number; totalBytes: number };
+    const download = ownedDownloads.get(p.guid);
+    if (download?.tabId === tabId) Object.assign(download, { state: p.state, receivedBytes: p.receivedBytes, totalBytes: p.totalBytes });
+  }
+  evt('cdp.event', { tabId, method, params, sessionId });
 });
 chrome.debugger.onDetach.addListener(({ tabId }, reason) => {
   if (tabId === undefined) return;

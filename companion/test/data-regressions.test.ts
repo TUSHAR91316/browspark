@@ -102,6 +102,32 @@ test('failed breakpoint removal preserves the local entry and reports the failur
   assert.ok(st.breakpoints.has('line'));
 });
 
+for (const mode of ['extension', 'dev']) test(`download wait returns the newest already completed match in ${mode} mode`, async () => {
+  const { sessions, ctx, call } = fixture();
+  const make = (guid: string, startedAt: number, url = 'https://example.test/report.csv') => ({
+    guid, startedAt, url, filename: 'report.csv', path: `/downloads/${guid}`, state: 'completed', receivedBytes: 10, totalBytes: 10,
+  });
+  const downloads = [make('old', 1), make('new', 2), make('unrelated', 3, 'https://example.test/other.txt')];
+  sessions.bridge.request = async () => downloads;
+  sessions.devOfTab = () => mode === 'dev' ? { downloads: new Map(downloads.map((d) => [d.guid, d])) } : undefined;
+  registerBrowserTools(ctx);
+  const result = JSON.parse(await call('browser_download', { action: 'wait', urlContains: 'report.csv', timeoutMs: 100 }));
+  assert.equal(result.path, '/downloads/new');
+});
+
+test('download wait waits for a newer pending match instead of returning an older file', async () => {
+  const { sessions, ctx, call } = fixture();
+  let polls = 0;
+  sessions.bridge.request = async () => [
+    { guid: 'old', startedAt: 1, url: 'https://example.test/report.csv', state: 'completed', path: '/old' },
+    { guid: 'new', startedAt: 2, url: 'https://example.test/report.csv', state: ++polls > 1 ? 'completed' : 'inProgress', path: '/new' },
+  ];
+  registerBrowserTools(ctx);
+  const result = JSON.parse(await call('browser_download', { action: 'wait', urlContains: 'report.csv', timeoutMs: 1000 }));
+  assert.equal(result.path, '/new');
+  assert.equal(polls, 2);
+});
+
 test('WebSockets and HTTP share the network limit, including indexes and dropped counts', async () => {
   const { sessions, capture } = fixture();
   const st = await capture.start(1, { maxNetwork: 2 });

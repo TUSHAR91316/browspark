@@ -117,7 +117,7 @@ export function registerBrowserTools(ctx: Ctx) {
     return `Policy ${JSON.stringify(p)} applied${id !== undefined ? ` to tab ${id}` : ''}${dflt ? ' and as default for new agent tabs' : ''}`;
   });
 
-  tool(ctx, 'browser_download', 'Downloads started in the browser: list them, or wait for one to complete and get its file path. Developer mode saves into the context\'s download directory; extension mode reports the browser\'s own downloads.', {
+  tool(ctx, 'browser_download', 'Downloads started in the browser: list them, or wait for the newest matching download to complete, including one already completed, and get its file path when available. Developer mode saves into the context\'s download directory; extension mode reports downloads observed on shared tabs.', {
     action: z.enum(['list', 'wait']).default('list'), tabId: tabArg, urlContains: z.string().optional(), timeoutMs: z.number().int().optional().describe('wait: default 60000'),
   }, async ({ action, tabId, urlContains, timeoutMs }) => {
     const id = await tab(tabId);
@@ -126,10 +126,10 @@ export function registerBrowserTools(ctx: Ctx) {
     const fmt = (d: Download) => ({ url: d.url, filename: d.filename, path: d.path, state: d.state, receivedBytes: d.receivedBytes, totalBytes: d.totalBytes, startedAt: new Date(d.startedAt).toISOString() });
     if (action === 'list') return (await list()).filter((d) => !urlContains || d.url.includes(urlContains)).sort((a, b) => b.startedAt - a.startedAt).slice(0, 30).map(fmt);
     const t0 = Date.now(), limit = timeoutMs ?? 60_000;
-    const known = new Set((await list()).filter((d) => d.state === 'completed').map((d) => d.guid));
     while (Date.now() - t0 < limit) {
-      const hit = (await list()).find((d) => d.state === 'completed' && !known.has(d.guid) && (!urlContains || d.url.includes(urlContains)));
-      if (hit) return fmt(hit);
+      const hit = (await list()).filter((d) => !urlContains || d.url.includes(urlContains)).sort((a, b) => b.startedAt - a.startedAt)[0];
+      if (hit?.state === 'completed') return fmt(hit);
+      if (hit?.state === 'canceled') throw new Error(`Download canceled: ${hit.filename}`);
       await new Promise((r) => setTimeout(r, 300));
     }
     throw new Error(`No download completed within ${limit}ms${urlContains ? ` matching "${urlContains}"` : ''}`);

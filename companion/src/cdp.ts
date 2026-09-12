@@ -14,7 +14,7 @@ export interface LaunchOptions {
   /** Unpacked extension directories to load into this browser. */ extensions?: string[];
   /** Where downloads land (default ~/.browspark/downloads/<context>). */ downloadDir?: string;
 }
-export interface Download { guid: string; url: string; filename: string; path: string; state: 'inProgress' | 'completed' | 'canceled'; receivedBytes: number; totalBytes: number; startedAt: number; tabId?: number }
+export interface Download { guid: string; url: string; filename: string; path?: string; state: 'inProgress' | 'completed' | 'canceled'; receivedBytes: number; totalBytes: number; startedAt: number; tabId?: number }
 // Chrome tab ids are int32; developer-mode ids start above that range so the two namespaces can never collide.
 let nextDevTabId = 2 ** 31;
 

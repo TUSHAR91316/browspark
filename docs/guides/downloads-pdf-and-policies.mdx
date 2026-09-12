@@ -5,9 +5,9 @@ description: "Collect files the browser downloads, print pages to PDF, and fence
 
 ## Downloads
 
-`browser_download {action: "list"}` reports downloads: in extension mode the browser's own download list (filtered to the agent's tabs unless Share everything is on), in developer mode the files in the context's download directory (`~/.browspark/downloads/<context>` unless overridden at launch).
+`browser_download {action: "list"}` reports downloads observed while the debugger is attached to a shared tab. Extension mode uses tab-specific browser events, so another tab's downloads stay private even on the same website. It reports the suggested filename and progress; the local file path is unavailable in this mode. Developer mode reports files in the context's download directory (`~/.browspark/downloads/<context>` unless overridden at launch), including their paths.
 
-`{action: "wait", urlContains, timeoutMs}` blocks until a matching download completes and returns its path, which is what you want right after clicking an "Export CSV" button.
+`{action: "wait", urlContains, timeoutMs}` returns a matching completed download immediately, or waits for one to complete. Use it right after clicking an "Export CSV" button; a file path is included when available.
 
 ## PDF
 

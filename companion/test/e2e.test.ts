@@ -62,6 +62,11 @@ describe.skipIf(skip)('e2e', () => {
 beforeAll(async () => {
   // static server for the deterministic test app
   http = createServer((req, res) => {
+    if (req.url?.startsWith('/download?')) {
+      res.setHeader('Content-Type', 'text/plain');
+      res.setHeader('Content-Disposition', 'attachment; filename="browspark-test.txt"');
+      res.end('download fixture'); return;
+    }
     const p = join(ROOT, 'test-apps', req.url === '/' ? 'basic.html' : req.url!);
     try { res.setHeader('content-type', extname(p) === '.html' ? 'text/html' : 'text/plain'); res.end(readFileSync(p)); } catch { res.statusCode = 404; res.end(); }
   }).listen(0, '127.0.0.1');
@@ -259,6 +264,41 @@ test('snapshot, fill, select, click, read, key, wait, scroll, frames', async () 
   assert.match(await ok('browser_scroll', { direction: 'down', amount: 5000 }), /Scrolled down/);
   const shot = await call('browser_screenshot');
   assert.ok(shot.img?.data.length > 1000 && shot.img.mimeType === 'image/png');
+});
+
+test('downloads stay scoped to their originating shared tab on the same origin', async () => {
+  await ok('browser_navigate', { tabId, url: appUrl });
+  await ok('browser_snapshot', { tabId }); // attach and enable Page events
+  await cdp.send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: join(profile, 'downloads'), eventsEnabled: true });
+  const { targetInfos } = await cdp.send('Target.getTargets');
+  const privateTarget = targetInfos.find((t: any) => t.type === 'page' && t.url === appUrl + 'page2.html');
+  const sharedTarget = targetInfos.find((t: any) => t.type === 'page' && t.url === appUrl);
+  assert.ok(privateTarget && sharedTarget);
+  const { sessionId: privateSession } = await cdp.send('Target.attachToTarget', { targetId: privateTarget.targetId, flatten: true });
+  const { sessionId: sharedSession } = await cdp.send('Target.attachToTarget', { targetId: sharedTarget.targetId, flatten: true });
+  const download = async (sessionId: string, suffix: string) => {
+    const url = appUrl + 'download?' + suffix;
+    await cdp.send('Runtime.evaluate', { expression: `(() => { const a = document.createElement('a'); a.href = ${JSON.stringify(url)}; document.body.append(a); a.click(); a.remove(); })()`, userGesture: true }, sessionId);
+    for (let i = 0; i < 100; i++) {
+      const event = cdp.events.find((e) => e.method === 'Browser.downloadWillBegin' && e.params.url === url);
+      if (event && cdp.events.some((e) => e.method === 'Browser.downloadProgress' && e.params.guid === event.params.guid && e.params.state === 'completed')) return;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    assert.fail('fixture download did not complete: ' + suffix);
+  };
+  try {
+    await download(privateSession, 'private');
+    assert.doesNotMatch(await ok('browser_download', { action: 'list' }), /download\?private/, 'an unshared same-origin tab cannot expose download metadata');
+    await download(sharedSession, 'shared');
+    const result = await ok('browser_download', { action: 'wait', urlContains: 'download?shared', timeoutMs: 2000 });
+    assert.match(result, /completed/);
+    assert.match(result, /browspark-test.txt/);
+    assert.doesNotMatch(result, /download\?private/);
+  } finally {
+    await cdp.send('Target.detachFromTarget', { sessionId: privateSession });
+    await cdp.send('Target.detachFromTarget', { sessionId: sharedSession });
+    await cdp.send('Browser.setDownloadBehavior', { behavior: 'default' });
+  }
 });
 
 test('dialogs block evaluation until handled', async () => {
