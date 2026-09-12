@@ -12,6 +12,9 @@ export type Mode = 'extension' | 'dev';
 export interface TabRecord { id: number; mode: Mode; url: string; title: string; shared: boolean; attached: boolean; unsupported?: string; windowId?: number; agent?: boolean; context?: string }
 
 const profilesDir = () => process.env.BROWSPARK_PROFILES ?? join(homedir(), '.browspark', 'profiles');
+const CONTEXT_NAME = /^[a-z0-9_-]{1,40}$/i;
+/** Context names become directory names under ~/.browspark; reject anything that is not a plain name. */
+export const assertContextName = (context: string) => { if (!CONTEXT_NAME.test(context)) throw new Error('context names: letters, digits, - and _ only'); };
 export const profileDirFor = (context: string) => (context === 'default' ? process.env.BROWSPARK_PROFILE ?? join(homedir(), '.browspark', 'profile') : join(profilesDir(), context));
 
 /**
@@ -37,7 +40,7 @@ export class Sessions extends EventEmitter {
   devFor(context: string): DirectChrome {
     let d = this.devs.get(context);
     if (!d) {
-      if (!/^[a-z0-9_-]{1,40}$/i.test(context)) throw new Error('context names: letters, digits, - and _ only');
+      assertContextName(context);
       d = new DirectChrome(profileDirFor(context), context);
       this.devs.set(context, d);
       d.on('cdp.event', (e) => this.emit('cdp.event', e));
@@ -55,6 +58,7 @@ export class Sessions extends EventEmitter {
   }
   async launch(context: string, opts: LaunchOptions) { const d = this.devFor(context); await d.launch(opts); return d; }
   async deleteContext(context: string) {
+    assertContextName(context);
     const d = this.devs.get(context); if (d?.running) throw new Error(`Context "${context}" is running; close it first`);
     const dir = profileDirFor(context); if (existsSync(dir)) rmSync(dir, { recursive: true, force: true });
     this.devs.delete(context);
