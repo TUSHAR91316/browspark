@@ -1,6 +1,6 @@
 // devtools_session, devtools_events, devtools_capabilities, devtools_cdp
 import { z } from 'zod';
-import { type Ctx, tool, tabArg, matcher, paginate } from '../context.ts';
+import { type Ctx, clients, tool, tabArg, matcher, paginate } from '../context.ts';
 
 /** Domains probed for capability reporting. Each probe is cheap and side-effect free (or immediately undone). */
 const PROBES: [string, string, unknown?][] = [
@@ -17,6 +17,7 @@ const capCache = new Map<string, Record<string, string>>();
 export function registerSessionTools(ctx: Ctx) {
   const { sessions, capture } = ctx;
   const tab = (id?: number) => sessions.resolve(id);
+  const userName = (id: string) => clients.get(id)?.name ?? id;
 
   tool(ctx, 'devtools_session', 'Start or stop an inspection session on a tab. While active, console, network, exceptions, issues, scripts, and debugger events are collected across reloads. Stop removes every breakpoint, override, and emulation the session set. clear drops collected data.', {
     action: z.enum(['start', 'stop', 'status', 'clear']), tabId: tabArg,
@@ -25,12 +26,12 @@ export function registerSessionTools(ctx: Ctx) {
     what: z.enum(['all', 'console', 'network', 'events', 'issues']).optional().describe('For clear'),
   }, async ({ action, tabId, bodies, maxBodyBytes, what }) => {
     const id = await tab(tabId);
-    if (action === 'start') { const st = await capture.start(id, { ...(bodies !== undefined && { bodies }), ...(maxBodyBytes && { maxBodyBytes }) }, ctx.client.name); return `Inspecting tab ${id} (${sessions.modeOf(id)} mode). bodies=${st.opts.bodies}. ${st.frames.size} frame(s), ${st.contexts.size} context(s).${st.users.size > 1 ? ` Shared with: ${[...st.users].filter((u) => u !== ctx.client.name).join(', ')}.` : ''}`; }
-    if (action === 'stop') { const notes = await capture.stop(id, ctx.client.name); return notes.some((n) => n.includes('session kept')) ? `Left the inspection session on tab ${id}; ${notes[0]}.` : `Stopped inspecting tab ${id}. Cleanup done.${notes.length ? ' Notes: ' + notes.join('; ') : ''}`; }
+    if (action === 'start') { const st = await capture.start(id, { ...(bodies !== undefined && { bodies }), ...(maxBodyBytes && { maxBodyBytes }) }, ctx.client.id); return `Inspecting tab ${id} (${sessions.modeOf(id)} mode). bodies=${st.opts.bodies}. ${st.frames.size} frame(s), ${st.contexts.size} context(s).${st.users.size > 1 ? ` Shared with: ${[...st.users].filter((u) => u !== ctx.client.id).map(userName).join(', ')}.` : ''}`; }
+    if (action === 'stop') { const notes = await capture.stop(id, ctx.client.id); return notes.some((n) => n.includes('session kept')) ? `Left the inspection session on tab ${id}; still in use by ${[...capture.require(id).users].map(userName).join(', ')}; session kept.` : `Stopped inspecting tab ${id}. Cleanup done.${notes.length ? ' Notes: ' + notes.join('; ') : ''}`; }
     if (action === 'clear') { capture.clear(id, what); return `Cleared ${what ?? 'all'} for tab ${id}`; }
     const st = capture.get(id);
     if (!st) return `Tab ${id}: not inspecting.`;
-    return { tabId: id, active: st.active, users: [...st.users], mode: sessions.modeOf(id), startedAt: new Date(st.startedAt).toISOString(), stoppedAt: st.stoppedAt && new Date(st.stoppedAt).toISOString(), options: st.opts, counts: { console: st.console.length, network: st.network.length, events: st.events.length, issues: st.issues.length, scripts: st.scripts.size, styleSheets: st.styleSheets.size, frames: st.frames.size, breakpoints: st.breakpoints.size, overrides: st.overrides.size, blocked: st.blocked.length }, dropped: st.dropped, paused: !!st.paused, recordings: st.recordings };
+    return { tabId: id, active: st.active, users: [...st.users].map(userName), mode: sessions.modeOf(id), startedAt: new Date(st.startedAt).toISOString(), stoppedAt: st.stoppedAt && new Date(st.stoppedAt).toISOString(), options: st.opts, counts: { console: st.console.length, network: st.network.length, events: st.events.length, issues: st.issues.length, scripts: st.scripts.size, styleSheets: st.styleSheets.size, frames: st.frames.size, breakpoints: st.breakpoints.size, overrides: st.overrides.size, blocked: st.blocked.length }, dropped: st.dropped, paused: !!st.paused, recordings: st.recordings };
   });
 
   tool(ctx, 'devtools_events', 'Read or wait for events collected in the inspection session: console messages, exceptions, request start/finish/fail, breakpoint pauses, navigations, issues, service worker and animation events, recording completion. Use afterId to page forward; wait:true blocks until a matching event arrives.', {

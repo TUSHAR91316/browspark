@@ -45,7 +45,7 @@ export interface TabState {
   blocked: string[]; fetchEnabled: boolean; vitalsScriptId?: string; cleanups: (() => Promise<void>)[];
   waiters: Set<{ pred: (e: Evt) => boolean; resolve: (e: Evt) => void }>;
   recordings: { kind: string; startedAt: number; done: boolean; artifact?: string }[];
-  /** Agents currently using this session. stop() only tears down when the last one leaves. */
+  /** MCP connection IDs using this session. stop() only tears down when the last one leaves. */
   users: Set<string>;
 }
 
@@ -148,6 +148,11 @@ export class Capture {
     for (const m of ['Animation.disable', 'ServiceWorker.disable', 'Security.disable', 'Audits.disable', 'CSS.disable', 'DOM.disable', 'Debugger.disable', 'Network.disable', 'Log.disable']) await cdp(m);
     await this.sessions.hold(tabId, 'session', false);
     return notes;
+  }
+
+  /** A disconnected transport leaves every inspection it joined, including inactive tabs. */
+  async release(user: string): Promise<void> {
+    await Promise.all([...this.states.values()].filter((st) => st.users.has(user)).map((st) => this.stop(st.tabId, user)));
   }
 
   clear(tabId: number, what: 'all' | 'console' | 'network' | 'events' | 'issues' = 'all') {

@@ -43,16 +43,28 @@ async function relayTo(url: string): Promise<never> {
   const relay = new Server({ name: 'browspark', version: '0.2.1' }, { capabilities: { tools: {} } });
   // Connect upstream only once we know who the downstream client is, so the companion can name this agent correctly.
   let upstreamReady!: Promise<Client>;
+  let upstreamTransport: StreamableHTTPClientTransport | undefined;
   relay.oninitialized = () => {
     const who = relay.getClientVersion()?.name ?? 'relay';
-    upstreamReady = (async () => { const c = new Client({ name: `relay:${who}`, version: '0' }); await c.connect(new StreamableHTTPClientTransport(new URL(url))); return c; })();
+    upstreamReady = (async () => { const c = new Client({ name: `relay:${who}`, version: '0' }); upstreamTransport = new StreamableHTTPClientTransport(new URL(url)); await c.connect(upstreamTransport); return c; })();
     upstreamReady.catch((err) => { console.error(`browspark: port ${port} is in use but the companion there did not answer (${(err as Error).message}). Stop the other process or use --port.`); process.exit(1); });
   };
   relay.setRequestHandler(ListToolsRequestSchema, async () => (await upstreamReady).listTools());
   relay.setRequestHandler(CallToolRequestSchema, async (req) => (await upstreamReady).callTool({ name: req.params.name, arguments: req.params.arguments ?? {} }) as any);
   await relay.connect(new StdioServerTransport());
   console.error(`browspark: relaying stdio to the companion already running on port ${port}`);
-  process.stdin.on('close', () => process.exit(0));
+  let closing = false;
+  const close = async () => {
+    if (closing) return; closing = true;
+    setTimeout(() => process.exit(0), 5000).unref();
+    await upstreamReady?.catch(() => undefined);
+    await upstreamTransport?.terminateSession().catch(() => {});
+    await upstreamTransport?.close().catch(() => {});
+    process.exit(0);
+  };
+  relay.onclose = close;
+  process.stdin.on('close', close);
+  process.on('SIGINT', close); process.on('SIGTERM', close);
   await new Promise(() => {});
   throw new Error('unreachable');
 }
@@ -74,7 +86,7 @@ function buildServer(label: string): McpServer {
   for (const reg of [registerBrowserTools, registerSessionTools, registerConsoleTools, registerNetworkTools, registerSourcesTools, registerDebuggerTools, registerElementsTools, registerProfilingTools, registerApplicationTools, registerEnvironmentTools, registerLighthouseTools, registerRecorderTools]) reg(ctx);
   // Name the agent after what the MCP client calls itself (opencode, claude-code, gemini…); a relay passes the real name through.
   server.server.oninitialized = () => { const v = server.server.getClientVersion(); if (v?.name) client.name = v.name.replace(/^relay:/, ''); console.error(`browspark: agent connected: ${client.name}`); };
-  server.server.onclose = () => { clients.delete(client.id); console.error(`browspark: agent disconnected: ${client.name}`); };
+  server.server.onclose = () => { clients.delete(client.id); void capture.release(client.id).catch((e) => console.error(`browspark: inspection cleanup failed for ${client.name}: ${e.message}`)); console.error(`browspark: agent disconnected: ${client.name}`); };
   return server;
 }
 installFetchHandler({ sessions, capture });
