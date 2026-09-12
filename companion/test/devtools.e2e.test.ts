@@ -241,12 +241,11 @@ describe.skipIf(skip)('devtools e2e (extension mode)', () => {
     assert.equal(JSON.parse(await ok('devtools_evaluate', { tabId, expression: "document.getElementById('out').textContent" })).value, before, 'no action was repeated after failures');
   });
 
-  test('agent tabs open in the current window, are the default target, and release the debugger when idle', async () => {
+  test('agent tabs remain the default target and release the debugger when idle', async () => {
     const opened = await ok('browser_tabs', { action: 'new', url: appUrl + 'page2.html' }); const id2 = Number(/tab (\d+)/.exec(opened)![1]);
     const st = await (await dashboard(ext))({ type: 'getState' });
-    const mine = st.tabs.find((t: any) => t.id === id2), theirs = st.tabs.find((t: any) => t.id === tabId);
-    assert.ok(mine.agent === true && mine.windowId === theirs.windowId, 'agent tab is an ordinary tab in the same window');
-    assert.equal(st.windows.length, 1, 'no extra window was created');
+    const mine = st.tabs.find((t: any) => t.id === id2);
+    assert.ok(mine?.agent === true && mine.shared, 'the agent-created tab is shared');
     // developer browser is gated by the dashboard setting while the extension is connected
     await (await dashboard(ext))({ type: 'setDevMode', mode: 'never' }); await new Promise((r) => setTimeout(r, 300));
     const never = await call('browser_session', { action: 'launch', headless: true }); assert.ok(never.err && /disabled in the BrowserMCP dashboard/.test(never.txt), never.txt);

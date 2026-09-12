@@ -2,7 +2,7 @@ import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { WebSocket } from 'ws';
 import { Bridge } from '../src/bridge.ts';
-import { PROTOCOL_VERSION, unsupportedReason, type Req } from '../../shared/protocol.ts';
+import { PROTOCOL_VERSION, isNewTab, unsupportedReason, type Req } from '../../shared/protocol.ts';
 
 const hello = (token: string) => JSON.stringify({ event: 'hello', params: { token, version: PROTOCOL_VERSION, extensionVersion: 't' } });
 const open = (ws: WebSocket) => new Promise<void>((r) => ws.once('open', () => r()));
@@ -66,4 +66,17 @@ test('unsupportedReason flags internal pages', () => {
   assert.equal(unsupportedReason('https://example.com'), undefined);
   assert.equal(unsupportedReason('about:blank'), undefined);
   assert.ok(unsupportedReason('chrome://newtab/'));
+});
+
+test('isNewTab recognizes only native Chrome New Tab URLs', () => {
+  for (const host of ['newtab', 'new-tab-page']) {
+    for (const suffix of ['', '/', '?source=test', '/?source=test#section', '#section']) {
+      const url = `chrome://${host}${suffix}`;
+      assert.equal(isNewTab(url), true, url);
+      assert.ok(unsupportedReason(url), 'New Tab is still unavailable for direct CDP inspection');
+    }
+  }
+  for (const url of ['', 'newtab', 'chrome:newtab', 'chrome:/newtab', 'about:newtab', 'about:blank', 'https://newtab/', 'chrome://settings/', 'chrome://newtab.example/', 'chrome://newtab-extra/', 'chrome://newtab/path', 'chrome://newtab//', 'chrome://new-tab-page-extra/', 'chrome://new-tab-page/path', 'chrome://user@newtab/', 'chrome://newtab:123/', 'chrome://settings/?next=chrome://newtab/']) {
+    assert.equal(isNewTab(url), false, url);
+  }
 });
