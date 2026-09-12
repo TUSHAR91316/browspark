@@ -5,7 +5,8 @@ description: "The three pieces, how they talk, and what happens on a single tool
 
 ## The pieces
 
-<img src="/images/how-it-works.gif" alt="An MCP client talks to the companion over stdio or HTTP; the companion drives shared tabs through the Chrome extension over WebSocket, or a developer-mode Chrome directly over CDP" />
+<img className="block dark:hidden" src="/images/how-it-works-light.gif" alt="An MCP client talks to the companion over stdio or HTTP; the companion drives shared tabs through the Chrome extension over WebSocket, or a developer-mode Chrome directly over CDP" />
+<img className="hidden dark:block" src="/images/how-it-works-dark.gif" alt="An MCP client talks to the companion over stdio or HTTP; the companion drives shared tabs through the Chrome extension over WebSocket, or a developer-mode Chrome directly over CDP" />
 
 - **Companion** (`companion/`): the MCP server. Registers 43 tools, keeps per-tab capture state (console, network, scripts, paused frames, issues), holds artifacts, and routes each command to either the extension or a developer browser.
 - **Extension** (`extension/`): a Manifest V3 service worker that owns the WebSocket to the companion and attaches Chrome's debugger to shared tabs, plus the full-page dashboard where you share tabs, switch tools on and off, and read the activity log.

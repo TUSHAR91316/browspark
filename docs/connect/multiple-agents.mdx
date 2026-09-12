@@ -9,7 +9,8 @@ You can connect as many agents as you like. They share one companion, one extens
 
 The first companion process to start owns port `9223`. Every companion started afterwards, by any other client, finds the port taken and becomes a **relay**: a thin stdio server that forwards `tools/list` and `tools/call` to the owner over the HTTP endpoint. From the client's point of view nothing changes; from the extension's point of view there is still exactly one connection.
 
-<img src="/images/multiple-agents.gif" alt="Claude Code, OpenCode and Codex reaching one extension: the first companion owns port 9223 and the others relay to it over HTTP" />
+<img className="block dark:hidden" src="/images/multiple-agents-light.gif" alt="Claude Code, OpenCode and Codex reaching one extension: the first companion owns port 9223 and the others relay to it over HTTP" />
+<img className="hidden dark:block" src="/images/multiple-agents-dark.gif" alt="Claude Code, OpenCode and Codex reaching one extension: the first companion owns port 9223 and the others relay to it over HTTP" />
 
 The relay passes the downstream client's name through, so the owner still knows which agent is calling. Stopping the owner ends the relays too; the next client to start becomes the new owner.
 
