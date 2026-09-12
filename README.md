@@ -1,4 +1,4 @@
-# BrowserMCP
+# Browspark
 
 Local MCP server that lets an AI agent operate websites and debug web applications in Chrome. Two connection modes:
 
@@ -7,33 +7,34 @@ Local MCP server that lets an AI agent operate websites and debug web applicatio
 
 Developer tools are a first-class part of the product: Console, Network, Sources, Debugger, Elements, Performance, CPU and memory profiling, Application storage, service workers, coverage, emulation, accessibility, security, Lighthouse, and a recorder.
 
-<p><img src="docs/dashboard-overview-dark.png" width="800" alt="Dashboard overview, dark theme"></p>
+<p><img src="docs/images/dashboard-overview-dark.png" width="800" alt="Dashboard overview, dark theme"></p>
+
+Full documentation, including a reference page per tool, lives in [`docs/`](docs/) as a Mintlify site (`cd docs && bunx mint dev` to preview).
 
 ## Setup
 
-```bash
-bun install && bun run build
-```
+Requires [Bun](https://bun.sh) and a Chromium-based browser.
 
-1. Load the extension: `chrome://extensions` → Developer mode → Load unpacked → the `extension/` folder. Or `bun run package` and load `dist/browsermcp-extension.zip` unpacked.
-2. Register the companion with your MCP client. The dashboard's Overview setup includes instructions for Claude Code, Codex, OpenCode, Cursor, Kilo, and Antigravity. It runs straight from source on Bun.
+1. Register the companion with your MCP client. It is published on npm as [`browspark-mcp`](https://www.npmjs.com/package/browspark-mcp) (alias `browspark`), so no clone is needed. The dashboard's Overview setup includes instructions for Claude Code, Codex, OpenCode, Cursor, Kilo, and Antigravity.
 
 ```bash
-claude mcp add browsermcp -- bun /absolute/path/to/browsermcp/companion/src/index.ts
+claude mcp add browspark -- bunx browspark-mcp@latest
 ```
+
+2. Load the extension: clone this repo, run `bun install && bun run build`, then `chrome://extensions` → Developer mode → Load unpacked → the `extension/` folder. Or `bun run package` and load `dist/browspark-extension.zip` unpacked.
 
 For OpenCode, add to `opencode.json`:
 
 ```json
-{ "mcp": { "browsermcp": { "type": "local", "command": ["bun", "/absolute/path/to/browsermcp/companion/src/index.ts"], "enabled": true } } }
+{ "mcp": { "browspark": { "type": "local", "command": ["bunx", "browspark-mcp@latest"], "enabled": true } } }
 ```
 
-For clients that take a URL instead of a command (Gemini connected apps, web agents), the companion also serves MCP over Streamable HTTP at `http://127.0.0.1:9223/mcp?token=<pairing token>` while it runs; the dashboard's Settings page shows the exact URL with a copy button. Start it standalone with `bun companion/src/index.ts --http-only` if no stdio client launches it. Sandboxed clients that cannot read the source tree (Gemini's command option) should use the URL, or run the single-file build from `bun run compile` (`dist/browsermcp`). The token is a password: never expose the endpoint beyond localhost without a tunnel that keeps it in the URL.
+For clients that take a URL instead of a command (Gemini connected apps, web agents), the companion also serves MCP over Streamable HTTP at `http://127.0.0.1:9223/mcp?token=<pairing token>` while it runs; the dashboard's Settings page shows the exact URL with a copy button. Start it standalone with `bunx browspark-mcp@latest --http-only` if no stdio client launches it. Sandboxed clients that cannot read the source tree (Gemini's command option) should use the URL, or run the single-file build from `bun run compile` (`dist/browspark`, needs a clone). The token is a password: never expose the endpoint beyond localhost without a tunnel that keeps it in the URL.
 
 3. Pair once: click the extension icon to open the dashboard. Ask the agent to call `browser_status`; it prints a token. Paste it and click Connect.
 4. Share tabs in the Tabs view, or switch on "Share everything" to include every current and future tab. Stop revokes access instantly.
 
-Developer mode needs no pairing: the agent calls `browser_session {action:"launch"}`. Named contexts (`{context:"work"}`) are separate browsers with their own persistent profiles under `~/.browsermcp/profiles/`, and several can run at once; the default profile lives in `~/.browsermcp/profile` (override with `BROWSERMCP_PROFILE`). Each running context prints a CDP endpoint that Playwright or Puppeteer can `connectOverCDP` to, and a live-view URL (`http://127.0.0.1:9223/live/<tabId>?token=…`) that streams the tab into any browser with click-through control, useful for headless runs. Large exports go to `~/.browsermcp/artifacts` (`BROWSERMCP_ARTIFACTS`). The bridge port is `9223` (`--port`, `BROWSERMCP_PORT`).
+Developer mode needs no pairing: the agent calls `browser_session {action:"launch"}`. Named contexts (`{context:"work"}`) are separate browsers with their own persistent profiles under `~/.browspark/profiles/`, and several can run at once; the default profile lives in `~/.browspark/profile` (override with `BROWSPARK_PROFILE`). Each running context prints a CDP endpoint that Playwright or Puppeteer can `connectOverCDP` to, and a live-view URL (`http://127.0.0.1:9223/live/<tabId>?token=…`) that streams the tab into any browser with click-through control, useful for headless runs. Large exports go to `~/.browspark/artifacts` (`BROWSPARK_ARTIFACTS`). The bridge port is `9223` (`--port`, `BROWSPARK_PORT`).
 
 ## Tools
 
@@ -51,7 +52,7 @@ Developer mode needs no pairing: the agent calls `browser_session {action:"launc
 | `browser_download` | List downloads or wait for one and get its path |
 | `browser_webmcp` | List and invoke tools a page exposes through WebMCP (`navigator.modelContext`) |
 
-**Developer tools** (both modes unless noted; see [docs/capabilities.md](docs/capabilities.md))
+**Developer tools** (both modes unless noted; see [docs/reference/capability-matrix.mdx](docs/reference/capability-matrix.mdx))
 
 | Tool | Purpose |
 |---|---|
@@ -70,7 +71,7 @@ Exports use Chrome's own formats: `.json` traces (DevTools Performance, Perfetto
 
 ## Notes on behavior
 
-- Chrome shows a "BrowserMCP started debugging this browser" bar on shared tabs. It is Chromium's own notice for the debugger API and cannot be suppressed by the extension. Launch the browser with `--silent-debugger-extension-api` to hide it (`open -a "Brave Browser" --args --silent-debugger-extension-api` on macOS, after quitting it), or use developer mode, which has no bar.
+- Chrome shows a "Browspark started debugging this browser" bar on shared tabs. It is Chromium's own notice for the debugger API and cannot be suppressed by the extension. Launch the browser with `--silent-debugger-extension-api` to hide it (`open -a "Brave Browser" --args --silent-debugger-extension-api` on macOS, after quitting it), or use developer mode, which has no bar.
 - Chrome does not let extensions or CDP drive the DevTools window (open it, toggle the device toolbar, pick a panel). The agent's tools send the same protocol commands DevTools' panels send. To watch in the standard UI, open DevTools on the tab yourself in extension mode, or launch developer mode, which opens DevTools on every tab by default; both coexist with the agent.
 - Shared tabs from all Chrome windows are available. Select a `tabId` from `browser_tabs`; without one, tools use the agent's own usable tab or the only usable tab, and require an explicit choice when ambiguous. Tabs the agent opens are ordinary Chrome tabs, shared automatically, and become that agent's default target.
 - The debugger (and the bar) attaches when the agent sends a command and detaches after 30 seconds without one, unless a `devtools_session` is running on that tab. Tune with `idleDetachMs` in the extension's storage.
@@ -88,8 +89,9 @@ bun run typecheck
 bun test                 # bridge unit tests
 bun run test:e2e         # launches throwaway Chromes and runs every plan.md acceptance scenario
 E2E_LIGHTHOUSE=1 bun run test:e2e   # also runs a real Lighthouse audit
-bun run capabilities     # regenerates docs/capabilities.md from live probes
-bun run package          # dist/browsermcp-extension.zip
+bun run capabilities     # regenerates docs/reference/capability-matrix.mdx from live probes
+bun run docs:tools       # regenerates docs/tools/** from the tool registrations
+bun run package          # dist/browspark-extension.zip
 ```
 
 Layout: `companion/` (MCP server, transports, devtools modules), `extension/` (MV3 dashboard and worker), `shared/` (wire protocol), `test-apps/` (deterministic pages, API, service worker, source-mapped script).
