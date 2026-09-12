@@ -13,7 +13,7 @@
 
 ## Install
 > [!NOTE]
-> Browspark is in early release. If something breaks, please [open an issue](https://github.com/uncaughterrs/browsermcp/issues).
+> Browspark is in early release. If something breaks, please [open an issue](https://github.com/uncaughterrs/browspark/issues).
 
 Requires [Bun](https://bun.sh) and a Chromium-based browser (Chrome, Brave, Edge).
 
