@@ -15,9 +15,10 @@ import { registerApplicationTools } from '../src/devtools/application.ts';
 import { registerEnvironmentTools } from '../src/devtools/environment.ts';
 import { registerLighthouseTools } from '../src/devtools/lighthouse.ts';
 import { registerRecorderTools } from '../src/devtools/recorder.ts';
+import { fileURLToPath } from 'node:url';
 import { EXAMPLES, NOTES } from './docs-examples.ts';
 
-const ROOT = join(dirname(new URL(import.meta.url).pathname), '..', '..');
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const DOCS = join(ROOT, 'docs');
 
 type Tool = { name: string; description: string; schema: any };

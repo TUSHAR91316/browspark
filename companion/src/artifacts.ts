@@ -18,11 +18,17 @@ export function saveArtifact(kind: string, ext: string, data: string | Buffer, n
 
 export function listArtifacts(): Artifact[] {
   try {
-    return readdirSync(artifactDir()).sort().reverse().map((f) => ({ id: f.replace(/\.[^.]+$/, ''), path: join(artifactDir(), f), bytes: statSync(join(artifactDir(), f)).size, kind: f.split('-').slice(7, 8)[0] ?? 'file' }));
+    return readdirSync(artifactDir()).sort().reverse().map((f) => {
+      const id = f.replace(/\.[^.]+$/, '');
+      const parts = id.split('-');
+      const kind = parts[6] ?? 'file';
+      return { id, path: join(artifactDir(), f), bytes: statSync(join(artifactDir(), f)).size, kind };
+    });
   } catch { return []; }
 }
 
 export function readArtifact(idOrPath: string): string {
-  const path = idOrPath.includes('/') ? idOrPath : (listArtifacts().find((a) => a.id === idOrPath)?.path ?? join(artifactDir(), idOrPath));
+  const isPath = idOrPath.includes('/') || idOrPath.includes('\\');
+  const path = isPath ? idOrPath : (listArtifacts().find((a) => a.id === idOrPath)?.path ?? join(artifactDir(), idOrPath));
   return readFileSync(path, 'utf8');
 }

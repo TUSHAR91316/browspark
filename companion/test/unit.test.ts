@@ -38,11 +38,17 @@ test('snapshot line diff', () => {
   assert.equal(lineDiff('x', 'x'), '(no changes)');
 });
 
-test('artifacts round trip', async () => {
+test('artifacts round trip and kind preservation', async () => {
   process.env.BROWSPARK_ARTIFACTS = join(ROOT, 'test-apps/dist/.artifacts-test');
   const a = saveArtifact('trace', 'json', '{"ok":1}', 'unit');
+  const b = saveArtifact('heapsnapshot', 'heapsnapshot', '{}');
   assert.ok(existsSync(a.path) && a.bytes === 8);
   assert.equal(readArtifact(a.id), '{"ok":1}');
-  assert.ok(listArtifacts().some((x) => x.id === a.id));
+  assert.equal(readArtifact(a.path), '{"ok":1}');
+  const listed = listArtifacts();
+  const foundA = listed.find((x) => x.id === a.id);
+  const foundB = listed.find((x) => x.id === b.id);
+  assert.ok(foundA && foundA.kind === 'trace', `expected kind trace, got ${foundA?.kind}`);
+  assert.ok(foundB && foundB.kind === 'heapsnapshot', `expected kind heapsnapshot, got ${foundB?.kind}`);
   rmSync(process.env.BROWSPARK_ARTIFACTS, { recursive: true, force: true });
 });
