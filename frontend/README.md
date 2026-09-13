@@ -20,7 +20,7 @@ bun run build
 bun run preview
 ```
 
-The build creates `frontend/dist/` with `index.html`, minified CSS and JavaScript, and local assets. Preview uses the same local address and supports the `PORT` environment variable.
+The build creates `frontend/dist/` with `index.html`, `robots.txt`, `sitemap.xml`, `setup.sh`, minified CSS and JavaScript, and local assets. Preview uses the same local address and supports the `PORT` environment variable.
 
 Run `bun run test` to rebuild and smoke-test the production server, static asset references, and path restrictions. The test uses an ephemeral local port and shuts its server down afterward.
 
@@ -29,6 +29,18 @@ Run `bun run test` to rebuild and smoke-test the production server, static asset
 Upload the contents of `frontend/dist/` to any static host. When configuring a host from the repository, set its working directory to `frontend`, its build command to `bun run build`, and its publish directory to `dist`. The deployed site does not need Bun or a server-side application. Enable compression on the host for HTML, CSS, JavaScript, and SVG files.
 
 Edit `index.html` for content and links, `styles.css` for styling, and `main.js` for interactions. Keep the logos in `assets/`; their source credits are included alongside the assets.
+
+## Search discovery
+
+`index.html` includes the canonical URL, search and social metadata, and `WebSite` / `SoftwareApplication` JSON-LD. Keep the product description, visible content, and structured data consistent. The sitemap lists only the canonical homepage; the documentation subdomain manages its own sitemap. If the public domain changes, update `index.html`, `robots.txt`, and `sitemap.xml` together.
+
+After deployment:
+
+- Check that `/`, `/robots.txt`, and `/sitemap.xml` return HTTP 200 publicly, without login or browser challenges. Hosting or CDN rules must allow search crawlers, including Googlebot, Bingbot, and OpenAI's `OAI-SearchBot`; a robots allow rule cannot override a firewall block. [OpenAI crawler guidance](https://developers.openai.com/api/docs/bots).
+- Verify the site in [Google Search Console](https://search.google.com/search-console) and [Bing Webmaster Tools](https://www.bing.com/webmasters/), submit `https://browspark.krishm.dev/sitemap.xml`, and inspect the homepage for indexing.
+- Check structured data with the [Schema.org validator](https://validator.schema.org/) and monitor actual queries, impressions, and clicks. The software markup describes the project; it does not assert ratings or rich-result eligibility.
+
+Metadata and crawl access help discovery; they cannot guarantee indexing, citations, or first-place rankings. Google applies ordinary SEO fundamentals to its AI search features and does not require special AI text files or schema. [Google AI search guidance](https://developers.google.com/search/docs/appearance/ai-features).
 
 ## Verification
 

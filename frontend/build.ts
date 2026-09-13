@@ -12,7 +12,9 @@ const result = await Bun.build({
   minify: true,
 });
 if (!result.success) throw new AggregateError(result.logs, 'Frontend build failed.');
-await cp(resolve(root, 'index.html'), resolve(outdir, 'index.html'));
+for (const file of ['index.html', 'robots.txt', 'sitemap.xml']) {
+  await cp(resolve(root, file), resolve(outdir, file));
+}
 await cp(resolve(root, '..', 'setup.sh'), resolve(outdir, 'setup.sh'));
 await cp(resolve(root, 'assets'), resolve(outdir, 'assets'), { recursive: true });
 console.log('Built static site in frontend/dist.');

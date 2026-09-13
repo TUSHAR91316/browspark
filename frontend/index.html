@@ -4,17 +4,66 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#101010">
-  <meta name="description" content="Give your AI agent a real browser. Browspark connects Claude, Codex, Cursor and more to your shared Chrome tabs, with 43 tools for automation and debugging.">
-  <meta property="og:title" content="Browspark — Your browser. Now agent-ready.">
-  <meta property="og:description" content="Automate, inspect, and debug the browser you already use. Your tabs. Your sessions. You stay in control.">
+  <title>Browspark — Browser MCP for Chrome &amp; AI Agents</title>
+  <meta name="description" content="Browspark is an open-source browser MCP server and Chrome extension. Connect Claude, Codex, and Cursor to your tabs for browser automation and debugging.">
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+  <meta property="og:title" content="Browspark — Browser MCP for Chrome &amp; AI Agents">
+  <meta property="og:description" content="Browspark is an open-source browser MCP server and Chrome extension. Connect Claude, Codex, and Cursor to your tabs for browser automation and debugging.">
   <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Browspark">
   <meta property="og:url" content="https://browspark.krishm.dev/">
   <meta property="og:image" content="https://browspark.krishm.dev/assets/logo.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="128">
+  <meta property="og:image:height" content="128">
+  <meta property="og:image:alt" content="Browspark logo">
   <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Browspark — Browser MCP for Chrome &amp; AI Agents">
+  <meta name="twitter:description" content="Browspark is an open-source browser MCP server and Chrome extension. Connect Claude, Codex, and Cursor to your tabs for browser automation and debugging.">
+  <meta name="twitter:image" content="https://browspark.krishm.dev/assets/logo.png">
+  <meta name="twitter:image:alt" content="Browspark logo">
   <link rel="canonical" href="https://browspark.krishm.dev/">
-  <title>Browspark — Your browser. Now agent-ready.</title>
   <link rel="icon" href="./assets/favicon.png" type="image/png">
   <link rel="stylesheet" href="./styles.css">
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "WebSite",
+          "@id": "https://browspark.krishm.dev/#website",
+          "name": "Browspark",
+          "url": "https://browspark.krishm.dev/",
+          "inLanguage": "en",
+          "about": { "@id": "https://browspark.krishm.dev/#software" }
+        },
+        {
+          "@type": "SoftwareApplication",
+          "@id": "https://browspark.krishm.dev/#software",
+          "name": "Browspark",
+          "alternateName": "browspark-mcp",
+          "url": "https://browspark.krishm.dev/",
+          "description": "Browspark is an open-source browser MCP server and Chrome extension. Connect Claude, Codex, and Cursor to your tabs for browser automation and debugging.",
+          "applicationCategory": "DeveloperApplication",
+          "isAccessibleForFree": true,
+          "license": "https://github.com/uncaughterrs/browspark/blob/main/LICENSE",
+          "image": "https://browspark.krishm.dev/assets/logo.png",
+          "downloadUrl": "https://github.com/uncaughterrs/browspark/releases/latest",
+          "sameAs": [
+            "https://github.com/uncaughterrs/browspark",
+            "https://www.npmjs.com/package/browspark-mcp"
+          ],
+          "featureList": [
+            "Browser automation in explicitly shared Chrome tabs and signed-in sessions",
+            "Navigation, clicks, forms, page reading, and screenshots",
+            "Console, network, DOM, and performance inspection",
+            "Separate developer browser for Lighthouse, heap snapshots, and raw CDP",
+            "MCP integration with Claude Code, Codex, Cursor, OpenCode, Kilo, and Antigravity"
+          ]
+        }
+      ]
+    }
+  </script>
   <script type="module" src="./main.js"></script>
 </head>
 <body>
@@ -51,8 +100,8 @@
     <section class="hero container" aria-labelledby="hero-title">
       <a href="#integrations" class="eyebrow-link"><span class="status-dot"></span> YOUR FAVORITE AGENT. YOUR ACTUAL BROWSER. <svg class="icon small"><use href="#i-arrow"/></svg></a>
       <div class="hero-grid">
-        <div><h1 id="hero-title">Your browser.<br><span>Now agent-ready.</span></h1><div class="hero-actions"><a class="button primary" href="#quickstart">Start building <svg class="icon"><use href="#i-arrow"/></svg></a><a class="button" href="https://github.com/uncaughterrs/browspark" target="_blank" rel="noreferrer"><svg class="icon"><use href="#i-github"/></svg> View on GitHub</a></div></div>
-        <div class="hero-copy"><p>Automate, inspect, and debug the browser you already use. Give your AI agent access to your tabs and signed-in sessions. <span>Agent work stays in the background by default. You stay in control.</span></p><div class="hero-detail"><svg class="icon small"><use href="#i-terminal"/></svg> Local MCP server <span class="divider-dot">·</span> Chrome extension</div></div>
+        <div><h1 id="hero-title">Browser MCP<br><span>for your Chrome.</span></h1><div class="hero-actions"><a class="button primary" href="#quickstart">Start building <svg class="icon"><use href="#i-arrow"/></svg></a><a class="button" href="https://github.com/uncaughterrs/browspark" target="_blank" rel="noreferrer"><svg class="icon"><use href="#i-github"/></svg> View on GitHub</a></div></div>
+        <div class="hero-copy"><p>Browspark is an open-source browser MCP server and Chrome extension. Connect Claude, Codex, or Cursor to automate, inspect, and debug your shared tabs and signed-in sessions. <span>Agent work stays in the background by default. You stay in control.</span></p><div class="hero-detail"><svg class="icon small"><use href="#i-terminal"/></svg> Local MCP server <span class="divider-dot">·</span> Chrome extension</div></div>
       </div>
 
       <div id="product" class="product-preview" aria-label="Interactive Browspark preview">
@@ -120,7 +169,15 @@ bun install &amp;&amp; bun run build</code></pre></div></div></li><li><span clas
       </details>
     </section>
 
-    <section class="faq-section container" aria-labelledby="faq-title"><div><p class="eyebrow">GOOD TO KNOW</p><h2 id="faq-title">A little more context.</h2><p>Built to feel familiar.<br>Designed to keep you in control.</p></div><div class="faqs"><details name="faq"><summary>What is Browspark?<svg class="icon"><use href="#i-plus"/></svg></summary><p>Browspark is a local Model Context Protocol server and Chrome extension. It gives compatible AI clients tools to interact with shared browser tabs, inspect pages, and debug web applications.</p></details><details name="faq"><summary>Can it use my existing browser sessions?<svg class="icon"><use href="#i-plus"/></svg></summary><p>Yes. Extension mode works in your existing Chrome tabs, including their signed-in sessions. Share the tabs you want your agent to access. A separate developer browser uses its own profile.</p></details><details name="faq"><summary>What can my agent access?<svg class="icon"><use href="#i-plus"/></svg></summary><p>In extension mode, your agent can access tabs you explicitly share. You can opt into sharing all supported tabs, disable individual tools, or stop access. Tabs created by the agent are shared automatically. Page content accessed by your agent may be processed by your chosen AI provider.</p></details><details name="faq"><summary>When do I need developer mode?<svg class="icon"><use href="#i-plus"/></svg></summary><p>Most browsing and inspection works through the extension. For capabilities Chrome restricts for extensions—such as Lighthouse, heap snapshots, and raw protocol commands—your agent can launch a separate Chrome instance in developer mode.</p></details><details name="faq"><summary>Does it work on every page?<svg class="icon"><use href="#i-plus"/></svg></summary><p>Browspark works on supported website tabs. Chrome restricts automation on browser-internal pages, other extension pages, and the Chrome Web Store. You can share a new tab and let your agent navigate it to a website.</p></details></div></section>
+    <section id="faq" class="faq-section container" aria-labelledby="faq-title"><div><p class="eyebrow">GOOD TO KNOW</p><h2 id="faq-title">Browser MCP, explained.</h2><p>Built to feel familiar.<br>Designed to keep you in control.</p></div><div class="faqs">
+      <details name="faq"><summary>What is Browspark?<svg class="icon"><use href="#i-plus"/></svg></summary><p>Browspark is a free, open-source browser MCP server and Chrome extension, published under the MIT license. It uses the Model Context Protocol (MCP) to give AI agents 43 tools for browser automation and debugging: 22 browser tools and 21 developer tools. The server runs locally and is published on npm as <a href="https://www.npmjs.com/package/browspark-mcp" target="_blank" rel="noreferrer">browspark-mcp</a>.</p></details>
+      <details name="faq"><summary>How does MCP for browser automation work?<svg class="icon"><use href="#i-plus"/></svg></summary><p>A browser MCP server exposes browser actions as tools that an AI client can call through the Model Context Protocol. Browspark connects that client to Chrome through a local server and extension, so your agent can navigate, click, fill forms, read pages, and capture screenshots in tabs you share.</p></details>
+      <details name="faq"><summary>Which AI clients can use Browspark's MCP for Chrome?<svg class="icon"><use href="#i-plus"/></svg></summary><p>Browspark includes setup instructions for Claude Code, Codex, Cursor, OpenCode, Kilo, and Antigravity. It supports MCP connections over stdio and local Streamable HTTP. Follow the <a href="https://docs.browspark.krishm.dev/connect/agents" target="_blank" rel="noreferrer">MCP client connection guide</a> to configure your agent.</p></details>
+      <details name="faq"><summary>Can it use my existing browser sessions?<svg class="icon"><use href="#i-plus"/></svg></summary><p>Yes. Extension mode works in your existing Chrome tabs, including their signed-in sessions. Share the tabs you want your agent to access. A separate developer browser uses its own profile.</p></details>
+      <details name="faq"><summary>What can my agent access?<svg class="icon"><use href="#i-plus"/></svg></summary><p>In extension mode, your agent can access tabs you explicitly share. You can opt into sharing all supported tabs, disable individual tools, or stop access. Tabs created by the agent are shared automatically. Page content accessed by your agent may be processed by your chosen AI provider.</p></details>
+      <details name="faq"><summary>When do I need developer mode?<svg class="icon"><use href="#i-plus"/></svg></summary><p>Most browsing and inspection works through the extension. For capabilities Chrome restricts for extensions—such as Lighthouse, heap snapshots, and raw protocol commands—your agent can launch a separate Chrome instance in developer mode.</p></details>
+      <details name="faq"><summary>Does it work on every page?<svg class="icon"><use href="#i-plus"/></svg></summary><p>Browspark works on supported website tabs. Chrome restricts automation on browser-internal pages, other extension pages, and the Chrome Web Store. You can share a new tab and let your agent navigate it to a website.</p></details>
+    </div></section>
 
     <section class="closing container"><span class="closing-mark brand-mark"><img src="./assets/logo.png" width="96" height="96" alt="" loading="lazy"></span><h2>A real browser.<br><span>A more capable agent.</span></h2><p>Your next idea is one connection away.</p><a class="button primary" href="#quickstart">Get started with Browspark <svg class="icon"><use href="#i-arrow"/></svg></a></section>
   </main>
