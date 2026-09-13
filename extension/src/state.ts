@@ -21,6 +21,7 @@ export interface State {
   devMode: 'auto' | 'always' | 'never';
   /** Cyan halo, cursor and Stop pill on tabs while the agent works. */
   overlay: boolean;
+  backgroundMode: boolean;
   port: number;
   lastError?: string;
   connectedAt?: number;
@@ -38,6 +39,7 @@ export type PopupMsg =
   | { type: 'setActivityLog'; on: boolean }
   | { type: 'setToolEnabled'; name: string; enabled: boolean }
   | { type: 'setDevMode'; mode: 'auto' | 'always' | 'never' }
+  | { type: 'setBackgroundMode'; on: boolean }
   | { type: 'setOverlay'; on: boolean }
   | { type: 'setToolsEnabled'; names: string[]; enabled: boolean }
   | { type: 'connect' }

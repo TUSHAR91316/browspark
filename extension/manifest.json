@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Browspark",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Lets a local MCP companion automate and debug tabs you explicitly share.",
   "permissions": ["debugger", "tabs", "storage", "alarms", "downloads"],
   "background": { "service_worker": "dist/background.js" },

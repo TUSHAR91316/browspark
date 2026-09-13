@@ -22,6 +22,12 @@ http://127.0.0.1:9223/mcp
 
 Whether the agent may open a separate Chrome. **Only when needed** (default), **Always**, or **Never**. See [Tool policy](/concepts/tool-policy#developer-browser-policy).
 
+## Browser behavior
+
+**Work in background — Do not switch away from my active tab** is on by default and saved per browser profile. Agent-created tabs open in the background; input and screenshots target the assigned tab without activating it. Explicit agent activation and window resizing are blocked while enabled. Opening the dashboard or selecting a tab yourself still works.
+
+If a page needs foreground interaction, select the agent tab yourself or temporarily turn this setting off. With it off, the previous foreground behavior is available. Check the page before retrying an action.
+
 ## Agent overlay
 
 **Show the agent at work** switch, on by default. Draws the soft cyan halo, moving cursor and Stop button on tabs while the agent drives them. See [The agent overlay](/concepts/tabs-and-sharing#the-agent-overlay).

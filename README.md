@@ -11,6 +11,8 @@
     <a href="https://docs.browspark.krishm.dev/">Documentation</a>
 </div>
 
+Agent work stays in the background by default. Change **Settings → Work in background** if an operation needs foreground interaction.
+
 ## Install
 > [!NOTE]
 > Browspark is in early release. If something breaks, please [open an issue](https://github.com/uncaughterrs/browspark/issues).

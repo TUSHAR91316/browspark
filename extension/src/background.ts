@@ -16,6 +16,7 @@ const isShared = (tabId: number) => !excluded.has(tabId) && (shareAll || shared.
 const attached = new Set<number>();
 const agentTabs = new Set<number>();     // ordinary browser tabs the agent opened
 let devMode: 'auto' | 'always' | 'never' = 'auto';
+let backgroundMode = true; // agent commands never activate user tabs by default
 let overlay = true; // agent presence overlay on tabs while commands flow
 const held = new Set<number>();          // tabs with an active inspection session: never idle-detach
 const ownedDownloads = new Map<string, { guid: string; tabId: number; url: string; filename: string; state: string; receivedBytes: number; totalBytes: number; startedAt: number }>();
@@ -36,13 +37,14 @@ let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
 let connectionTimer: ReturnType<typeof setTimeout> | undefined;
 
 const cfg = async () => {
-  const s = await chrome.storage.local.get(['port', 'shareAll', 'stopped', 'activityLog', 'toolCatalog', 'disabledTools', 'devMode', 'overlay']);
+  const s = await chrome.storage.local.get(['port', 'shareAll', 'stopped', 'activityLog', 'toolCatalog', 'disabledTools', 'devMode', 'overlay', 'backgroundMode']);
   const ss = await chrome.storage.session.get(['shared', 'excluded']); // per-tab grants must not outlive the browser session
-  return { port: (s.port as number) || DEFAULT_PORT, shared: (ss.shared as number[]) || [], excluded: (ss.excluded as number[]) || [], shareAll: !!s.shareAll, stopped: !!s.stopped, activityLog: !!s.activityLog, toolCatalog: (s.toolCatalog as ToolInfo[]) || [], disabledTools: (s.disabledTools as string[]) || [], devMode: ((s.devMode as string) || 'auto') as 'auto' | 'always' | 'never', overlay: s.overlay !== false };
+  return { port: (s.port as number) || DEFAULT_PORT, shared: (ss.shared as number[]) || [], excluded: (ss.excluded as number[]) || [], shareAll: !!s.shareAll, stopped: !!s.stopped, activityLog: !!s.activityLog, toolCatalog: (s.toolCatalog as ToolInfo[]) || [], disabledTools: (s.disabledTools as string[]) || [], devMode: ((s.devMode as string) || 'auto') as 'auto' | 'always' | 'never', overlay: s.overlay !== false, backgroundMode: s.backgroundMode !== false };
 };
 const send = (m: Msg) => { if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(m)); };
 const evt = (event: Evt['event'], params?: unknown) => send({ event, params });
 const log = (e: Omit<OpLog, 'id'>) => { totals.ops++; if (!e.ok) totals.errors++; if (!activityLog) return; recent.unshift({ id: ++opSeq, ...e }); if (recent.length > 200) recent.pop(); };
+const foregroundRequired = "Work in background is enabled. Keep using the assigned tabId without activating it. If foreground interaction is necessary, ask the user to select the agent tab or temporarily turn off Settings → Work in background, then retry after checking the page state.";
 const APP_URL = chrome.runtime.getURL('app.html');
 
 async function listTabs(): Promise<TabInfo[]> {
@@ -116,7 +118,7 @@ async function handle(req: Req): Promise<Res> {
     if (req.method === 'tabs.create') {
       // Tabs the agent opens are ordinary Chrome tabs, shared automatically because it created them.
       const { url, active } = req.params as { url: string; active?: boolean };
-      const t = await chrome.tabs.create({ url, active: active ?? true });
+      const t = await chrome.tabs.create({ url, active: backgroundMode ? false : active ?? true });
       agentTabs.add(t.id!); shared.add(t.id!); await chrome.storage.session.set({ shared: [...shared] }); pushTabs();
       return { id: req.id, result: { id: t.id, windowId: t.windowId } };
     }
@@ -126,6 +128,7 @@ async function handle(req: Req): Promise<Res> {
       if (!isShared(tabId)) throw new Error(`Tab ${tabId} is not shared by the user`);
       const { windowId } = await chrome.tabs.get(tabId);
       if (width && height) {
+        if (backgroundMode) throw new Error(foregroundRequired);
         if (!windowBounds.has(windowId)) { const w = await chrome.windows.get(windowId); windowBounds.set(windowId, { width: w.width, height: w.height, state: w.state }); }
         const w = await chrome.windows.update(windowId, { state: 'normal', width, height });
         return { id: req.id, result: { width: w.width, height: w.height } };
@@ -148,7 +151,7 @@ async function handle(req: Req): Promise<Res> {
       const { tabId } = req.params as { tabId: number };
       if (!isShared(tabId)) throw new Error(`Tab ${tabId} is not shared by the user`);
       if (req.method === 'tabs.close') await chrome.tabs.remove(tabId);
-      else { const t = await chrome.tabs.update(tabId, { active: true }); if (t?.windowId !== undefined) await chrome.windows.update(t.windowId, { focused: true }); }
+      else { if (backgroundMode) throw new Error(foregroundRequired); const t = await chrome.tabs.update(tabId, { active: true }); if (t?.windowId !== undefined) await chrome.windows.update(t.windowId, { focused: true }); }
       return { id: req.id, result: {} };
     }
     if (req.method === 'cdp') {
@@ -159,9 +162,9 @@ async function handle(req: Req): Promise<Res> {
       // The user may have unshared the tab while attachment was in flight: re-check before sending anything.
       if (!isShared(tabId)) { await detach(tabId); throw new Error(`Tab ${tabId} was unshared by the user`); }
       lastUsed.set(tabId, Date.now());
-      // Real input and screenshots need a rendered tab; Chrome drops input to background tabs.
-      // Activating only switches the tab within its own window; the user's focused window is untouched.
-      if (/^(Input\.|Page\.captureScreenshot)/.test(method)) {
+      // CDP targets the assigned tab directly; foreground mode retains the old fallback.
+      if (backgroundMode && /^(Page\.bringToFront|Target\.activateTarget|Target\.createTarget|Browser\.setWindowBounds)$/.test(method)) throw new Error(foregroundRequired);
+      if (!backgroundMode && /^(Input\.|Page\.captureScreenshot)/.test(method)) {
         const t = await chrome.tabs.get(tabId);
         if (!t.active) await chrome.tabs.update(tabId, { active: true });
       }
@@ -173,7 +176,7 @@ async function handle(req: Req): Promise<Res> {
       } catch (e) {
         const error = (e as Error).message || String(e);
         log({ at: t0, ms: Date.now() - t0, tabId, tabLabel: await tabLabel(tabId), method, ok: false, error, client });
-        return { id: req.id, error };
+        return { id: req.id, error: backgroundMode && /^(Input\.|Page\.captureScreenshot)/.test(method) ? `${error}. ${foregroundRequired}` : error };
       }
     }
     throw new Error(`Unknown method ${(req as Req).method}`);
@@ -261,7 +264,7 @@ async function state(): Promise<State> {
   const { port } = await cfg();
   const windows = (await chrome.windows.getAll()).filter((w) => w.id !== undefined).map((w) => ({ id: w.id!, incognito: w.incognito }));
   return {
-    connected: ws?.readyState === WebSocket.OPEN && connectedAt !== undefined, connecting: connecting && !lastError, stopped, shareAll, activityLog, toolCatalog, disabledTools: [...disabledTools], companionVersion, devMode, overlay, port, lastError, connectedAt,
+    connected: ws?.readyState === WebSocket.OPEN && connectedAt !== undefined, connecting: connecting && !lastError, stopped, shareAll, activityLog, toolCatalog, disabledTools: [...disabledTools], companionVersion, devMode, overlay, backgroundMode, port, lastError, connectedAt,
     extensionVersion: chrome.runtime.getManifest().version, windows, tabs: await listTabs(), recent, totals,
   };
 }
@@ -279,6 +282,9 @@ chrome.runtime.onMessage.addListener((msg: PopupMsg, _s, reply) => {
         await chrome.storage.session.set({ shared: [...shared], excluded: [...excluded] });
         pushTabs(); break;
       case 'setDevMode': devMode = msg.mode; await chrome.storage.local.set({ devMode }); sendToolPolicy(); break;
+      case 'setBackgroundMode':
+        if (typeof msg.on !== 'boolean') throw new Error('backgroundMode must be a boolean');
+        await chrome.storage.local.set({ backgroundMode: msg.on }); backgroundMode = msg.on; break;
       case 'setOverlay': overlay = msg.on; await chrome.storage.local.set({ overlay }); sendToolPolicy(); break;
       case 'setToolEnabled':
         if (msg.enabled) disabledTools.delete(msg.name); else disabledTools.add(msg.name);
@@ -355,4 +361,4 @@ setInterval(() => evt('ping'), 20_000);
 chrome.alarms.create('reconnect', { periodInMinutes: 0.5 });
 chrome.alarms.onAlarm.addListener(() => { if (!ws && !stopped) connect(); });
 
-const ready = cfg().then((c) => { for (const id of c.shared) shared.add(id); for (const id of c.excluded) excluded.add(id); shareAll = c.shareAll; activityLog = c.activityLog; toolCatalog = c.toolCatalog; disabledTools = new Set(c.disabledTools); devMode = c.devMode; stopped = c.stopped; overlay = c.overlay; if (!stopped) connect(); });
+const ready = cfg().then((c) => { for (const id of c.shared) shared.add(id); for (const id of c.excluded) excluded.add(id); shareAll = c.shareAll; activityLog = c.activityLog; toolCatalog = c.toolCatalog; disabledTools = new Set(c.disabledTools); devMode = c.devMode; stopped = c.stopped; overlay = c.overlay; backgroundMode = c.backgroundMode; if (!stopped) connect(); });

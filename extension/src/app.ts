@@ -395,6 +395,10 @@ function viewSettings(s: State) {
         h('div', { class: 'ctl' }, h('div', { class: 'seg', role: 'group', 'aria-label': 'Developer browser mode' }, ...([['auto', 'Only when needed'], ['always', 'Always'], ['never', 'Never']] as const).map(([v, label]) =>
           h('button', { class: s.devMode === v ? 'on' : '', 'aria-pressed': String(s.devMode === v), onclick: () => ask({ type: 'setDevMode', mode: v }).then(paint) }, label)))))),
     h('div', { class: 'card', style: 'margin-bottom:16px' },
+      h('div', { class: 'card-h' }, h('h2', {}, 'Browser behavior')),
+      h('div', { class: 'setting' }, h('div', {}, h('h3', {}, 'Work in background'), h('p', {}, 'Do not switch away from my active tab. If an operation needs foreground interaction, select the agent tab yourself or temporarily turn this off.')),
+        h('div', { class: 'ctl' }, h('label', { class: 'switch' }, h('input', { type: 'checkbox', checked: s.backgroundMode, 'aria-label': 'Work in background', onchange: (e: Event) => ask({ type: 'setBackgroundMode', on: checked(e) }).then(paint) }), h('span', {}))))),
+    h('div', { class: 'card', style: 'margin-bottom:16px' },
       h('div', { class: 'card-h' }, h('h2', {}, 'Agent overlay')),
       h('div', { class: 'setting' }, h('div', {}, h('h3', {}, 'Show the agent at work'), h('p', {}, 'A soft cyan halo around the tab, a cursor that moves to each click, and a Stop button while the agent is driving it. Stop revokes the tab instantly.')),
         h('div', { class: 'ctl' }, h('label', { class: 'switch' }, h('input', { type: 'checkbox', checked: s.overlay, 'aria-label': 'Agent overlay', onchange: (e: Event) => ask({ type: 'setOverlay', on: (e.target as HTMLInputElement).checked }).then(paint) }), h('span', {}))))),
@@ -419,7 +423,7 @@ function tick() {
 /** Older workers (before an extension reload) omit newer fields; never let that blank the page. */
 function normalize(s: Partial<State> | undefined): State {
   const x = (s ?? {}) as Partial<State>;
-  const defaults: State = { connected: false, connecting: false, stopped: false, shareAll: false, activityLog: false, overlay: true, port: 9223, extensionVersion: '?', windows: [], tabs: [], recent: [], totals: { ops: 0, errors: 0 }, toolCatalog: [], disabledTools: [], devMode: 'auto' };
+  const defaults: State = { connected: false, connecting: false, stopped: false, shareAll: false, activityLog: false, overlay: true, backgroundMode: true, port: 9223, extensionVersion: '?', windows: [], tabs: [], recent: [], totals: { ops: 0, errors: 0 }, toolCatalog: [], disabledTools: [], devMode: 'auto' };
   const out: State = { ...defaults, ...x } as State;
   for (const k of ['windows', 'tabs', 'recent', 'toolCatalog', 'disabledTools'] as const) if (!Array.isArray(out[k])) (out as any)[k] = [];
   if (!out.totals) out.totals = { ops: 0, errors: 0 };

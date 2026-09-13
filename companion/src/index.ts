@@ -51,7 +51,7 @@ const page = new Page(sessions), capture = new Capture(sessions);
 /** Each MCP transport gets its own McpServer; browser state, capture buffers, and the tool registry are shared. */
 let clientSeq = 0;
 function buildServer(label: string): McpServer {
-  const server = new McpServer({ name: 'browspark', version: VERSION });
+  const server = new McpServer({ name: 'browspark', version: VERSION }, { instructions: 'Prefer background-tab interaction. Keep the assigned tabId and pass it to subsequent tools; do not activate tabs or focus windows just to interact. Work in background is ON by default in the extension. Never bypass it with window.focus(), popups, or raw protocol commands. Verify input effects with a fresh snapshot. If an operation cannot work in the background, ask the user to select the agent tab or temporarily disable Settings → Work in background. Check page state before retrying to avoid duplicate actions.' });
   const client: ClientState = { id: `c${++clientSeq}`, name: label, ownedTabs: new Set() };
   clients.set(client.id, client);
   const ctx: Ctx = { server, sessions, page, capture, client, registry: new Map() };

@@ -50,7 +50,7 @@ Key files when something misbehaves:
 - `companion/src/index.ts` wiring and relay; `bridge.ts` Origin check (web pages refused), handshake close codes (4001 no hello, 4002 version), one extension at a time.
 - `companion/src/page.ts` snapshot/refs (`window.__bmcp`, refs never reused, wiped on navigation), dialog racing, New Tab `tabs.prepare` dance.
 - `companion/src/devtools/capture.ts` session start/stop; `intercept.ts` is the single owner of the Fetch domain (policies, mocks, overrides).
-- `extension/src/background.ts` the trust boundary: `isShared` is checked on every command and again after attach; idle detach after 30 s unless held by a session; tabs are activated before input/screenshots.
+- `extension/src/background.ts` the trust boundary: `isShared` is checked on every command and again after attach; idle detach after 30 s unless held by a session; Background Mode defaults on; CDP targets assigned tabs without activation. Settings can restore foreground input/screenshots.
 - `extension/src/app.ts` polls the worker every second and re-renders through a DOM morph; `state.ts` is the dashboard↔worker contract.
 
 ## Invariants to preserve
