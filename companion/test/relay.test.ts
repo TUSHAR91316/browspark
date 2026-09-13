@@ -1,12 +1,14 @@
 import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
+import { fileURLToPath } from 'node:url';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 
 const companion = async (name: string, port: number) => {
   const client = new Client({ name, version: '0' });
-  const transport = new StdioClientTransport({ command: 'bun', args: [new URL('../src/index.ts', import.meta.url).pathname, '--port', String(port)], stderr: 'pipe' });
+  const scriptPath = fileURLToPath(new URL('../src/index.ts', import.meta.url));
+  const transport = new StdioClientTransport({ command: process.execPath, args: [scriptPath, '--port', String(port)], stderr: 'pipe' });
   await client.connect(transport);
   return Object.assign(client, { pid: transport.pid! });
 };

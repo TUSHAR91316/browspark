@@ -2,6 +2,7 @@ import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
@@ -83,7 +84,8 @@ test('closing a stdio relay terminates its upstream inspection membership', asyn
   const owner = new Client({ name: 'codex', version: '0' });
   const relay = new Client({ name: 'codex', version: '0' });
   let ws: WebSocket | undefined;
-  const connect = (client: Client, port: number) => client.connect(new StdioClientTransport({ command: 'bun', args: [new URL('../src/index.ts', import.meta.url).pathname, '--port', String(port)], stderr: 'pipe' }));
+  const scriptPath = fileURLToPath(new URL('../src/index.ts', import.meta.url));
+  const connect = (client: Client, port: number) => client.connect(new StdioClientTransport({ command: process.execPath, args: [scriptPath, '--port', String(port)], stderr: 'pipe' }));
   const call = async (client: Client, name: string, args: Record<string, unknown> = {}) => {
     const result = await client.callTool({ name, arguments: args });
     assert.ok(!result.isError, `${name} failed`);

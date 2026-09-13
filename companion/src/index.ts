@@ -40,7 +40,7 @@ const portTaken = (e: any) => e?.code === 'EADDRINUSE' || /in use|EADDRINUSE/i.t
 // every client shares one companion, one extension, and one set of shared tabs; see relayTo() at the bottom.
 const owner = await bridge.listen().then(() => true, (e) => { if (!portTaken(e)) { console.error(`browspark: cannot listen on 127.0.0.1:${port}: ${e.message}`); process.exit(1); } return false; });
 
-const VERSION = '0.2.1';
+const VERSION = '0.3.2';
 const sendCatalog = () => bridge.request('tools.catalog', { tools: toolCatalog, version: VERSION }).catch((e) => console.error(`browspark: could not send tool catalog: ${e.message}`));
 bridge.on('connected', () => { console.error('browspark: extension connected'); sendCatalog(); });
 bridge.on('tools.policy', (p: ToolPolicy) => { setDisabledTools(p.disabled ?? []); devGate.policy = p.devMode ?? 'auto'; page.overlay.enabled = p.overlay !== false; console.error(`browspark: ${p.disabled?.length ?? 0} tool(s) disabled from the dashboard; developer browser: ${devGate.policy}`); if (!p.haveCatalog) sendCatalog(); });
