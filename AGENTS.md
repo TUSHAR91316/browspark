@@ -31,7 +31,7 @@ E2E needs Chrome at `/Applications/Google Chrome.app/...` or `CHROME=<path>`. E2
 
 Two processes, one wire protocol:
 
-- **Companion** (`companion/src`, `bunx browspark-mcp@latest`): the MCP server. Speaks MCP over stdio to the launching client and, always, Streamable HTTP at `http://127.0.0.1:9223/mcp?token=…`. Owns the WebSocket bridge the extension connects to on the same port.
+- **Companion** (`companion/src`, `bunx browspark-mcp@latest`): the MCP server. Speaks MCP over stdio to the launching client and, always, Streamable HTTP at `http://127.0.0.1:9223/mcp`. Owns the WebSocket bridge the extension connects to on the same port.
 - **Extension** (`extension/`, MV3, no host permissions): a service worker that attaches `chrome.debugger` to tabs the user shared, plus a framework-free dashboard.
 - `shared/protocol.ts` is the contract: `Req/Res/Evt` over one socket, `PROTOCOL_VERSION`, `ReqMethod` names, and the two predicates both sides use (`isNewTab`, `unsupportedReason`).
 
@@ -47,7 +47,7 @@ Tool call path: MCP → `tool()` wrapper in `context.ts` (sets the current agent
 Multi-agent: each MCP transport gets its own `McpServer` + `ClientState` (name, owned tabs, recording), while `Sessions`, `Page` and `Capture` are shared. If port 9223 is taken, a second companion becomes a stdio→HTTP relay to the first instead of failing, so every agent ends up on one extension. `devtools_session` is shared between agents and only tears down when the last user stops.
 
 Key files when something misbehaves:
-- `companion/src/index.ts` wiring and relay; `bridge.ts` token, handshake close codes (4001 no hello, 4002 version, 4003 token), one extension at a time.
+- `companion/src/index.ts` wiring and relay; `bridge.ts` Origin check (web pages refused), handshake close codes (4001 no hello, 4002 version), one extension at a time.
 - `companion/src/page.ts` snapshot/refs (`window.__bmcp`, refs never reused, wiped on navigation), dialog racing, New Tab `tabs.prepare` dance.
 - `companion/src/devtools/capture.ts` session start/stop; `intercept.ts` is the single owner of the Fetch domain (policies, mocks, overrides).
 - `extension/src/background.ts` the trust boundary: `isShared` is checked on every command and again after attach; idle detach after 30 s unless held by a session; tabs are activated before input/screenshots.
@@ -83,4 +83,4 @@ Any feature, tool, or installation change must be reflected everywhere users see
 6. **Publish**: `bun run release` publishes `browspark-mcp` and the `browspark` alias to npm. Create a GitHub release tagged with the version and attach `dist/browspark-extension.zip`; `setup.sh` and the docs download from `releases/latest`.
 7. **Deploys are automatic on push to `main`**: Mintlify (docs, `docs/` subdirectory), Cloudflare Workers (landing page from `frontend/`, config in `frontend/wrangler.jsonc`).
 
-Data dir and env vars are `~/.browspark` and `BROWSPARK_*`; the pairing token lives in `~/.browspark/token` and moving the dir forces users to re-pair, so call that out in release notes.
+Data dir and env vars are `~/.browspark` and `BROWSPARK_*`.

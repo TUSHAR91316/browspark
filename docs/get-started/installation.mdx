@@ -13,7 +13,7 @@ description: "Every install option in detail: source, packaged extension, compil
 
 ## One-command setup
 
-The setup script covers everything on this page for the common case: it downloads the extension, lets you choose bun, pnpm or npm to run the companion, writes the MCP config for the agents you pick, and prints the pairing steps.
+The setup script covers everything on this page for the common case: it downloads the extension, lets you choose bun, pnpm or npm to run the companion, writes the MCP config for the agents you pick, and prints the final steps.
 
 ```bash
 curl -fsSL https://browspark.krishm.dev/setup.sh | bash
@@ -84,15 +84,12 @@ The extension asks for five permissions: `debugger` (drive tabs), `tabs` (list a
 Only one browser profile should hold the extension at a time. If you move it from Chrome to Brave, remove it from Chrome first. Both would otherwise connect to the same companion and the agent would see tabs from whichever connected last.
 </Warning>
 
-## Pairing
+## Connecting the extension
 
-The companion creates a random token in `~/.browspark/token` (mode `0600`) on first start. The extension must present it to connect. Get it from any of these places:
+The extension connects to `127.0.0.1:9223` on its own as soon as it is loaded; there is nothing to enter. If you run the companion with `--port`, set the same port under **Settings → Companion → Bridge port**.
 
-- Ask the agent to run `browser_status`; while unpaired the output includes the token and port.
-- The companion prints it on stderr at startup: `browspark: ready on ws://127.0.0.1:9223 (pairing token …)`.
-- `cat ~/.browspark/token`.
 
-Enter it under **Settings → Companion → Pairing token** and click **Connect**. The extension stores the token in its own `chrome.storage.local`, so it survives browser restarts. Delete the file to rotate the token; the dashboard then needs the new one.
+There is no pairing token. The companion listens on localhost only and refuses connections that carry a web page's `Origin` header, so sites you visit cannot reach it; extensions and native MCP clients can.
 
 ## Updating
 

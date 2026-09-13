@@ -7,7 +7,7 @@ description: "From zero to an agent driving a tab in about five minutes."
 
 ## Option 1: one command
 
-The setup script downloads the extension to `~/browspark-extension`, registers the companion with the agents you pick (Claude Code, Codex, OpenCode, Cursor, Kilo, Antigravity), and prints the pairing steps. Add `--test` for a dry run that downloads nothing and writes no config.
+The setup script downloads the extension to `~/browspark-extension`, registers the companion with the agents you pick (Claude Code, Codex, OpenCode, Cursor, Kilo, Antigravity), and prints the final steps. Add `--test` for a dry run that downloads nothing and writes no config.
 
 ```bash
 curl -fsSL https://browspark.krishm.dev/setup.sh | bash
@@ -38,7 +38,7 @@ Then continue from **Load the extension** below.
     Every other client is covered in [Connect an agent](/connect/agents). The dashboard's Overview page shows ready-to-copy snippets for each.
   </Step>
   <Step title="Pair once">
-    Ask the agent to call `browser_status`. While the extension is not connected it prints the pairing token and port. Open the dashboard (click the extension icon), go to **Settings**, paste the token and click **Connect**. The token lives in `~/.browspark/token` and never changes unless you delete that file.
+    Open the dashboard (click the extension icon). It connects to the companion on its own; ask the agent to call `browser_status` to confirm, then share the tabs the agent may use.
   </Step>
   <Step title="Share a tab">
     In the dashboard's **Tabs** page, share the tab the agent should work on, or switch on **Share everything** to include every current and future tab. Then ask:

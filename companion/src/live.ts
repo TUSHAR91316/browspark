@@ -41,7 +41,7 @@ export function installLiveView(bridge: Bridge, sessions: Sessions) {
   };
 }
 
-export const LIVE_HTML = (tabId: number, token: string) => `<!doctype html><meta charset="utf-8"><title>Live view · tab ${tabId}</title>
+export const LIVE_HTML = (tabId: number) => `<!doctype html><meta charset="utf-8"><title>Live view · tab ${tabId}</title>
 <style>
   :root { color-scheme: dark; }
   body { margin: 0; background: #191919; color: #d4d4d4; font: 13px ui-sans-serif, -apple-system, "Segoe UI", sans-serif; display: grid; grid-template-rows: auto 1fr; height: 100vh; }
@@ -58,7 +58,7 @@ export const LIVE_HTML = (tabId: number, token: string) => `<!doctype html><meta
 <script>
   const img = document.getElementById('v'), status = document.getElementById('status'), dot = document.getElementById('dot');
   let meta = { deviceWidth: 1, deviceHeight: 1 }, frames = 0;
-  const ws = new WebSocket(location.origin.replace(/^http/, 'ws') + '/live-ws?tab=${tabId}&token=${token}');
+  const ws = new WebSocket(location.origin.replace(/^http/, 'ws') + '/live-ws?tab=${tabId}');
   ws.onopen = () => { dot.className = 'dot on'; status.textContent = 'connected'; };
   ws.onclose = () => { dot.className = 'dot'; status.textContent = 'disconnected'; };
   ws.onmessage = (e) => { const m = JSON.parse(e.data); if (m.type === 'frame') { img.src = 'data:image/jpeg;base64,' + m.data; meta = m.meta; if (++frames % 10 === 1) status.textContent = m.meta.deviceWidth + '×' + m.meta.deviceHeight + ' · ' + frames + ' frames'; } else if (m.type === 'error') status.textContent = m.message; };

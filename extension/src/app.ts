@@ -98,7 +98,7 @@ async function changeConnection(message: Extract<PopupMsg, { type: 'connect' | '
   if (!stopping && (connectionAction || state?.connecting)) return;
   const epoch = ++connectionEpoch;
   connectionAction = stopping ? 'stop' : 'connect';
-  if (state) paint({ ...state, ...(message.type === 'setConfig' && { hasToken: state.hasToken || !!message.token, port: message.port }) });
+  if (state) paint({ ...state, ...(message.type === 'setConfig' && { port: message.port }) });
   try {
     const next = await ask(message);
     if (epoch !== connectionEpoch) return;
@@ -126,7 +126,7 @@ function renderShell(s: State) {
     const n = r === 'tabs' ? s.tabs.filter((t) => t.shared && canShare(t)).length : r === 'tools' ? s.toolCatalog.length : 0;
     return h('a', { href: `#/${r}`, class: route === r ? 'on' : '', 'aria-current': route === r ? 'page' : undefined, 'data-key': r }, icon(ic), h('span', { class: 'nav-text' }, label), n ? h('span', { class: 'n' }, String(n)) : null);
   }));
-  const [cls, l1, l2] = s.connecting ? ['pending', 'Reconnecting…', `127.0.0.1:${s.port}`] : s.connected ? ['ok', 'Connected', `127.0.0.1:${s.port} · ${ago(s.connectedAt!)}`] : s.lastError ? ['bad', 'Disconnected', s.lastError] : s.stopped ? ['bad', 'Access paused', 'Resume when you’re ready'] : ['', 'Disconnected', s.hasToken ? 'Retry from Settings' : 'Pair from Overview'];
+  const [cls, l1, l2] = s.connecting ? ['pending', 'Reconnecting…', `127.0.0.1:${s.port}`] : s.connected ? ['ok', 'Connected', `127.0.0.1:${s.port} · ${ago(s.connectedAt!)}`] : s.lastError ? ['bad', 'Disconnected', s.lastError] : s.stopped ? ['bad', 'Access paused', 'Resume when you’re ready'] : ['', 'Disconnected', 'Retry from Settings'];
   $('conn').className = `conn ${cls}`;
   $('conn').setAttribute('aria-busy', String(s.connecting));
   patch($('conn'), s.connecting ? spinner() : h('span', { class: 'dot' }), h('div', {}, h('div', { class: 'l1' }, l1), h('div', { class: 'l2', ...(s.connected && { 'data-ago': String(s.connectedAt), 'data-ago-fmt': `127.0.0.1:${s.port} · {ago}` }) }, l2)));
@@ -140,7 +140,7 @@ const stat = (k: string, v: string | number, extra?: string, cls = '', agoTs?: n
 const empty = (ic: keyof typeof I, title: string, sub?: string, action?: Node) => h('div', { class: 'empty' }, icon(ic), h('b', {}, title), sub ? h('span', {}, sub) : null, action ?? null);
 const stopResume = (s: State) => s.stopped
   ? h('button', { class: 'btn primary', disabled: connectionBusy(s), 'aria-busy': String(connectionBusy(s)), onclick: () => changeConnection({ type: 'connect' }) }, icon('play'), 'Resume access')
-  : h('button', { class: 'btn danger', disabled: !s.connected && !s.hasToken && !s.connecting, onclick: () => changeConnection({ type: 'stop' }), title: 'Detach from every tab and disconnect' }, icon('stop'), 'Stop access');
+  : h('button', { class: 'btn danger', disabled: !s.connected && !s.connecting, onclick: () => changeConnection({ type: 'stop' }), title: 'Detach from every tab and disconnect' }, icon('stop'), 'Stop access');
 
 function copyBtn(text: string, label = 'Copy') {
   return h('button', { class: 'btn sm icon ghost', title: label, 'aria-label': label, onclick: async (e: Event) => { const b = e.currentTarget as HTMLElement; await navigator.clipboard.writeText(text); b.replaceChildren(icon('check')); setTimeout(() => b.replaceChildren(icon('copy')), 1200); } }, icon('copy'));
@@ -148,13 +148,11 @@ function copyBtn(text: string, label = 'Copy') {
 const inputValue = (id: string) => $<HTMLInputElement>(id)?.value ?? '';
 const checked = (e: Event) => (e.currentTarget as HTMLInputElement).checked;
 
-function pairForm(s: State) {
-  const token = h('input', { id: 'token', class: 'mono', placeholder: 'Enter pairing token', 'aria-label': 'Pairing token', spellcheck: false, autocomplete: 'off' }) as HTMLInputElement;
+function connectForm(s: State) {
   const port = h('input', { id: 'port', type: 'number', min: 1, max: 65535, 'aria-label': 'Bridge port', value: String(s.port), class: 'mono' }) as HTMLInputElement;
-  const submit = () => { const message = { type: 'setConfig' as const, token: inputValue('token').trim(), port: Number(inputValue('port')) || 9223 }; editing = false; return changeConnection(message); }; // empty token keeps the stored one
-  token.onkeydown = (e) => { if (e.key === 'Enter') submit(); };
+  const submit = () => { editing = false; return changeConnection({ type: 'setConfig', port: Number(inputValue('port')) || 9223 }); };
+  port.onkeydown = (e) => { if (e.key === 'Enter') submit(); };
   return h('div', { class: 'row pair-form' },
-    h('label', { class: 'field', style: 'flex:1;max-width:320px' }, h('span', {}, 'Token'), token),
     h('label', { class: 'field', style: 'width:130px' }, h('span', {}, 'Port'), port),
     h('button', { class: 'btn primary', disabled: connectionBusy(s), 'aria-busy': String(connectionBusy(s)), onclick: submit }, s.connecting ? spinner() : null, s.connecting ? 'Reconnecting…' : s.connected ? 'Reconnect' : 'Connect'),
     editing ? h('button', { class: 'btn ghost', onclick: () => { editing = false; repaint(); } }, 'Cancel') : null);
@@ -215,7 +213,7 @@ function clientSetup(port: number) {
 }
 function viewOverview(s: State) {
   const shared = s.tabs.filter((t) => t.shared && canShare(t));
-  const paired = s.hasToken && !editing;
+  const paired = (s.connected || s.connecting) && !editing;
   const step = !paired ? 2 : shared.length || s.shareAll ? 4 : 3;
   const companionOk = s.connected; // only verifiable once the bridge answers
   const onboarding = h('div', { class: 'card setup-card' },
@@ -226,16 +224,16 @@ function viewOverview(s: State) {
         h('p', {}, 'Register it with your MCP client. It starts the local bridge on ', h('code', {}, `127.0.0.1:${s.port}`), '.'),
         clientSetup(s.port))),
       h('div', { class: `step ${step > 2 ? 'done' : step === 2 ? 'now' : ''}` }, h('div', { class: 'num' }, step > 2 ? icon('check') : '2'), h('div', {},
-        h('h3', {}, 'Pair this extension'),
-        h('p', {}, 'Ask the agent to call ', h('code', {}, 'browser_status'), ' to get your pairing token.'),
-        paired ? h('div', { class: 'row' }, h('span', { class: 'pill ok' }, icon('check'), 'Paired'), h('span', { class: 'mono', style: 'color:var(--fg-3)' }, `127.0.0.1:${s.port}`), h('button', { class: 'btn sm ghost', onclick: () => { editing = true; repaint(); $('token')?.focus(); } }, 'Change')) : pairForm(s),
+        h('h3', {}, 'Connect this extension'),
+        h('p', {}, 'It connects to the companion on this machine by itself. Change the port only if you run the companion with ', h('code', {}, '--port'), '.'),
+        paired ? h('div', { class: 'row' }, h('span', { class: 'pill ok' }, icon('check'), s.connecting ? 'Connecting…' : 'Connected'), h('span', { class: 'mono', style: 'color:var(--fg-3)' }, `127.0.0.1:${s.port}`), h('button', { class: 'btn sm ghost', onclick: () => { editing = true; repaint(); $('port')?.focus(); } }, 'Change')) : connectForm(s),
         s.lastError && !s.connected ? h('div', { class: 'notice bad', style: 'margin-top:10px' }, icon('alert'), s.lastError) : null)),
       h('div', { class: `step ${step > 3 ? 'done' : step === 3 ? 'now' : ''}` }, h('div', { class: 'num' }, step > 3 ? icon('check') : '3'), h('div', {},
         h('h3', {}, 'Share tabs'),
         h('p', {}, 'Choose the tabs your agent can control. Change access at any time.'),
         h('a', { href: '#/tabs', class: 'btn' }, icon('tabs'), s.shareAll ? 'Sharing everything · manage' : shared.length ? `${shared.length} shared · manage` : 'Choose tabs')))));
 
-  const ready = (s.connected || s.connecting || s.hasToken) && !editing && (!s.stopped || !!s.lastError);
+  const ready = !editing && (!s.stopped || !!s.lastError);
   const recent = s.recent.slice(0, 4);
   const sharedPanel = h('div', { class: 'card' },
     h('div', { class: 'card-h' }, icon('tabs'), h('h2', {}, 'Shared tabs'), h('span', { class: 'pill' }, String(shared.length))),
@@ -378,20 +376,18 @@ function viewActivity(s: State) {
 }
 
 function viewSettings(s: State) {
-  const token = h('input', { id: 'token', class: 'mono', placeholder: s.hasToken ? '•••••••• (set)' : 'Enter pairing token', 'aria-label': 'Pairing token', autocomplete: 'off', spellcheck: false }) as HTMLInputElement;
   const port = h('input', { id: 'port', type: 'number', min: 1, max: 65535, 'aria-label': 'Bridge port', value: String(s.port), class: 'mono' }) as HTMLInputElement;
-  const save = () => changeConnection({ type: 'setConfig', token: inputValue('token').trim(), port: Number(inputValue('port')) || 9223 }); // empty token keeps the stored one
+  const save = () => changeConnection({ type: 'setConfig', port: Number(inputValue('port')) || 9223 });
   return h('div', { class: 'page' },
     pageHeader('Settings', 'Your connection, privacy, and agent access preferences.'),
     h('div', { class: 'card', style: 'margin-bottom:16px' },
       h('div', { class: 'card-h' }, h('h2', {}, 'Companion')),
-      h('div', { class: 'setting' }, h('div', {}, h('h3', {}, 'Pairing token'), h('p', {}, 'Printed by ', h('code', {}, 'browser_status'), '. Stored only in this browser profile.')), h('div', { class: 'ctl' }, h('label', { class: 'field' }, token))),
       h('div', { class: 'setting' }, h('div', {}, h('h3', {}, 'Bridge port'), h('p', {}, 'Where the companion listens on localhost. Change it if you run the companion with ', h('code', {}, '--port'), '.')), h('div', { class: 'ctl' }, h('label', { class: 'field narrow' }, port))),
       h('div', { class: 'setting' }, h('div', {}, h('h3', {}, 'Connection'), h('p', s.connected ? { 'data-ago': String(s.connectedAt), 'data-ago-fmt': 'Connected for {ago}.' } : {}, s.connecting ? 'Reconnecting… Waiting for the companion.' : s.connected ? `Connected for ${ago(s.connectedAt!)}.` : `Disconnected.${s.lastError ? ' ' + s.lastError : ''}`)), h('div', { class: 'ctl' }, h('button', { id: 'reconnect', class: 'btn ghost', 'aria-label': 'Reconnect', disabled: connectionBusy(s), 'aria-busy': String(connectionBusy(s)), onclick: () => changeConnection({ type: 'connect' }) }, s.connecting ? spinner() : icon('refresh'), s.connecting ? 'Reconnecting…' : 'Reconnect'), h('button', { class: 'btn primary', disabled: connectionBusy(s), 'aria-busy': String(connectionBusy(s)), onclick: save }, 'Save')))),
     h('div', { class: 'card', style: 'margin-bottom:16px' },
       h('div', { class: 'card-h' }, h('h2', {}, 'Other clients')),
-      h('div', { class: 'setting' }, h('div', {}, h('h3', {}, 'HTTP endpoint'), h('p', {}, 'Clients that take a URL instead of a command (web agents, hosted assistants) connect here while the companion runs. The token is part of the URL; treat it like a password.'),
-        s.hasToken && s.token ? h('div', { class: 'cmd', style: 'margin-top:8px' }, h('code', {}, `http://127.0.0.1:${s.port}/mcp?token=${s.token}`), copyBtn(`http://127.0.0.1:${s.port}/mcp?token=${s.token}`)) : h('p', { style: 'margin-top:6px;color:var(--fg-3)' }, 'Pair first to get the URL.')),
+      h('div', { class: 'setting' }, h('div', {}, h('h3', {}, 'HTTP endpoint'), h('p', {}, 'Clients that take a URL instead of a command (web agents, hosted assistants) connect here while the companion runs. Localhost only; web pages are refused.'),
+        h('div', { class: 'cmd', style: 'margin-top:8px' }, h('code', {}, `http://127.0.0.1:${s.port}/mcp`), copyBtn(`http://127.0.0.1:${s.port}/mcp`))),
         h('div', { class: 'ctl' }))),
     h('div', { class: 'card', style: 'margin-bottom:16px' },
       h('div', { class: 'card-h' }, h('h2', {}, 'Developer browser')),
@@ -423,7 +419,7 @@ function tick() {
 /** Older workers (before an extension reload) omit newer fields; never let that blank the page. */
 function normalize(s: Partial<State> | undefined): State {
   const x = (s ?? {}) as Partial<State>;
-  const defaults: State = { connected: false, connecting: false, stopped: false, shareAll: false, activityLog: false, overlay: true, port: 9223, hasToken: false, extensionVersion: '?', windows: [], tabs: [], recent: [], totals: { ops: 0, errors: 0 }, toolCatalog: [], disabledTools: [], devMode: 'auto' };
+  const defaults: State = { connected: false, connecting: false, stopped: false, shareAll: false, activityLog: false, overlay: true, port: 9223, extensionVersion: '?', windows: [], tabs: [], recent: [], totals: { ops: 0, errors: 0 }, toolCatalog: [], disabledTools: [], devMode: 'auto' };
   const out: State = { ...defaults, ...x } as State;
   for (const k of ['windows', 'tabs', 'recent', 'toolCatalog', 'disabledTools'] as const) if (!Array.isArray(out[k])) (out as any)[k] = [];
   if (!out.totals) out.totals = { ops: 0, errors: 0 };
@@ -451,7 +447,7 @@ function paintInner(s: State) {
   // preserve focus and caret across re-renders
   const a = document.activeElement as HTMLInputElement | null;
   const keep = a && a.id && 'selectionStart' in a ? { id: a.id, value: a.value, s: a.selectionStart, e: a.selectionEnd } : null;
-  const drafts = sameRoute ? [...main.querySelectorAll<HTMLInputElement>('#token, #port')].filter((el) => el.value !== el.defaultValue).map((el) => ({ id: el.id, value: el.value })) : [];
+  const drafts = sameRoute ? [...main.querySelectorAll<HTMLInputElement>('#port')].filter((el) => el.value !== el.defaultValue).map((el) => ({ id: el.id, value: el.value })) : [];
   renderShell(s);
   document.title = `${NAV.find((n) => n[0] === route)?.[2] ?? 'Browspark'} · Browspark`;
   // The worker only picks up new code when the extension is reloaded; this page reloads on its own. Detect the mismatch.

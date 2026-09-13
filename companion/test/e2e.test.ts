@@ -85,7 +85,6 @@ beforeAll(async () => {
   client = new Client({ name: 'e2e', version: '0' });
   await client.connect(new StdioClientTransport({ command: 'bun', args: [join(ROOT, 'companion/src/index.ts'), '--port', '0'], stderr: 'pipe' }));
   const status = await ok('browser_status');
-  const token = /token: (\w+)/.exec(status)![1];
   const PORT = Number(/port:\s+(\d+)/.exec(status)![1]);
   assert.notEqual(PORT, 0);
   assert.match(status, /NOT CONNECTED/);
@@ -98,7 +97,7 @@ beforeAll(async () => {
   const msg = (m: unknown) => cdp.send('Runtime.evaluate', { expression: `chrome.runtime.sendMessage(${JSON.stringify(m)})`, awaitPromise: true, returnByValue: true }, dashboardSession).then((r) => r.result.value);
   // the target starts as about:blank; wait until app.html is loaded and extension APIs exist
   for (let i = 0; i < 50; i++) { const r = await cdp.send('Runtime.evaluate', { expression: 'typeof chrome !== "undefined" && !!chrome.runtime?.sendMessage', returnByValue: true }, dashboardSession); if (r.result.value) break; await new Promise((r) => setTimeout(r, 100)); }
-  await msg({ type: 'setConfig', token, port: PORT });
+  await msg({ type: 'setConfig', port: PORT });
   for (let i = 0; i < 50 && !(await msg({ type: 'getState' })).connected; i++) await new Promise((r) => setTimeout(r, 100));
   const st = await msg({ type: 'getState' });
   assert.equal(st.connected, true, `extension did not connect: ${JSON.stringify({ ...st, tabs: undefined, recent: undefined })}`);
@@ -123,12 +122,12 @@ test('connected dashboard keeps setup first and follows activity logging setting
   };
   const overview = async (logging: boolean) => {
     await waitFor(`document.querySelector('.setup-card') && document.querySelectorAll('.metric-grid .stat').length === ${logging ? 4 : 2}`);
-    assert.deepEqual(await evaluate(`[...document.querySelectorAll('.setup-card .step h3')].map(step => step.textContent)`), ['Run the companion', 'Pair this extension', 'Share tabs']);
+    assert.deepEqual(await evaluate(`[...document.querySelectorAll('.setup-card .step h3')].map(step => step.textContent)`), ['Run the companion', 'Connect this extension', 'Share tabs']);
     assert.ok(await evaluate(`[...document.querySelectorAll('.setup-card .step')].every(step => step.getBoundingClientRect().height > 0) && ['.connection-panel', '.metric-grid', '.overview-grid'].every(selector => document.querySelector('.setup-card').getBoundingClientRect().bottom <= document.querySelector(selector).getBoundingClientRect().top)`), 'setup stays visible above connection, metrics, and lower cards');
     assert.deepEqual(await evaluate(`[...document.querySelectorAll('.metric-grid .k')].map(label => label.textContent)`), logging ? ['Shared tabs', 'Enabled tools', 'Operations', 'Errors'] : ['Shared tabs', 'Enabled tools']);
     assert.deepEqual(await evaluate(`[...document.querySelectorAll('.overview-grid .card-h h2')].map(heading => heading.textContent)`), ['Shared tabs', 'Recent activity']);
-    assert.equal(await evaluate(`!!document.querySelector('#main input[aria-label="Pairing token"]')`), false, 'paired setup keeps the token input hidden until Change');
-    assert.ok(await evaluate(`document.querySelector('.setup-card').textContent.includes('Paired') && [...document.querySelectorAll('.setup-card button')].some(button => button.textContent === 'Change')`));
+    assert.equal(await evaluate(`!!document.querySelector('.setup-card input[aria-label="Bridge port"]')`), false, 'connected setup keeps the port input hidden until Change');
+    assert.ok(await evaluate(`document.querySelector('.setup-card').textContent.includes('Connected') && [...document.querySelectorAll('.setup-card button')].some(button => button.textContent === 'Change')`));
     if (!logging) assert.ok(await evaluate(`document.querySelector('.overview-grid').textContent.includes('Activity log is off')`));
   };
   try {
@@ -141,7 +140,6 @@ test('connected dashboard keeps setup first and follows activity logging setting
     await navigate('settings', 'Settings');
     const port = await evaluate('chrome.runtime.sendMessage({type:"getState"}).then(state => state.port)');
     assert.equal(await evaluate(`document.querySelector('input[aria-label="Bridge port"]').valueAsNumber`), port);
-    assert.ok(await evaluate(`!!document.querySelector('input[aria-label="Pairing token"]')`));
     for (const on of [true, false]) {
       await waitFor(`document.querySelector('input[aria-label="Activity log"]').checked === ${!on}`);
       await evaluate(`document.querySelector('input[aria-label="Activity log"]').click()`);
@@ -579,18 +577,18 @@ test('an unanswered companion handshake stays reconnecting and shows rejection',
   try {
     await evaluate(`document.querySelector('#nav a[href="#/settings"]').click()`);
     await waitFor(`!!document.querySelector('#port')`);
-    await evaluate(`document.querySelector('#token').value = 'unsaved token'; document.querySelector('#port').value = '54321'; document.querySelector('#port').focus()`);
-    await evaluate(`chrome.runtime.sendMessage({type:'setConfig',token:'',port:${(delayed.address() as { port: number }).port}})`);
+    await evaluate(`document.querySelector('#port').value = '54321'; document.querySelector('#port').focus()`);
+    await evaluate(`chrome.runtime.sendMessage({type:'setConfig',port:${(delayed.address() as { port: number }).port}})`);
     const socket = await hello; // Deliberately send no companion request: an open WebSocket is not a completed handshake.
     await waitFor(`chrome.runtime.sendMessage({type:'getState'}).then(state => state.connecting && !state.connected)`);
     await waitFor(`document.querySelector('#reconnect')?.disabled && ['#session-status', '#conn'].every(selector => document.querySelector(selector).textContent.includes('Reconnecting…'))`);
-    assert.deepEqual(await evaluate(`[document.querySelector('#token').value, document.querySelector('#port').value, document.activeElement.id]`), ['unsaved token', '54321', 'port'], 'connection updates preserve Settings drafts and focus');
+    assert.deepEqual(await evaluate(`[document.querySelector('#port').value, document.activeElement.id]`), ['54321', 'port'], 'connection updates preserve Settings drafts and focus');
     await evaluate(`document.querySelector('#nav a[href="#/overview"]').click()`);
     await waitFor(`document.querySelector('.connection-panel')?.textContent.includes('Reconnecting…')`);
     await evaluate(`document.querySelector('#nav a[href="#/settings"]').click()`);
-    socket.close(4003, 'test rejection');
-    await waitFor(`chrome.runtime.sendMessage({type:'getState'}).then(state => !state.connecting && !state.connected && state.stopped && state.lastError === 'Companion rejected the token')`);
-    await waitFor(`document.querySelector('#main').textContent.includes('Companion rejected the token') && !document.querySelector('#reconnect').disabled`);
+    socket.close(4002, 'test rejection');
+    await waitFor(`chrome.runtime.sendMessage({type:'getState'}).then(state => !state.connecting && !state.connected && state.stopped && state.lastError === 'test rejection')`);
+    await waitFor(`document.querySelector('#main').textContent.includes('test rejection') && !document.querySelector('#reconnect').disabled`);
     assert.equal(await evaluate(`['#session-status', '#conn'].some(selector => document.querySelector(selector).textContent.includes('Reconnecting…'))`), false);
     await new Promise((resolve) => setTimeout(resolve, 1200));
     assert.equal(attempts, 1, 'rejected connections must not keep retrying while stopped');
@@ -598,7 +596,7 @@ test('an unanswered companion handshake stays reconnecting and shows rejection',
     clearTimeout(helloTimer!);
     for (const socket of delayed.clients) socket.terminate();
     await new Promise<void>((resolve) => delayed.close(() => resolve()));
-    await evaluate(`chrome.runtime.sendMessage(${JSON.stringify({ type: 'setConfig', token: before.token, port: before.port })}).finally(() => { location.hash = ${JSON.stringify(previousHash)}; })`);
+    await evaluate(`chrome.runtime.sendMessage(${JSON.stringify({ type: 'setConfig', port: before.port })}).finally(() => { location.hash = ${JSON.stringify(previousHash)}; })`);
     await waitFor(`chrome.runtime.sendMessage({type:'getState'}).then(state => state.connected && !state.connecting)`);
   }
 }, 30_000);
@@ -617,7 +615,7 @@ test('automatic retries stay visibly disconnected until the companion responds',
     });
   });
   try {
-    await evaluate(`chrome.runtime.sendMessage({type:'setConfig',token:'',port:${(companion.address() as { port: number }).port}})`);
+    await evaluate(`chrome.runtime.sendMessage({type:'setConfig',port:${(companion.address() as { port: number }).port}})`);
     await waitFor(`chrome.runtime.sendMessage({type:'getState'}).then(state => state.connected && !state.connecting)`);
     const retry = new Promise<WebSocket>((resolve, reject) => {
       retryTimer = setTimeout(() => reject(new Error('Extension did not retry the disconnected companion')), 5000);
@@ -643,7 +641,7 @@ test('automatic retries stay visibly disconnected until the companion responds',
     clearTimeout(retryTimer);
     for (const socket of companion.clients) socket.terminate();
     await new Promise<void>((resolve) => companion.close(() => resolve()));
-    await evaluate(`chrome.runtime.sendMessage(${JSON.stringify({ type: 'setConfig', token: before.token, port: before.port })}).finally(() => { location.hash = ${JSON.stringify(previousHash)}; })`);
+    await evaluate(`chrome.runtime.sendMessage(${JSON.stringify({ type: 'setConfig', port: before.port })}).finally(() => { location.hash = ${JSON.stringify(previousHash)}; })`);
     await waitFor(`chrome.runtime.sendMessage({type:'getState'}).then(state => state.connected && !state.connecting)`);
   }
 }, 30_000);

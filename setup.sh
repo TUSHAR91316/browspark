@@ -142,11 +142,11 @@ for agent in $CHOSEN; do
 done
 
 # 06 ───────────────────────────────────────────────────────────────────────────
-step 06 "Load the extension and pair"
+step 06 "Load the extension"
 say "  1. Open ${B}chrome://extensions${X}, switch on ${B}Developer mode${X}, click ${B}Load unpacked${X}"
 say "     and pick ${G}$EXT_DIR${X}"
-say "  2. Start your agent and ask it to run ${B}browser_status${X}. It prints a pairing token."
-say "  3. Click the Browspark toolbar icon, paste the token, hit ${B}Connect${X}, then share the tabs"
-say "     your agent may use."
+say "  2. Click the Browspark toolbar icon. The dashboard connects to the companion on its own;"
+say "     share the tabs your agent may use."
+say "  3. Ask your agent to run ${B}browser_status${X} to confirm it sees them."
 if [ "$TEST" = 1 ]; then printf '\n  %s●%s %sTest passed.%s Run without --test to apply.\n\n' "$G" "$X" "$B" "$X"
 else printf '\n  %s●%s %sYou are good to go.%s  %shttps://docs.browspark.krishm.dev%s\n\n' "$G" "$X" "$B" "$X" "$D" "$X"; fi

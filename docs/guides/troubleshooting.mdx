@@ -5,15 +5,15 @@ description: "Symptoms, causes and fixes for connection, tab, tool and developer
 
 ## The agent says NOT CONNECTED
 
-The extension is not paired or the companion is not running.
+The extension is not connected or the companion is not running.
 
-1. Ask for `browser_status`; it prints the token and port.
-2. Open the dashboard → Settings, paste the token, check the port matches, click **Connect**.
+1. Ask for `browser_status`; it prints the port.
+2. Open the dashboard → Settings, check the port matches, click **Connect**.
 3. If the dashboard says "Reconnecting…", no companion is listening. A stdio client starts one when it connects; for HTTP-only use start `bunx browspark-mcp@latest --http-only`.
 
 ## Port already in use
 
-Another companion owns the port and the new one relays to it; that is normal and needs no action. If instead you see `port 9223 is in use but the companion there did not answer`, something else holds the port. Stop it, or start with `--port 9224` and set the same port in the dashboard.
+Another companion owns the port and the new one relays to it; that is normal and needs no action. If instead tool calls fail with `port 9223 is in use but the companion there did not answer`, something else holds the port. Stop it, or start with `--port 9224` and set the same port in the dashboard.
 
 ## The agent is looking at the wrong browser
 

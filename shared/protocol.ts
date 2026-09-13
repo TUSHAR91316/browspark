@@ -2,7 +2,7 @@
 // Requests flow companion -> extension. Events flow extension -> companion.
 
 export const DEFAULT_PORT = 9223;
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 
 export interface Req { id: number; method: ReqMethod; params?: unknown }
 export interface Res { id: number; result?: unknown; error?: string }
@@ -33,7 +33,7 @@ export interface TabInfo {
   unsupported?: string;
 }
 
-export interface HelloParams { token: string; version: number; extensionVersion: string; browser?: string; userAgent?: string }
+export interface HelloParams { version: number; extensionVersion: string; browser?: string; userAgent?: string }
 export interface CdpParams { tabId: number; method: string; params?: unknown; sessionId?: string; /** Name of the agent issuing the command. */ client?: string }
 export interface CdpEventParams { tabId: number; method: string; params: unknown; sessionId?: string }
 export interface DetachedParams { tabId: number; reason: string }

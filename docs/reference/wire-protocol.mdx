@@ -3,7 +3,7 @@ title: "Wire protocol"
 description: "The JSON messages between the companion and the extension over the local WebSocket."
 ---
 
-Defined in `shared/protocol.ts` (protocol version 1). Transport: a WebSocket from the extension's service worker to `ws://127.0.0.1:<port>`. The first message must be `hello` with the pairing token; anything else, or a frame that is not a JSON object, closes the socket.
+Defined in `shared/protocol.ts` (protocol version 2). Transport: a WebSocket from the extension's service worker to `ws://127.0.0.1:<port>`. The first message must be `hello`; anything else, or a frame that is not a JSON object, closes the socket. Connections and requests that carry a web page's `Origin` header are refused, so pages in the browser cannot reach the companion.
 
 ## Message shapes
 
@@ -32,7 +32,7 @@ interface Evt { event: EvtName; params?: unknown }                   // either d
 
 | Event | Direction | Params |
 |---|---|---|
-| `hello` | extension → companion | `{token, version, extensionVersion, browser?, userAgent?}` |
+| `hello` | extension → companion | `{version, extensionVersion, browser?, userAgent?}` |
 | `tabs` | extension → companion | `TabInfo[]` whenever tabs or sharing change |
 | `cdp.event` | extension → companion | `{tabId, method, params, sessionId?}` for every protocol event on an attached tab |
 | `detached` | extension → companion | `{tabId, reason}` when Chrome or the idle timer detaches |
@@ -58,6 +58,6 @@ interface TabInfo {
 | Route | Purpose |
 |---|---|
 | `GET /` | `browspark companion` health text |
-| `POST/GET/DELETE /mcp` | MCP over Streamable HTTP, token required |
-| `GET /live/:tabId?token=` | Live view page |
-| `GET /live-ws?tab=&token=` | Live view WebSocket: `frame`, `hello`, `error` messages out; `mouse` and `key` messages in |
+| `POST/GET/DELETE /mcp` | MCP over Streamable HTTP |
+| `GET /live/:tabId` | Live view page |
+| `GET /live-ws?tab=` | Live view WebSocket: `frame`, `hello`, `error` messages out; `mouse` and `key` messages in |

@@ -102,7 +102,7 @@ export class Sessions extends EventEmitter {
       const own = usable.filter((t) => t.agent && ![...clients.values()].some((c) => c !== me && c.ownedTabs.has(t.id)));
       if (own.length && !me) return own[own.length - 1].id;
       if (usable.length === 1) return usable[0].id;
-      if (!usable.length) throw new Error(this.bridge.connected ? 'No usable tabs in the user\'s browser. Ask the user to share a tab in the extension dashboard (or open your own with browser_tabs {action:"new", url}). Do not launch the developer browser unless the user asked for it.' : this.runningDevs().length ? 'No usable tabs; open one with browser_tabs {action:"new", url}.' : 'Nothing is connected. Call browser_status for pairing instructions and ask the user to pair the extension. Do not launch the developer browser unless the user asked for it.');
+      if (!usable.length) throw new Error(this.bridge.connected ? 'No usable tabs in the user\'s browser. Ask the user to share a tab in the extension dashboard (or open your own with browser_tabs {action:"new", url}). Do not launch the developer browser unless the user asked for it.' : this.runningDevs().length ? 'No usable tabs; open one with browser_tabs {action:"new", url}.' : 'Nothing is connected. Call browser_status and ask the user to open the Browspark extension dashboard and share a tab. Do not launch the developer browser unless the user asked for it.');
       throw new Error(`tabId is required; usable tabs: ${usable.map((t) => `${t.id} (${t.mode}${t.context ? ':' + t.context : ''}: ${t.title || t.url})`).join(', ')}`);
     }
     if (!this.bridge.connected) throw new Error(`Tab ${tabId} is not a development-browser tab and the extension is not connected.`);

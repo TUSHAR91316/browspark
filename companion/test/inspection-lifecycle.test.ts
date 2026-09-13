@@ -93,8 +93,7 @@ test('closing a stdio relay terminates its upstream inspection membership', asyn
     await connect(owner, 0);
     const status = await call(owner, 'browser_status');
     const port = Number(/port:\s+(\d+)/.exec(status)?.[1]);
-    const token = /token: (\w+)/.exec(status)?.[1];
-    assert.ok(port && token, 'isolated companion is ready');
+    assert.ok(port, 'isolated companion is ready');
     ws = new WebSocket(`ws://127.0.0.1:${port}`);
     const tabs = [{ id: 71, url: 'https://example.test/', title: 'Fixture', shared: true, attached: true }];
     ws.on('message', (raw) => {
@@ -104,7 +103,7 @@ test('closing a stdio relay terminates its upstream inspection membership', asyn
       ws!.send(JSON.stringify({ id: req.id, result }));
     });
     await new Promise<void>((resolve, reject) => { ws!.once('open', resolve); ws!.once('error', reject); });
-    ws.send(JSON.stringify({ event: 'hello', params: { token, version: PROTOCOL_VERSION, extensionVersion: 'test' } }));
+    ws.send(JSON.stringify({ event: 'hello', params: { version: PROTOCOL_VERSION, extensionVersion: 'test' } }));
     ws.send(JSON.stringify({ event: 'tabs', params: tabs }));
     await connect(relay, port);
     await call(owner, 'devtools_session', { action: 'start', tabId: 71 });

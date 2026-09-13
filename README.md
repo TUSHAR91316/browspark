@@ -19,7 +19,7 @@ Requires [Bun](https://bun.sh) and a Chromium-based browser (Chrome, Brave, Edge
 
 ### Option 1: one command
 
-Downloads the extension, registers the companion with the agents you pick, and walks you through pairing. Add `--test` for a dry run that changes nothing.
+Downloads the extension, registers the companion with the agents you pick, and walks you through the last steps. Add `--test` for a dry run that changes nothing.
 
 ```bash
 curl -fsSL https://browspark.krishm.dev/setup.sh | bash
@@ -37,7 +37,7 @@ Codex, OpenCode, Cursor, Kilo and Antigravity are covered in the [connect guide]
 
 **2. Get the extension.** Download `browspark-extension.zip` from the [latest release](https://github.com/uncaughterrs/browspark/releases/latest) and unzip it, or clone this repo and run `bun install && bun run build` to use the `extension/` folder. Then open `chrome://extensions`, turn on Developer mode, choose **Load unpacked** and select that folder.
 
-**3. Pair once.** Open the extension dashboard, ask the agent to call `browser_status`, paste the token it prints, and share the tabs the agent may use.
+**3. Share tabs.** Open the extension dashboard; it connects to the companion on its own. Share the tabs the agent may use.
 
 ## What it does
 - **Extension mode.** The agent drives tabs in your own browser, keeping your signed-in sessions. Only tabs you share are reachable, a soft cyan halo and a moving cursor show the agent at work, and a Stop button on the tab revokes access instantly.

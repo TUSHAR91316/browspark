@@ -12,10 +12,10 @@ The first companion process to start owns port `9223`. Every companion started a
 <img className="block dark:hidden" src="/images/multiple-agents-light.gif" alt="Claude Code, OpenCode and Codex reaching one extension: the first companion owns port 9223 and the others relay to it over HTTP" />
 <img className="hidden dark:block" src="/images/multiple-agents-dark.gif" alt="Claude Code, OpenCode and Codex reaching one extension: the first companion owns port 9223 and the others relay to it over HTTP" />
 
-The relay passes the downstream client's name through, so the owner still knows which agent is calling. Stopping the owner ends the relays too; the next client to start becomes the new owner.
+The relay passes the downstream client's name through, so the owner still knows which agent is calling. When the owner stops (its client quit or it was killed), the first relay to notice takes the port over and keeps serving its own client; the other relays reconnect to it on their next call, and the extension re-pairs on its own. Inspection sessions and developer browsers of the old owner do not survive the hand-over.
 
 <Note>
-If the port is taken by something that is not a companion, the relay's handshake fails and the process exits with a message asking you to stop the other process or use `--port`. It never guesses a different port on its own, because the extension is configured for one specific port.
+If the port is taken by something that is not a companion, the relay retries for a few seconds and then answers every tool call with an error asking you to stop the other process or use `--port`. It never guesses a different port on its own, because the extension is configured for one specific port.
 </Note>
 
 ## What is per agent

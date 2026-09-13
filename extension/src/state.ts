@@ -21,10 +21,7 @@ export interface State {
   devMode: 'auto' | 'always' | 'never';
   /** Cyan halo, cursor and Stop pill on tabs while the agent works. */
   overlay: boolean;
-  /** Pairing token, shown so the user can build the HTTP endpoint URL for URL-based clients. */
-  token?: string;
   port: number;
-  hasToken: boolean;
   lastError?: string;
   connectedAt?: number;
   extensionVersion: string;
@@ -35,7 +32,7 @@ export interface State {
 }
 export type PopupMsg =
   | { type: 'getState' }
-  | { type: 'setConfig'; token: string; port: number }
+  | { type: 'setConfig'; port: number }
   | { type: 'setShared'; tabIds: number[]; shared: boolean }
   | { type: 'setShareAll'; on: boolean }
   | { type: 'setActivityLog'; on: boolean }

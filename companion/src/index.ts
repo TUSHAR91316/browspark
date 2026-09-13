@@ -7,7 +7,8 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { ListToolsRequestSchema, CallToolRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-import { Bridge, loadToken } from './bridge.ts';
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import { Bridge } from './bridge.ts';
 import { Sessions } from './session.ts';
 import { Page } from './page.ts';
 import { Capture } from './devtools/capture.ts';
@@ -31,43 +32,14 @@ import { DEFAULT_PORT } from '../../shared/protocol.ts';
 const portArg = process.argv.indexOf('--port');
 const port = portArg > -1 ? Number(process.argv[portArg + 1]) : Number(process.env.BROWSPARK_PORT ?? DEFAULT_PORT);
 
-const bridge = new Bridge(loadToken(), port);
-await bridge.listen().catch(async (e) => {
-  if (e?.code !== 'EADDRINUSE' && !/in use|EADDRINUSE/i.test(String(e?.message))) { console.error(`browspark: cannot listen on 127.0.0.1:${port}: ${e.message}`); process.exit(1); }
-  // Another companion already owns the port (another agent launched it). Become a thin stdio relay to it, so every
-  // client shares one companion, one extension, and one set of shared tabs.
-  await relayTo(`http://127.0.0.1:${port}/mcp?token=${bridge.token}`);
-});
+const bridge = new Bridge(port);
+const httpOnly = process.argv.includes('--http-only');
+const upstreamUrl = `http://127.0.0.1:${port}/mcp`;
+const portTaken = (e: any) => e?.code === 'EADDRINUSE' || /in use|EADDRINUSE/i.test(String(e?.message));
+// false: another companion already owns the port (another agent launched it). We become a thin stdio relay to it, so
+// every client shares one companion, one extension, and one set of shared tabs; see relayTo() at the bottom.
+const owner = await bridge.listen().then(() => true, (e) => { if (!portTaken(e)) { console.error(`browspark: cannot listen on 127.0.0.1:${port}: ${e.message}`); process.exit(1); } return false; });
 
-async function relayTo(url: string): Promise<never> {
-  const relay = new Server({ name: 'browspark', version: '0.2.1' }, { capabilities: { tools: {} } });
-  // Connect upstream only once we know who the downstream client is, so the companion can name this agent correctly.
-  let upstreamReady!: Promise<Client>;
-  let upstreamTransport: StreamableHTTPClientTransport | undefined;
-  relay.oninitialized = () => {
-    const who = relay.getClientVersion()?.name ?? 'relay';
-    upstreamReady = (async () => { const c = new Client({ name: `relay:${who}`, version: '0' }); upstreamTransport = new StreamableHTTPClientTransport(new URL(url)); await c.connect(upstreamTransport); return c; })();
-    upstreamReady.catch((err) => { console.error(`browspark: port ${port} is in use but the companion there did not answer (${(err as Error).message}). Stop the other process or use --port.`); process.exit(1); });
-  };
-  relay.setRequestHandler(ListToolsRequestSchema, async () => (await upstreamReady).listTools());
-  relay.setRequestHandler(CallToolRequestSchema, async (req) => (await upstreamReady).callTool({ name: req.params.name, arguments: req.params.arguments ?? {} }) as any);
-  await relay.connect(new StdioServerTransport());
-  console.error(`browspark: relaying stdio to the companion already running on port ${port}`);
-  let closing = false;
-  const close = async () => {
-    if (closing) return; closing = true;
-    setTimeout(() => process.exit(0), 5000).unref();
-    await upstreamReady?.catch(() => undefined);
-    await upstreamTransport?.terminateSession().catch(() => {});
-    await upstreamTransport?.close().catch(() => {});
-    process.exit(0);
-  };
-  relay.onclose = close;
-  process.stdin.on('close', close);
-  process.on('SIGINT', close); process.on('SIGTERM', close);
-  await new Promise(() => {});
-  throw new Error('unreachable');
-}
 const VERSION = '0.2.1';
 const sendCatalog = () => bridge.request('tools.catalog', { tools: toolCatalog, version: VERSION }).catch((e) => console.error(`browspark: could not send tool catalog: ${e.message}`));
 bridge.on('connected', () => { console.error('browspark: extension connected'); sendCatalog(); });
@@ -92,13 +64,10 @@ function buildServer(label: string): McpServer {
 installFetchHandler({ sessions, capture });
 installLiveView(bridge, sessions);
 
-// MCP over Streamable HTTP for clients that take a URL (web agents, hosted assistants). Same token as pairing:
-// Authorization: Bearer <token>, or ?token=<token> for clients that cannot set headers.
+// MCP over Streamable HTTP for clients that take a URL (web agents, hosted assistants). Localhost only; the bridge
+// refuses requests that carry a web page's Origin.
 const httpSessions = new Map<string, StreamableHTTPServerTransport>();
 bridge.mcpHandler = async (req, res) => {
-  const u = new URL(req.url ?? '/', 'http://x');
-  const presented = (req.headers.authorization ?? '').replace(/^Bearer\s+/i, '') || u.searchParams.get('token');
-  if (presented !== bridge.token) { res.statusCode = 401; res.setHeader('content-type', 'text/plain'); res.end('unauthorized: pass the pairing token as ?token=… or Authorization: Bearer …'); return; }
   const sid = req.headers['mcp-session-id'];
   let transport = typeof sid === 'string' ? httpSessions.get(sid) : undefined;
   if (!transport) {
@@ -111,10 +80,62 @@ bridge.mcpHandler = async (req, res) => {
   await transport.handleRequest(req, res);
 };
 
-if (!process.argv.includes('--http-only')) await buildServer('stdio').connect(new StdioServerTransport());
-console.error(`browspark: ready on ws://127.0.0.1:${bridge.port} (pairing token ${bridge.token}); MCP over HTTP at http://127.0.0.1:${bridge.port}/mcp?token=${bridge.token}`);
+let relayTransport: StreamableHTTPClientTransport | undefined;
+let closing = false;
+const shutdown = async () => {
+  if (closing) return; closing = true;
+  setTimeout(() => process.exit(0), 5000).unref();
+  await relayTransport?.terminateSession().catch(() => {});
+  bridge.close(); await sessions.closeAll();
+  process.exit(0);
+};
+process.on('SIGINT', shutdown); process.on('SIGTERM', shutdown);
+if (!httpOnly) process.stdin.on('close', shutdown);
 
-const shutdown = async () => { bridge.close(); await sessions.closeAll(); process.exit(0); };
-process.on('SIGINT', shutdown);
-process.on('SIGTERM', shutdown);
-if (!process.argv.includes('--http-only')) process.stdin.on('close', shutdown);
+if (owner) {
+  if (!httpOnly) await buildServer('stdio').connect(new StdioServerTransport());
+  console.error(`browspark: ready on ws://127.0.0.1:${bridge.port}; MCP over HTTP at ${upstreamUrl}`);
+} else await relayTo();
+
+async function relayTo() {
+  const relay = new Server({ name: 'browspark', version: VERSION }, { capabilities: { tools: {} } });
+  // Connect upstream only once we know who the downstream client is, so the owner can name this agent correctly.
+  const who = () => relay.getClientVersion()?.name ?? 'relay';
+  let upstream: Promise<Client> | undefined, tookOver = false;
+  const connect = async (): Promise<Client> => {
+    let last: unknown;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const c = new Client({ name: `relay:${who()}`, version: '0' });
+      const t = new StreamableHTTPClientTransport(new URL(upstreamUrl));
+      try { await c.connect(t); relayTransport = t; return c; } catch (e) { last = e; }
+      // Nobody answers: the owner's client quit and released the port. Take it over and serve in-process, so this
+      // agent keeps working and later clients relay to us. While the owner is still shutting down, listen() fails; retry.
+      if (await bridge.listen().then(() => true, () => false)) {
+        tookOver = true; relayTransport = undefined;
+        const [a, b] = InMemoryTransport.createLinkedPair();
+        await buildServer(who()).connect(b);
+        await c.connect(a);
+        console.error(`browspark: the companion on port ${port} went away; took the port over. Ready on ws://127.0.0.1:${port}`);
+        return c;
+      }
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    throw new Error(`port ${port} is in use but the companion there did not answer (${(last as Error)?.message}). Stop the other process or use --port.`);
+  };
+  const forward = async <T>(fn: (c: Client) => Promise<T>): Promise<T> => {
+    upstream ??= connect().catch((e) => { upstream = undefined; throw e; });
+    try { return await fn(await upstream); } catch (e) {
+      if (tookOver || !/socket|connect|closed|fetch|ECONN/i.test(String((e as Error)?.message))) throw e;
+      console.error(`browspark: the companion on port ${port} stopped answering; reconnecting`);
+      void upstream.then((c) => c.close()).catch(() => {});
+      upstream = connect().catch((err) => { upstream = undefined; throw err; });
+      return fn(await upstream);
+    }
+  };
+  relay.oninitialized = () => { void forward(async () => {}).catch(() => {}); };
+  relay.setRequestHandler(ListToolsRequestSchema, () => forward((c) => c.listTools()));
+  relay.setRequestHandler(CallToolRequestSchema, (req) => forward((c) => c.callTool({ name: req.params.name, arguments: req.params.arguments ?? {} }) as any));
+  relay.onclose = shutdown;
+  await relay.connect(new StdioServerTransport());
+  console.error(`browspark: relaying stdio to the companion already running on port ${port}`);
+}

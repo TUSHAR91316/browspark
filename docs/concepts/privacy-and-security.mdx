@@ -6,7 +6,7 @@ description: "What leaves your machine (nothing), what the agent can reach, and 
 ## Local only
 
 - The companion binds to `127.0.0.1`. There is no cloud component, no telemetry and no account.
-- The extension talks only to that port and only after presenting the pairing token.
+- The extension talks only to that port. The companion refuses any connection or request that carries a web page's `Origin` header, so sites you visit cannot reach it.
 - Messages from the extension to the companion are validated; malformed frames are rejected and the socket closed.
 
 ## Access is opt-in per tab
@@ -26,7 +26,6 @@ Everything the page can: DOM, cookies for the page origin, local and session sto
 
 ## Secrets
 
-- The pairing token is in `~/.browspark/token` with mode `0600` and in the extension's local storage. It appears in the HTTP endpoint URL and live-view URLs; treat those like passwords.
 - Recorder exports and HAR files can contain form values, cookies and headers. They are written to `~/.browspark/artifacts` or the path you give.
 - Developer-context profiles under `~/.browspark/` hold logins like any Chrome profile.
 

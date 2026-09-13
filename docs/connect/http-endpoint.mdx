@@ -6,13 +6,13 @@ description: "Connect clients that take a URL instead of a command: web agents, 
 While the companion runs it serves MCP over **Streamable HTTP** at:
 
 ```text
-http://127.0.0.1:9223/mcp?token=<pairing token>
+http://127.0.0.1:9223/mcp
 ```
 
-The token is the same one the extension pairs with. Pass it either as the `token` query parameter or as `Authorization: Bearer <token>`; requests without it get `401`. The dashboard's **Settings → Other clients** card shows the exact URL with a copy button once you have paired.
+No token is needed. The endpoint binds to localhost and refuses requests that carry a web page's `Origin` header, so pages in your browser cannot call it; native clients and extensions can. The dashboard's **Settings → Other clients** card shows the URL with a copy button.
 
 <Warning>
-The token is a password. The endpoint binds to localhost only; if you expose it through a tunnel, make sure the token stays in the URL and the tunnel is private.
+If you expose the endpoint through a tunnel, keep the tunnel private: anyone who can reach it controls your shared tabs.
 </Warning>
 
 ## Starting the companion for HTTP clients
@@ -39,7 +39,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
 const client = new Client({ name: 'my-agent', version: '1.0' });
-await client.connect(new StreamableHTTPClientTransport(new URL('http://127.0.0.1:9223/mcp?token=…')));
+await client.connect(new StreamableHTTPClientTransport(new URL('http://127.0.0.1:9223/mcp')));
 const { tools } = await client.listTools();
 ```
 

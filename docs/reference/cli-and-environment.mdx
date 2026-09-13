@@ -47,7 +47,7 @@ Recorder exports read flow parameters from environment variables named after the
 Everything goes to stderr, because stdout is the MCP stdio channel.
 
 ```text
-browspark: ready on ws://127.0.0.1:9223 (pairing token a1b2c3d4); MCP over HTTP at http://127.0.0.1:9223/mcp?token=a1b2c3d4
+browspark: ready on ws://127.0.0.1:9223; MCP over HTTP at http://127.0.0.1:9223/mcp
 browspark: extension connected
 browspark: 2 tool(s) disabled from the dashboard; developer browser: auto
 browspark: agent connected: claude-code
@@ -59,4 +59,4 @@ browspark: extension disconnected
 
 ## Exit behaviour
 
-The companion exits when stdin closes (the stdio client went away), on `SIGINT` or `SIGTERM`. On exit it closes the bridge and every developer browser it launched. Relays exit when their stdin closes or when the owner they relay to stops answering.
+The companion exits when stdin closes (the stdio client went away), on `SIGINT` or `SIGTERM`. On exit it closes the bridge and every developer browser it launched. Relays exit when their stdin closes; when the owner they relay to stops answering they take the port over instead.

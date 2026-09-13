@@ -339,22 +339,21 @@ describe.skipIf(skip)('devtools e2e (extension mode)', () => {
     await ok('browser_navigate', { tabId, action: 'reload' });
   });
 
-  test('port-only change keeps the pairing token', async () => {
+  test('saving the port reconnects', async () => {
     const msg = await dashboard(ext);
     const before = await msg({ type: 'getState' });
-    const after = await msg({ type: 'setConfig', token: '', port: before.port });
-    assert.equal(after.hasToken, true); assert.equal(after.port, before.port);
+    const after = await msg({ type: 'setConfig', port: before.port });
+    assert.equal(after.port, before.port);
     for (let i = 0; i < 30 && !(await msg({ type: 'getState' })).connected; i++) await new Promise((r) => setTimeout(r, 100));
-    assert.equal((await msg({ type: 'getState' })).connected, true, 'reconnected with the stored token');
+    assert.equal((await msg({ type: 'getState' })).connected, true, 'reconnected');
     await msg({ type: 'setShared', tabIds: [tabId], shared: true });
   });
 
-  test('MCP over HTTP: token-protected endpoint serves the same tools to a second client', async () => {
+  test('MCP over HTTP: the endpoint serves the same tools to a second client and refuses web pages', async () => {
     const status = await ok('browser_status'); const port = Number(/ws:\/\/127\.0\.0\.1:(\d+)/.exec(status)![1]);
-    const st = await (await dashboard(ext))({ type: 'getState' }); const token = st.token as string; assert.ok(token);
-    assert.equal((await fetch(`http://127.0.0.1:${port}/mcp`, { method: 'POST', body: '{}' })).status, 401, 'no token -> 401');
+    assert.equal((await fetch(`http://127.0.0.1:${port}/mcp`, { method: 'POST', body: '{}', headers: { origin: 'https://evil.example' } })).status, 403, 'web page origin -> 403');
     const http = new Client({ name: 'gemini-like', version: '0' });
-    await http.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}/mcp?token=${token}`)));
+    await http.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}/mcp`)));
     const tools = await http.listTools(); assert.ok(tools.tools.length >= 40 && tools.tools.some((t) => t.name === 'browser_snapshot'));
     const r = await http.callTool({ name: 'browser_read', arguments: { tabId } }) as any; assert.match(r.content[0].text, /Debug App/);
     await http.close();
@@ -362,9 +361,9 @@ describe.skipIf(skip)('devtools e2e (extension mode)', () => {
 
   test('two agents on one companion keep their own tabs, recordings, and shared inspection sessions', async () => {
     const status = await ok('browser_status'); const port = Number(/ws:\/\/127\.0\.0\.1:(\d+)/.exec(status)![1]);
-    const msg = await dashboard(ext); const token = (await msg({ type: 'getState' })).token as string;
+    const msg = await dashboard(ext);
     const b = new Client({ name: 'second-agent', version: '0' });
-    await b.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}/mcp?token=${token}`)));
+    await b.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}/mcp`)));
     const bText = async (name: string, args: Record<string, unknown> = {}) => { const r = await b.callTool({ name, arguments: args }) as any; return { txt: r.content.filter((c: any) => c.type === 'text').map((c: any) => c.text).join('\n'), err: !!r.isError }; };
     assert.match((await bText('browser_status')).txt, /You are agent "second-agent"/);
     // each agent opens a tab; default targets do not cross
@@ -468,11 +467,11 @@ describe.skipIf(skip)('developer mode e2e', () => {
     const spec = readFileSync(specPath, 'utf8'); assert.match(spec, /page\.goto\(/); assert.match(spec, /locator\("#log"\)\.click\(\)/); assert.match(spec, /getByText\("idle"\)/);
     // WebMCP probe on a page without it
     assert.equal((await c.okJson('browser_webmcp', { tabId: idW })).supported, false);
-    // live view: page served with token, screencast frames arrive over the viewer socket
-    const status = await c.ok('browser_status'); const port = Number(/port:\s+(\d+)/.exec(status)![1]); const token = /token: (\w+)/.exec(status)![1];
-    const html = await fetch(`http://127.0.0.1:${port}/live/${idW}?token=${token}`); assert.equal(html.status, 200); assert.match(await html.text(), /live view/);
-    assert.equal((await fetch(`http://127.0.0.1:${port}/live/${idW}?token=nope`)).status, 403);
-    const frame = await new Promise<any>((res, rej) => { const ws = new WebSocket(`ws://127.0.0.1:${port}/live-ws?tab=${idW}&token=${token}`); const t = setTimeout(() => rej(new Error('no frame')), 8000); ws.on('message', (d) => { const m = JSON.parse(d.toString()); if (m.type === 'frame') { clearTimeout(t); ws.close(); res(m); } }); ws.on('error', rej); });
+    // live view: page served, screencast frames arrive over the viewer socket; web pages are refused
+    const status = await c.ok('browser_status'); const port = Number(/port:\s+(\d+)/.exec(status)![1]);
+    const html = await fetch(`http://127.0.0.1:${port}/live/${idW}`); assert.equal(html.status, 200); assert.match(await html.text(), /live view/);
+    assert.equal((await fetch(`http://127.0.0.1:${port}/live/${idW}`, { headers: { origin: 'https://evil.example' } })).status, 403);
+    const frame = await new Promise<any>((res, rej) => { const ws = new WebSocket(`ws://127.0.0.1:${port}/live-ws?tab=${idW}`); const t = setTimeout(() => rej(new Error('no frame')), 8000); ws.on('message', (d) => { const m = JSON.parse(d.toString()); if (m.type === 'frame') { clearTimeout(t); ws.close(); res(m); } }); ws.on('error', rej); });
     assert.ok(frame.data.length > 1000 && frame.meta.deviceWidth > 0);
     assert.match(await c.ok('browser_session', { action: 'close', all: true }), /Closed default, work|Closed work, default/);
     const after = await c.call('browser_snapshot', { tabId: id }); assert.ok(after.err);

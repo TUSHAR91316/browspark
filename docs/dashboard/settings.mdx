@@ -1,22 +1,21 @@
 ---
 title: "Settings page"
-description: "Pairing, port, HTTP endpoint, developer-browser policy, agent overlay, activity log, appearance and the emergency stop."
+description: "Port, HTTP endpoint, developer-browser policy, agent overlay, activity log, appearance and the emergency stop."
 ---
 
 ## Companion
 
 | Setting | Notes |
 |---|---|
-| Pairing token | Printed by `browser_status` while unpaired, or read from `~/.browspark/token`. Stored only in this browser profile. Leaving the field empty on save keeps the stored token. |
 | Bridge port | Where the companion listens on localhost. Change it when you run the companion with `--port`; the Overview setup snippets follow. Default `9223`. |
 | Connection | Live status with the connection age, or the last error, plus **Connect** / **Disconnect**. |
 
 ## Other clients
 
-Shows the [HTTP endpoint](/connect/http-endpoint) with a copy button once paired:
+Shows the [HTTP endpoint](/connect/http-endpoint) with a copy button:
 
 ```text
-http://127.0.0.1:9223/mcp?token=…
+http://127.0.0.1:9223/mcp
 ```
 
 ## Developer browser

@@ -7,7 +7,6 @@ description: "Everything Browspark writes to disk and what each file is for."
 
 | Path | Written by | Contents |
 |---|---|---|
-| `token` | companion, first start | Pairing token, mode `0600`. Delete to rotate. |
 | `tools.json` | companion, when the dashboard changes the policy | `{"disabled": ["browser_upload", …]}`. Loaded on start so disabled tools stay disabled before the extension reconnects. |
 | `profile/` | Chrome | Persistent profile of the `default` developer context. |
 | `profiles/<name>/` | Chrome | Profiles of named developer contexts. `browser_session delete` removes one. |
@@ -36,7 +35,7 @@ Tools that accept `path` write there as well as, or instead of, the artifacts di
 
 | Storage | Keys | Lifetime |
 |---|---|---|
-| `chrome.storage.local` | `token`, `port`, `shareAll`, `stopped`, `activityLog`, `devMode`, `disabledTools`, `toolCatalog`, `idleDetachMs` | Persistent per browser profile |
+| `chrome.storage.local` | `port`, `shareAll`, `stopped`, `activityLog`, `devMode`, `disabledTools`, `toolCatalog`, `idleDetachMs` | Persistent per browser profile |
 | `chrome.storage.session` | `shared` (tab ids shared individually) | Until the browser restarts |
 | `localStorage` of the dashboard page | theme, last selected setup client, expanded rows | Persistent, UI conveniences only |
 

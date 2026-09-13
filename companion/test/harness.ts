@@ -58,7 +58,7 @@ export function callers(client: Client) {
   return { call, ok, okJson };
 }
 
-/** Pair the extension with a running companion and share the tab whose URL starts with `urlPrefix`. Returns its tab id. */
+/** Point the extension at a running companion and share the tab whose URL starts with `urlPrefix`. Returns its tab id. */
 /** Talk to the extension worker the way the dashboard does (opens the dashboard page once). */
 export async function dashboard(ext: Ext): Promise<(m: unknown) => Promise<any>> {
   if (ext.msg) return ext.msg;
@@ -72,10 +72,9 @@ export async function dashboard(ext: Ext): Promise<(m: unknown) => Promise<any>>
 
 export async function pairAndShare(ext: Ext, ok: (n: string, a?: Record<string, unknown>) => Promise<string>, urlPrefix: string, shareAll = false): Promise<number> {
   const status = await ok('browser_status');
-  const token = /token: (\w+)/.exec(status)![1];
   const port = Number(/port:\s+(\d+)/.exec(status)![1]);
   const msg = await dashboard(ext);
-  await msg({ type: 'setConfig', token, port });
+  await msg({ type: 'setConfig', port });
   let st: any;
   for (let i = 0; i < 50 && !(st = await msg({ type: 'getState' })).connected; i++) await new Promise((r) => setTimeout(r, 100));
   assert.equal(st.connected, true, `extension did not connect: ${JSON.stringify({ ...st, tabs: undefined, recent: undefined })}`);

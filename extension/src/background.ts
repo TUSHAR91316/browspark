@@ -36,9 +36,9 @@ let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
 let connectionTimer: ReturnType<typeof setTimeout> | undefined;
 
 const cfg = async () => {
-  const s = await chrome.storage.local.get(['token', 'port', 'shareAll', 'stopped', 'activityLog', 'toolCatalog', 'disabledTools', 'devMode', 'overlay']);
+  const s = await chrome.storage.local.get(['port', 'shareAll', 'stopped', 'activityLog', 'toolCatalog', 'disabledTools', 'devMode', 'overlay']);
   const ss = await chrome.storage.session.get(['shared', 'excluded']); // per-tab grants must not outlive the browser session
-  return { token: (s.token as string) || '', port: (s.port as number) || DEFAULT_PORT, shared: (ss.shared as number[]) || [], excluded: (ss.excluded as number[]) || [], shareAll: !!s.shareAll, stopped: !!s.stopped, activityLog: !!s.activityLog, toolCatalog: (s.toolCatalog as ToolInfo[]) || [], disabledTools: (s.disabledTools as string[]) || [], devMode: ((s.devMode as string) || 'auto') as 'auto' | 'always' | 'never', overlay: s.overlay !== false };
+  return { port: (s.port as number) || DEFAULT_PORT, shared: (ss.shared as number[]) || [], excluded: (ss.excluded as number[]) || [], shareAll: !!s.shareAll, stopped: !!s.stopped, activityLog: !!s.activityLog, toolCatalog: (s.toolCatalog as ToolInfo[]) || [], disabledTools: (s.disabledTools as string[]) || [], devMode: ((s.devMode as string) || 'auto') as 'auto' | 'always' | 'never', overlay: s.overlay !== false };
 };
 const send = (m: Msg) => { if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(m)); };
 const evt = (event: Evt['event'], params?: unknown) => send({ event, params });
@@ -198,9 +198,8 @@ async function connect(force = false) {
       previous.close(1000, 'reconnecting');
     });
   }
-  const { token, port } = await cfg();
+  const { port } = await cfg();
   if (attempt !== connectionAttempt || stopped) return;
-  if (!token) { connecting = false; return; } // unpaired is expected, not an error
   let sock: WebSocket;
   try { sock = new WebSocket(`ws://127.0.0.1:${port}`); }
   catch { connecting = false; lastError = 'Invalid bridge address. Check the port in Settings.'; return; }
@@ -220,7 +219,7 @@ async function connect(force = false) {
     if (ws !== sock) return;
     const brands = ((navigator as any).userAgentData?.brands ?? []) as { brand: string; version: string }[];
     const named = brands.find((b) => !/Chromium|not.*brand/i.test(b.brand)) ?? brands.find((b) => /Chromium/.test(b.brand));
-    const hello: HelloParams = { token, version: PROTOCOL_VERSION, extensionVersion: chrome.runtime.getManifest().version, browser: named ? `${named.brand} ${named.version}` : undefined, userAgent: navigator.userAgent };
+    const hello: HelloParams = { version: PROTOCOL_VERSION, extensionVersion: chrome.runtime.getManifest().version, browser: named ? `${named.brand} ${named.version}` : undefined, userAgent: navigator.userAgent };
     evt('hello', hello);
     pushTabs();
     sendToolPolicy();
@@ -231,7 +230,7 @@ async function connect(force = false) {
     try { msg = JSON.parse(m.data as string); } catch { return; }
     if (!msg || typeof msg !== 'object') return;
     if (isReq(msg)) {
-      // A response from the paired companion confirms readiness, not merely an open socket.
+      // A response from the companion confirms readiness, not merely an open socket.
       if (connecting) { connecting = false; connectedAt = Date.now(); lastError = undefined; backoff = 1000; clearTimeout(connectionTimer); }
       const response = await handle(msg);
       if (ws === sock && sock.readyState === WebSocket.OPEN) sock.send(JSON.stringify(response));
@@ -239,7 +238,6 @@ async function connect(force = false) {
   };
   sock.onclose = (e) => {
     if (ws !== sock) return;
-    if (e.code === 4003) { stopped = true; disconnected('Companion rejected the token'); return; }
     if (e.code === 4002) { stopped = true; disconnected(e.reason || 'Protocol version mismatch; update the extension'); return; }
     disconnected(lastError ?? (e.code === 1000 ? 'Companion disconnected. Retrying automatically.' : `Disconnected (${e.code}). Retrying automatically.`));
   };
@@ -260,10 +258,10 @@ async function stop(persist = true) {
 }
 
 async function state(): Promise<State> {
-  const { port, token } = await cfg();
+  const { port } = await cfg();
   const windows = (await chrome.windows.getAll()).filter((w) => w.id !== undefined).map((w) => ({ id: w.id!, incognito: w.incognito }));
   return {
-    connected: ws?.readyState === WebSocket.OPEN && connectedAt !== undefined, connecting: connecting && !lastError, stopped, shareAll, activityLog, toolCatalog, disabledTools: [...disabledTools], companionVersion, devMode, overlay, token, port, hasToken: !!token, lastError, connectedAt,
+    connected: ws?.readyState === WebSocket.OPEN && connectedAt !== undefined, connecting: connecting && !lastError, stopped, shareAll, activityLog, toolCatalog, disabledTools: [...disabledTools], companionVersion, devMode, overlay, port, lastError, connectedAt,
     extensionVersion: chrome.runtime.getManifest().version, windows, tabs: await listTabs(), recent, totals,
   };
 }
@@ -272,12 +270,7 @@ chrome.runtime.onMessage.addListener((msg: PopupMsg, _s, reply) => {
   (async () => {
     await ready; // a suspended worker restarts on this message; settings must be loaded before answering
     switch (msg.type) {
-      case 'setConfig': {
-        const token = msg.token || (await cfg()).token; // empty token = keep the current one (port-only change)
-        stopped = false;
-        await chrome.storage.local.set({ token, port: msg.port, stopped: false });
-        await connect(true); break;
-      }
+      case 'setConfig': stopped = false; await chrome.storage.local.set({ port: msg.port, stopped: false }); await connect(true); break;
       case 'connect': stopped = false; await chrome.storage.local.set({ stopped: false }); await connect(true); break;
       case 'stop': await stop(); break;
       case 'clearLog': recent.length = 0; break;

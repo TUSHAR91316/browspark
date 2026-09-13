@@ -1,8 +1,4 @@
 import { EventEmitter } from 'node:events';
-import { randomBytes } from 'node:crypto';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
 import { createServer, type Server } from 'node:http';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { LIVE_HTML } from './live.ts';
@@ -13,15 +9,6 @@ import {
 } from '../../shared/protocol.ts';
 
 const REQUEST_TIMEOUT_MS = 30_000;
-
-export function loadToken(dir = join(homedir(), '.browspark')): string {
-  const file = join(dir, 'token');
-  try { return readFileSync(file, 'utf8').trim(); } catch {}
-  mkdirSync(dir, { recursive: true });
-  const token = randomBytes(4).toString('hex');
-  writeFileSync(file, token, { mode: 0o600 });
-  return token;
-}
 
 /**
  * Local WebSocket server the extension connects to. One extension at a time.
@@ -42,10 +29,17 @@ export class Bridge extends EventEmitter {
   /** Browser brand reported by the extension, e.g. "Brave 1.80" or "Google Chrome 152". */
   browser?: string;
 
-  readonly token: string;
   /** Requested port; replaced by the bound port after listen() (relevant when 0 was requested). */
   port: number;
-  constructor(token: string, port: number) { super(); this.token = token; this.port = port; }
+  constructor(port: number) { super(); this.port = port; }
+
+  /**
+   * No pairing token: the bridge is loopback-only, so the one thing to keep out is a web page in the user's browser
+   * reaching 127.0.0.1. Browsers always send an Origin header; extensions and native clients pass, pages do not.
+   */
+  private originOk(origin?: string): boolean {
+    return !origin || origin.startsWith('chrome-extension://') || origin === `http://127.0.0.1:${this.port}` || origin === `http://localhost:${this.port}`;
+  }
 
   listen(): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -53,21 +47,21 @@ export class Bridge extends EventEmitter {
       this.http = createServer((req, res) => {
         const u = parse(req.url);
         if (!u) { res.statusCode = 400; res.setHeader('content-type', 'text/plain'); res.end('bad request'); return; }
+        if (!this.originOk(req.headers.origin)) { res.statusCode = 403; res.setHeader('content-type', 'text/plain'); res.end('forbidden: web pages cannot use the companion'); return; }
         if (u.pathname === '/mcp' && this.mcpHandler) { this.mcpHandler(req, res).catch((e) => { if (!res.headersSent) { res.statusCode = 500; res.end(String(e?.message ?? e)); } }); return; }
         const live = /^\/live\/(\d+)$/.exec(u.pathname);
         if (live) {
-          if (u.searchParams.get('token') !== this.token) { res.statusCode = 403; res.end('bad token'); return; }
-          res.setHeader('content-type', 'text/html; charset=utf-8'); res.end(LIVE_HTML(Number(live[1]), this.token)); return;
+          res.setHeader('content-type', 'text/html; charset=utf-8'); res.end(LIVE_HTML(Number(live[1]))); return;
         }
         res.statusCode = u.pathname === '/' ? 200 : 404; res.setHeader('content-type', 'text/plain'); res.end(u.pathname === '/' ? 'browspark companion' : 'not found');
       });
       this.wss = new WebSocketServer({ noServer: true });
       this.http.on('upgrade', (req, socket, head) => {
         const u = parse(req.url);
-        if (!u) { socket.destroy(); return; }
+        if (!u || !this.originOk(req.headers.origin)) { socket.destroy(); return; }
         if (u.pathname === '/live-ws') {
           const tabId = Number(u.searchParams.get('tab'));
-          if (u.searchParams.get('token') !== this.token || !tabId || !this.viewerHandler) { socket.destroy(); return; }
+          if (!tabId || !this.viewerHandler) { socket.destroy(); return; }
           this.wss!.handleUpgrade(req, socket, head, (ws) => this.viewerHandler!(ws, tabId));
           return;
         }
@@ -89,8 +83,7 @@ export class Bridge extends EventEmitter {
       if (!paired) {
         if (!isEvt(msg) || msg.event !== 'hello') return ws.close(4001, 'hello required');
         const p = msg.params as HelloParams;
-        if (p?.token !== this.token) return ws.close(4003, 'bad token');
-        if (p.version !== PROTOCOL_VERSION) return ws.close(4002, `protocol ${PROTOCOL_VERSION} required`);
+        if (p?.version !== PROTOCOL_VERSION) return ws.close(4002, `protocol ${PROTOCOL_VERSION} required`);
         paired = true;
         this.ws?.close(1000, 'replaced by new connection');
         this.ws = ws;

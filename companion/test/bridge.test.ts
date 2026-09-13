@@ -4,27 +4,28 @@ import { WebSocket } from 'ws';
 import { Bridge } from '../src/bridge.ts';
 import { PROTOCOL_VERSION, isNewTab, unsupportedReason, type Req } from '../../shared/protocol.ts';
 
-const hello = (token: string) => JSON.stringify({ event: 'hello', params: { token, version: PROTOCOL_VERSION, extensionVersion: 't' } });
+const hello = () => JSON.stringify({ event: 'hello', params: { version: PROTOCOL_VERSION, extensionVersion: 't' } });
 const open = (ws: WebSocket) => new Promise<void>((r) => ws.once('open', () => r()));
 const closed = (ws: WebSocket) => new Promise<number>((r) => ws.once('close', (c) => r(c)));
 
-test('bridge pairs, routes requests, rejects pending on disconnect', async () => {
-  const bridge = new Bridge('secret', 0);
+test('bridge connects, routes requests, rejects pending on disconnect', async () => {
+  const bridge = new Bridge(0);
   await bridge.listen();
   const port = bridge.port;
   assert.notEqual(port, 0);
 
-  // wrong token is refused
-  const bad = new WebSocket(`ws://127.0.0.1:${port}`);
-  await open(bad);
-  bad.send(hello('nope'));
-  assert.equal(await closed(bad), 4003);
+  // a web page (browser Origin) is refused on every route; extensions and native clients pass
+  const refused = new WebSocket(`ws://127.0.0.1:${port}`, { headers: { origin: 'https://evil.example' } });
+  await new Promise<void>((r) => { refused.on('error', () => r()); refused.on('close', () => r()); refused.on('open', () => r()); }); // Bun's ws shim may emit error more than once
+  assert.notEqual(refused.readyState, WebSocket.OPEN, 'browser origin must not get a socket');
+  assert.equal((await fetch(`http://127.0.0.1:${port}/mcp`, { method: 'POST', body: '{}', headers: { origin: 'https://evil.example' } })).status, 403);
+  assert.equal((await fetch(`http://127.0.0.1:${port}/`, { headers: { origin: 'chrome-extension://abc' } })).status, 200);
 
-  // good token pairs; request/response round-trips; tab events land
+  // hello connects; request/response round-trips; tab events land
   const ws = new WebSocket(`ws://127.0.0.1:${port}`);
   await open(ws);
   const connected = new Promise<void>((r) => bridge.once('connected', r));
-  ws.send(hello('secret'));
+  ws.send(hello());
   await connected;
   assert.equal(bridge.connected, true);
 
@@ -49,7 +50,7 @@ test('bridge pairs, routes requests, rejects pending on disconnect', async () =>
 });
 
 test('bridge rejects non-object JSON without crashing', async () => {
-  const bridge = new Bridge('secret', 0);
+  const bridge = new Bridge(0);
   await bridge.listen();
   for (const payload of ['null', '42', '"hi"', '[1]']) {
     const ws = new WebSocket(`ws://127.0.0.1:${bridge.port}`);
@@ -83,7 +84,7 @@ test('isNewTab recognizes only native Chrome New Tab URLs', () => {
 
 test('bridge answers malformed request targets with 400 instead of crashing', async () => {
   const { connect } = await import('node:net');
-  const bridge = new Bridge('secret', 0);
+  const bridge = new Bridge(0);
   await bridge.listen();
   const raw = (target: string, upgrade = false) => new Promise<string>((resolve) => {
     const s = connect(bridge.port, '127.0.0.1', () => s.write(`GET ${target} HTTP/1.1\r\nHost: x\r\n${upgrade ? 'Connection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n' : ''}\r\n`));
