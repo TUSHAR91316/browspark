@@ -1,6 +1,6 @@
 {
   "name": "browspark",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Alias for browspark-mcp",
   "bin": {
     "browspark": "bin.ts"
