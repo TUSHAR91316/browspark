@@ -23,6 +23,11 @@ for (const button of document.querySelectorAll('[data-preview]')) {
   });
 }
 
+const sharedSummary = () => {
+  const tabs = [...document.querySelectorAll('[data-share]:checked')];
+  const browsers = new Set(tabs.map((input) => input.dataset.browser)).size;
+  return tabs.length ? `${tabs.length} shared ${tabs.length === 1 ? 'tab' : 'tabs'} · ${browsers} ${browsers === 1 ? 'browser' : 'browsers'}` : 'No shared tabs available';
+};
 for (const input of document.querySelectorAll('[data-share]')) {
   input.addEventListener('change', () => {
     const count = document.querySelectorAll('[data-share]:checked').length;
@@ -31,7 +36,7 @@ for (const input of document.querySelectorAll('[data-share]')) {
     const permission = input.closest('.demo-tab').querySelector('.tab-permission');
     permission.textContent = input.checked ? 'Shared' : 'Private';
     permission.classList.toggle('private', !input.checked);
-    document.querySelector('#demo-result').textContent = `${count} ${count === 1 ? 'tab' : 'tabs'} available to your agent`;
+    document.querySelector('#demo-result').textContent = sharedSummary();
   });
 }
 
@@ -94,12 +99,16 @@ const command = document.querySelector('#demo-command');
 const result = document.querySelector('#demo-result');
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const CALLS = [
-  ['browser_tabs', '({ onlyUsable: true })', () => `${document.querySelectorAll('[data-share]:checked').length} tabs available to your agent`],
-  ['browser_snapshot', '({ tabId: 1731 })', 'Accessible tree · 42 nodes with refs'],
-  ['browser_click', '({ ref: "e12" })', 'Clicked "Checkout"'],
-  ['devtools_network', '({ action: "search", url: "/api" })', '3 requests · 1 slow (412 ms)'],
-  ['devtools_console', '({ level: "error" })', '1 exception · stack mapped to app.ts:41'],
-  ['devtools_performance', '({ action: "trace" })', 'LCP 1.2 s · 2 long tasks'],
+  ['browser_tabs', '({ onlyUsable: true })', sharedSummary],
+  ['browser_status', '()', 'Chrome + Brave · Firefox + Zen contexts'],
+  ['browser_snapshot', '({ tabId: 2147483648 })', 'Chrome · accessible tree with refs'],
+  ['browser_click', '({ tabId: 2147483648, ref: "e12" })', 'Chrome · clicked "Checkout"'],
+  ['devtools_session', '({ tabId: 2147483648, action: "start" })', 'Chrome · collecting console and network'],
+  ['devtools_network', '({ tabId: 2147483648, query: "/api" })', '3 requests · 1 slow (412 ms)'],
+  ['devtools_console', '({ tabId: 2147483648, level: ["error"] })', '1 exception · stack mapped to app.ts:41'],
+  ['devtools_performance', '({ tabId: 2147483648, action: "vitals" })', 'Chrome · LCP 1.2 s · 2 long tasks'],
+  ['browser_tabs', '({ context: "firefox" })', 'Firefox · separate developer profile'],
+  ['browser_tabs', '({ context: "zen" })', 'Zen · separate developer profile'],
 ];
 const check = '<svg class="icon small"><use href="#i-check"/></svg>';
 let index = 0, timer, pinnedUntil = 0;
@@ -133,7 +142,7 @@ for (const input of document.querySelectorAll('[data-share]')) {
   input.addEventListener('change', () => {
     clearTimeout(timer);
     index = 1;
-    show('browser_tabs', '({ onlyUsable: true })', `${document.querySelectorAll('[data-share]:checked').length} tabs available to your agent`);
+    show('browser_tabs', '({ onlyUsable: true })', sharedSummary());
     result.classList.remove('pending');
     pinnedUntil = Date.now() + 4000;
     timer = setTimeout(tick, 4000);

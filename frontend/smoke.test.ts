@@ -99,3 +99,17 @@ test('built search metadata stays consistent', async () => {
   expect(image.origin).toBe(canonical.origin);
   expect(await Bun.file(resolve(import.meta.dir, 'dist', image.pathname.slice(1))).exists()).toBe(true);
 });
+
+test('landing tool counts match the companion registrations', async () => {
+  const src = resolve(import.meta.dir, '../companion/src');
+  const files = [resolve(src, 'tools.ts')];
+  for await (const file of new Bun.Glob('devtools/*.ts').scan({ cwd: src, absolute: true })) files.push(file);
+  const names = new Set((await Promise.all(files.map(file => Bun.file(file).text()))).flatMap(source => [...source.matchAll(/tool\(ctx, '(\w+)'/g)].map(match => match[1])));
+  const browser = [...names].filter(name => name.startsWith('browser_')).length;
+  const developer = [...names].filter(name => name.startsWith('devtools_')).length;
+  const html = await Bun.file(resolve(import.meta.dir, 'dist/index.html')).text();
+  expect(browser).toBeGreaterThan(0);
+  expect(developer).toBeGreaterThan(0);
+  expect(html).toContain(`${browser} browser tools. ${developer} developer tools.`);
+  expect(html).toContain(`Explore all ${names.size} tools`);
+});
