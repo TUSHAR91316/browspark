@@ -177,8 +177,6 @@ export class Page {
         for (const w of this.loadWaiters.get(tabId) ?? []) w();
     });
     s.on('detached', ({ tabId }) => { this.enabled.delete(tabId); this.dialogs.delete(tabId); this.lastSnapshot.delete(tabId); });
-    s.on('disconnected', () => { this.enabled.clear(); this.dialogs.clear(); });
-    s.on('dev.closed', () => { this.enabled.clear(); this.dialogs.clear(); });
   }
 
   async cdp<T = any>(tabId: number, method: string, params?: unknown): Promise<T> {
@@ -419,7 +417,7 @@ export class Page {
       if (this.s.modeOf(tabId) === 'extension') {
         // Prepare New Tab before attaching; the destination still uses CDP and its domain policies.
         await this.s.bridge.request('tabs.prepare', { tabId });
-        this.s.bridge.tabs = [];
+        this.s.bridge.invalidateTabs(this.s.bridge.connectionForTab(tabId)?.id);
       }
     }
     const loaded = this.waitForLoad(tabId, timeoutMs);

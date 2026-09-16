@@ -6,22 +6,23 @@ import { join } from 'node:path';
 import type { Bridge } from './bridge.ts';
 import { DirectChrome, type LaunchOptions } from './cdp.ts';
 import { DirectFirefox } from './firefox.ts';
-import { isNewTab, type TabInfo } from '../../shared/protocol.ts';
+import { browserEngine, type BrowserName, type BrowserEngine } from './browsers.ts';
+import { isNewTab } from '../../shared/protocol.ts';
 import { currentClient, clients } from './context.ts';
 import { onDetached as interceptDetached, pendingRestore, restoreFetch } from './devtools/intercept.ts';
 
 export type Mode = 'extension' | 'dev';
-export type BrowserType = 'chromium' | 'firefox';
+export type BrowserType = BrowserEngine;
 type DevBrowser = DirectChrome | DirectFirefox;
-export interface TabRecord { id: number; mode: Mode; url: string; title: string; shared: boolean; attached: boolean; unsupported?: string; windowId?: number; agent?: boolean; context?: string; browser?: BrowserType }
+export interface TabRecord { id: number; mode: Mode; url: string; title: string; shared: boolean; attached: boolean; unsupported?: string; windowId?: number; agent?: boolean; context?: string; browser?: BrowserType; browserId?: string; browserName?: string }
 
 const profilesDir = () => process.env.BROWSPARK_PROFILES ?? join(homedir(), '.browspark', 'profiles');
 const CONTEXT_NAME = /^[a-z0-9_-]{1,40}$/i;
 /** Context names become directory names under ~/.browspark; reject anything that is not a plain name. */
 export const assertContextName = (context: string) => { if (!CONTEXT_NAME.test(context)) throw new Error('context names: letters, digits, - and _ only'); };
-export const profileDirFor = (context: string, browser: BrowserType = 'chromium') => {
+export const profileDirFor = (context: string, browser: BrowserName = 'chromium') => {
   assertContextName(context);
-  return browser === 'firefox' ? join(profilesDir(), '.firefox', context) : context === 'default' ? process.env.BROWSPARK_PROFILE ?? join(homedir(), '.browspark', 'profile') : join(profilesDir(), context);
+  return browser !== 'chromium' && browser !== 'chrome' ? join(profilesDir(), `.${browser}`, context) : context === 'default' ? process.env.BROWSPARK_PROFILE ?? join(homedir(), '.browspark', 'profile') : join(profilesDir(), context);
 };
 
 /**
@@ -38,21 +39,22 @@ export class Sessions extends EventEmitter {
     this.bridge = bridge;
     bridge.on('cdp.event', (e) => this.emit('cdp.event', e));
     bridge.on('detached', (e) => { interceptDetached(e.tabId); this.holds.delete(e.tabId); this.emit('detached', e); });
-    bridge.on('disconnected', () => this.emit('disconnected'));
+    bridge.on('disconnected', (connection) => this.emit('disconnected', connection));
     this.on('detached', ({ tabId, reason }) => { if (/closed/.test(reason)) for (const c of clients.values()) c.ownedTabs.delete(tabId); });
   }
 
   /** The default developer browser (running or not). */
   get dev(): DevBrowser { return this.devFor('default'); }
-  devFor(context: string, browser?: BrowserType): DevBrowser {
+  devFor(context: string, browser?: BrowserName): DevBrowser {
     assertContextName(context);
     let d = this.devs.get(context);
-    if (d && browser && d.browserType !== browser) {
-      if (d.running) throw new Error(`Context "${context}" is running ${d.browserType}; close it first or choose another context name.`);
+    if (d && browser && d.browserName !== browser) {
+      if (d.busy) throw new Error(`Context "${context}" is running ${d.browserName} or changing state; close it first or choose another context name.`);
       this.devs.delete(context); d = undefined;
     }
     if (!d) {
-      d = browser === 'firefox' ? new DirectFirefox(profileDirFor(context, browser), context) : new DirectChrome(profileDirFor(context), context);
+      const selected = browser ?? 'chromium';
+      d = selected === 'firefox' || selected === 'zen' ? new DirectFirefox(profileDirFor(context, selected), context, selected) : new DirectChrome(profileDirFor(context, selected), context, selected);
       this.devs.set(context, d);
       d.on('cdp.event', (e) => this.emit('cdp.event', e));
       d.on('detached', (e) => this.emit('detached', e));
@@ -62,27 +64,28 @@ export class Sessions extends EventEmitter {
   }
   runningDevs(): DevBrowser[] { return [...this.devs.values()].filter((d) => d.running); }
   devOfTab(tabId: number): DevBrowser | undefined { return this.runningDevs().find((d) => d.tab(tabId)); }
-  listContexts(): { name: string; browser: BrowserType; profileDir: string; running: boolean; tabs: number }[] {
-    return (['chromium', 'firefox'] as const).flatMap((browser) => {
+  listContexts(): { name: string; browser: BrowserName; profileDir: string; running: boolean; tabs: number }[] {
+    return (['chromium', 'brave', 'firefox', 'zen'] as const).flatMap((browser) => {
       const names = new Set<string>(browser === 'chromium' ? ['default'] : []);
-      for (const d of this.devs.values()) if (d.browserType === browser) names.add(d.name);
-      const dir = browser === 'firefox' ? join(profilesDir(), '.firefox') : profilesDir();
+      for (const d of this.devs.values()) if (d.browserName === browser || browser === 'chromium' && d.browserName === 'chrome') names.add(d.name);
+      const dir = browser === 'chromium' ? profilesDir() : join(profilesDir(), `.${browser}`);
       if (existsSync(dir)) for (const entry of readdirSync(dir, { withFileTypes: true })) if (entry.isDirectory() && CONTEXT_NAME.test(entry.name)) names.add(entry.name);
-      return [...names].map((name) => { const d = this.devs.get(name); const running = d?.browserType === browser && d.running; return { name, browser, profileDir: profileDirFor(name, browser), running: !!running, tabs: running ? d.listTabs().length : 0 }; });
+      return [...names].map((name) => { const d = this.devs.get(name), profileDir = profileDirFor(name, browser); const matches = d?.profileDir === profileDir; return { name, browser: matches ? d.browserName : browser, profileDir, running: !!(matches && d.running), tabs: matches && d.running ? d.listTabs().length : 0 }; });
     });
   }
   async launch(context: string, opts: LaunchOptions) {
-    const browser = opts.browser ?? this.devs.get(context)?.browserType ?? 'chromium';
-    if (browser === 'firefox' && opts.chromePath) throw new Error('Use firefoxPath for Firefox, not chromePath.');
-    if (browser === 'chromium' && opts.firefoxPath) throw new Error('firefoxPath requires browser:"firefox".');
+    const browser = opts.browser ?? this.devs.get(context)?.browserName ?? 'chromium';
+    if (browserEngine(browser) === 'firefox' && opts.chromePath) throw new Error('Use browserPath or firefoxPath for Firefox/Zen, not chromePath.');
+    if (browserEngine(browser) === 'chromium' && opts.firefoxPath) throw new Error('firefoxPath requires browser:"firefox" or "zen".');
     const d = this.devFor(context, browser); await d.launch(opts); return d;
   }
-  async deleteContext(context: string, browser?: BrowserType) {
+  async deleteContext(context: string, browser?: BrowserName) {
     assertContextName(context);
-    const d = this.devs.get(context), selected = browser ?? d?.browserType ?? 'chromium';
-    if (d?.browserType === selected && d.running) throw new Error(`Context "${context}" is running; close it first`);
-    const dir = profileDirFor(context, selected); if (existsSync(dir)) rmSync(dir, { recursive: true, force: true });
-    if (d?.browserType === selected) this.devs.delete(context);
+    const d = this.devs.get(context), selected = browser ?? d?.browserName ?? 'chromium';
+    const dir = profileDirFor(context, selected);
+    if (d?.profileDir === dir && d.busy) throw new Error(`Context "${context}" is running or changing state; close it first`);
+    if (existsSync(dir)) rmSync(dir, { recursive: true, force: true });
+    if (d?.profileDir === dir) this.devs.delete(context);
   }
 
   modeOf(tabId: number): Mode { return this.devOfTab(tabId) ? 'dev' : 'extension'; }
@@ -103,10 +106,10 @@ export class Sessions extends EventEmitter {
   async tabs(refresh = false): Promise<TabRecord[]> {
     const out: TabRecord[] = [];
     if (this.bridge.connected) {
-      const ext = refresh || !this.bridge.tabs.length ? (this.bridge.tabs = await this.bridge.request<TabInfo[]>('tabs.list')) : this.bridge.tabs;
-      for (const t of ext) out.push({ id: t.id, mode: 'extension', url: t.url, title: t.title, shared: t.shared, attached: t.attached, unsupported: t.unsupported, windowId: t.windowId, agent: t.agent });
+      const ext = await this.bridge.listTabs(refresh);
+      for (const t of ext) out.push({ ...t, mode: 'extension', browser: 'chromium' });
     }
-    for (const d of this.runningDevs()) for (const t of d.listTabs()) out.push({ id: t.id, mode: 'dev', browser: d.browserType, url: t.url, title: t.title, shared: true, attached: !!t.sessionId, agent: true, context: d.name });
+    for (const d of this.runningDevs()) for (const t of d.listTabs()) out.push({ id: t.id, mode: 'dev', browser: d.browserType, browserName: d.browserName, url: t.url, title: t.title, shared: true, attached: !!t.sessionId, agent: true, context: d.name });
     return out;
   }
 
@@ -123,7 +126,7 @@ export class Sessions extends EventEmitter {
       if (own.length && !me) return own[own.length - 1].id;
       if (usable.length === 1) return usable[0].id;
       if (!usable.length) throw new Error(this.bridge.connected ? 'No usable tabs in the user\'s browser. Ask the user to share a tab in the extension dashboard (or open your own with browser_tabs {action:"new", url}). Do not launch the developer browser unless the user asked for it.' : this.runningDevs().length ? 'No usable tabs; open one with browser_tabs {action:"new", url}.' : 'Nothing is connected. Call browser_status and ask the user to open the Browspark extension dashboard and share a tab. Do not launch the developer browser unless the user asked for it.');
-      throw new Error(`tabId is required; usable tabs: ${usable.map((t) => `${t.id} (${t.mode}${t.context ? ':' + t.context : ''}: ${t.title || t.url})`).join(', ')}`);
+      throw new Error(`tabId is required; usable tabs: ${usable.map((t) => `${t.id} (${t.browserName ?? t.mode}, ${t.browserId ?? t.context}: ${t.title || t.url})`).join(', ')}`);
     }
     if (!this.bridge.connected) throw new Error(`Tab ${tabId} is not a development-browser tab and the extension is not connected.`);
     let t = (await this.tabs()).find((x) => x.id === tabId);
@@ -134,19 +137,24 @@ export class Sessions extends EventEmitter {
     return tabId;
   }
 
-  async newTab(url: string, mode?: Mode, context?: string, active = true): Promise<number> {
+  async newTab(url: string, mode?: Mode, context?: string, active = true, browserId?: string): Promise<number> {
     const devs = this.runningDevs();
+    if (context !== undefined) assertContextName(context);
+    if (browserId !== undefined && !browserId) throw new Error('browserId must be a connected browser ID from browser_status.');
+    if (context && browserId) throw new Error('Choose context for a developer browser or browserId for an extension browser, not both.');
+    if (context && mode === 'extension' || browserId && mode === 'dev') throw new Error('context requires mode:"dev"; browserId requires mode:"extension".');
     // Prefer the user's browser when it is connected; developer browsers only when asked for or nothing else exists.
-    const m = mode ?? (this.bridge.connected ? 'extension' : devs.length ? 'dev' : 'extension');
+    const m = mode ?? (context ? 'dev' : browserId || this.bridge.connected ? 'extension' : devs.length ? 'dev' : 'extension');
     let id: number;
     if (m === 'dev') {
-      const d = context ? this.devs.get(context) : devs.length === 1 ? devs[0] : this.devs.get('default')?.running ? this.devs.get('default') : devs[0];
+      if (!context && devs.length > 1) throw new Error(`context is required; running developer browsers: ${devs.map(d => `${d.name} (${d.browserName})`).join(', ')}`);
+      const d = context ? this.devs.get(context) : devs[0];
       if (!d?.running) throw new Error(context ? `Context "${context}" is not running` : 'No developer browser is running');
       id = await d.newTab(url);
     } else {
       if (!this.bridge.connected) throw new Error('Extension not connected');
-      const r = await this.bridge.request<{ id: number }>('tabs.create', { url, active });
-      this.bridge.tabs = [];
+      const r = await this.bridge.request<{ id: number }>('tabs.create', { url, active }, undefined, browserId);
+      this.bridge.invalidateTabs(this.bridge.connectionForTab(r.id)?.id);
       id = r.id;
     }
     currentClient()?.ownedTabs.add(id);
@@ -156,7 +164,8 @@ export class Sessions extends EventEmitter {
     for (const c of clients.values()) c.ownedTabs.delete(tabId);
     const d = this.devOfTab(tabId);
     if (d) return d.closeTab(tabId);
-    await this.bridge.request('tabs.close', { tabId }); this.bridge.tabs = [];
+    const browserId = this.bridge.connectionForTab(tabId)?.id;
+    await this.bridge.request('tabs.close', { tabId }); this.bridge.invalidateTabs(browserId);
   }
   /** Resize the window holding a tab; omit width/height to restore. */
   windowSize(tabId: number, width?: number, height?: number): Promise<{ width?: number; height?: number; restored?: boolean }> {
@@ -178,5 +187,5 @@ export class Sessions extends EventEmitter {
     if (d) return d.activate(tabId);
     await this.bridge.request('tabs.activate', { tabId });
   }
-  async closeAll() { for (const d of this.runningDevs()) await d.close().catch(() => {}); }
+  async closeAll() { for (const d of this.devs.values()) if (d.busy) await d.close().catch(() => {}); }
 }

@@ -87,7 +87,6 @@ export class Capture {
     this.sessions = sessions;
     sessions.on('cdp.event', (e) => { if (e.sessionId) return; const st = this.states.get(e.tabId); if (st?.active) this.ingest(st, e.method, e.params); });
     sessions.on('detached', ({ tabId, reason }) => { const st = this.states.get(tabId); if (st?.active) { st.active = false; st.stoppedAt = Date.now(); this.push(st, 'companion.detached', `debugger detached: ${reason}`); } });
-    sessions.on('disconnected', () => { for (const st of this.states.values()) if (st.active && sessions.modeOf(st.tabId) === 'extension') { st.active = false; st.stoppedAt = Date.now(); } });
   }
 
   get(tabId: number): TabState | undefined { return this.states.get(tabId); }

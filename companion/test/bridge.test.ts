@@ -1,10 +1,10 @@
 import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { WebSocket } from 'ws';
-import { Bridge } from '../src/bridge.ts';
+import { Bridge, type BridgeConnection } from '../src/bridge.ts';
 import { PROTOCOL_VERSION, isNewTab, unsupportedReason, type Req } from '../../shared/protocol.ts';
 
-const hello = () => JSON.stringify({ event: 'hello', params: { version: PROTOCOL_VERSION, extensionVersion: 't' } });
+const hello = (params = {}) => JSON.stringify({ event: 'hello', params: { version: PROTOCOL_VERSION, extensionVersion: 't', ...params } });
 const open = (ws: WebSocket) => new Promise<void>((r) => ws.once('open', () => r()));
 const closed = (ws: WebSocket) => new Promise<number>((r) => ws.once('close', (c) => r(c)));
 
@@ -31,18 +31,19 @@ test('bridge connects, routes requests, rejects pending on disconnect', async ()
 
   ws.on('message', (d) => {
     const req = JSON.parse(d.toString()) as Req;
-    if (req.method === 'cdp') ws.send(JSON.stringify({ id: req.id, result: { ok: (req.params as any).method } }));
+    if (req.method === 'cdp' && (req.params as any).method === 'Page.enable') ws.send(JSON.stringify({ id: req.id, result: { ok: (req.params as any).method } }));
     if (req.method === 'tabs.list') ws.send(JSON.stringify({ id: req.id, error: 'boom' }));
   });
-  assert.deepEqual(await bridge.cdp(1, 'Page.enable'), { ok: 'Page.enable' });
-  await assert.rejects(bridge.request('tabs.list'), /boom/);
-
-  ws.send(JSON.stringify({ event: 'tabs', params: [{ id: 1, url: 'https://x', title: 'x', shared: true, attached: false }] }));
+  ws.send(JSON.stringify({ event: 'tabs', params: [{ id: 1, url: 'https://x', title: 'x', shared: true, attached: false, windowId: 1 }] }));
   await new Promise((r) => bridge.once('tabs', r));
   assert.equal(bridge.tabs.length, 1);
+  const tabId = bridge.tabs[0].id;
+  assert.notEqual(tabId, 1);
+  assert.deepEqual(await bridge.cdp(tabId, 'Page.enable'), { ok: 'Page.enable' });
+  await assert.rejects(bridge.request('tabs.list'), /boom/);
 
   // in-flight request fails when the extension drops; nothing is retried
-  const inflight = bridge.cdp(1, 'Runtime.evaluate');
+  const inflight = bridge.cdp(tabId, 'Runtime.evaluate');
   ws.close();
   await assert.rejects(inflight, /disconnected/);
   assert.equal(bridge.connected, false);
@@ -96,4 +97,157 @@ test('bridge answers malformed request targets with 400 instead of crashing', as
   const ok = await fetch(`http://127.0.0.1:${bridge.port}/`);
   assert.equal(ok.status, 200);
   bridge.close();
+});
+
+const nativeTab = (id = 1) => ({ id, url: 'https://example.com', title: 'Example', shared: true, attached: false, windowId: 1 });
+async function connectBrowser(bridge: Bridge, instanceId: string, browserSessionId = 'session', browser = instanceId) {
+  const ws = new WebSocket(`ws://127.0.0.1:${bridge.port}`);
+  await open(ws);
+  const connected = new Promise<BridgeConnection>((resolve) => bridge.once('connected', resolve));
+  ws.send(hello({ instanceId, browserSessionId, browser }));
+  return { ws, info: await connected };
+}
+async function publishTabs(bridge: Bridge, ws: WebSocket, tabs = [nativeTab()]) {
+  const changed = new Promise<void>((resolve) => bridge.once('tabs', () => resolve()));
+  ws.send(JSON.stringify({ event: 'tabs', params: tabs }));
+  await changed;
+}
+const nextRequest = (ws: WebSocket) => new Promise<Req>((resolve) => ws.once('message', (data) => resolve(JSON.parse(data.toString()))));
+
+test('multiple browser extensions isolate colliding tab ids, commands, events, downloads and policies', async () => {
+  const bridge = new Bridge(0); await bridge.listen();
+  try {
+    const a = await connectBrowser(bridge, 'chrome'), b = await connectBrowser(bridge, 'brave');
+    await publishTabs(bridge, a.ws); await publishTabs(bridge, b.ws);
+    const aTab = a.info.tabs[0].id, bTab = b.info.tabs[0].id;
+    assert.equal(bridge.connections().length, 2);
+    assert.notEqual(aTab, bTab);
+    assert.equal(bridge.connectionForTab(aTab)?.id, a.info.id);
+    assert.equal(bridge.connectionForTab(bTab)?.id, b.info.id);
+    assert.equal(a.info.tabs[0].browserName, 'chrome');
+    assert.equal(b.info.tabs[0].browserId, b.info.id);
+    await assert.rejects(bridge.cdp(1, 'Page.enable'), /wasn't found/);
+    await assert.rejects(bridge.request('tabs.create', { url: 'about:blank' }), /browserId is required/);
+    await assert.rejects(bridge.request('tabs.close', { tabId: aTab }, undefined, b.info.id), /belongs to browser/);
+
+    const received = nextRequest(a.ws), response = bridge.cdp(aTab, 'Runtime.evaluate', { expression: '1' });
+    const req = await received;
+    assert.equal((req.params as any).tabId, 1);
+    b.ws.send(JSON.stringify({ id: req.id, result: { source: 'foreign' } }));
+    a.ws.send(JSON.stringify({ id: req.id, result: { source: 'chrome' } }));
+    assert.deepEqual(await response, { source: 'chrome' });
+
+    const event = new Promise<any>((resolve) => bridge.once('cdp.event', resolve));
+    b.ws.send(JSON.stringify({ event: 'cdp.event', params: { tabId: 1, method: 'Page.loadEventFired', params: {} } }));
+    assert.equal((await event).tabId, bTab);
+    const events: number[] = [];
+    bridge.on('cdp.event', (e) => events.push(e.tabId));
+    b.ws.send(JSON.stringify({ event: 'cdp.event', params: { tabId: aTab, method: 'Page.loadEventFired', params: {} } }));
+
+    const policy = new Promise<any>((resolve) => bridge.once('tools.policy', (p, connection) => resolve({ p, connection })));
+    b.ws.send(JSON.stringify({ event: 'tools.policy', params: { disabled: ['browser_click'], overlay: false, browserId: a.info.id } }));
+    const changed = await policy;
+    assert.equal(changed.connection.id, b.info.id);
+    assert.deepEqual(b.info.policy?.disabled, ['browser_click']);
+    assert.equal(a.info.policy, undefined);
+    assert.deepEqual(events, []);
+
+    const downloadRequest = nextRequest(b.ws), downloads = bridge.request<any[]>('downloads.list', { tabId: bTab });
+    const downloadReq = await downloadRequest;
+    b.ws.send(JSON.stringify({ id: downloadReq.id, result: [{ guid: 'download', tabId: 1 }] }));
+    assert.equal((await downloads)[0].tabId, bTab);
+
+    const createRequest = nextRequest(b.ws), created = bridge.request<any>('tabs.create', { url: 'about:blank' }, undefined, b.info.id);
+    const createReq = await createRequest;
+    b.ws.send(JSON.stringify({ id: createReq.id, result: { id: 2, windowId: 1 } }));
+    const newTab = await created;
+    assert.notEqual(newTab.id, 2);
+    assert.equal(bridge.connectionForTab(newTab.id)?.id, b.info.id);
+    const detached: number[] = []; bridge.on('detached', (e) => detached.push(e.tabId));
+    const disconnected = new Promise<void>((resolve) => bridge.once('disconnected', () => resolve()));
+    b.ws.close(); await disconnected;
+    assert.deepEqual(detached, [bTab, newTab.id], 'created tabs detach even before a tabs event or refresh');
+    assert.equal(bridge.connectionForTab(aTab)?.id, a.info.id);
+  } finally { bridge.close(); }
+});
+
+test('refresh and disconnect of one extension leave other browsers and pending requests intact', async () => {
+  const bridge = new Bridge(0); await bridge.listen();
+  try {
+    const a = await connectBrowser(bridge, 'chrome'), b = await connectBrowser(bridge, 'brave');
+    a.ws.on('message', (data) => { const req = JSON.parse(data.toString()); if (req.method === 'tabs.list') a.ws.send(JSON.stringify({ id: req.id, result: [nativeTab()] })); });
+    b.ws.on('message', (data) => { const req = JSON.parse(data.toString()); if (req.method === 'tabs.list') b.ws.send(JSON.stringify({ id: req.id, result: [nativeTab()] })); });
+    assert.equal((await bridge.listTabs()).length, 2);
+    const aTab = a.info.tabs[0].id, bTab = b.info.tabs[0].id;
+    const aMessage = nextRequest(a.ws), aPending = bridge.cdp(aTab, 'Page.enable');
+    const bMessage = nextRequest(b.ws), bPending = bridge.cdp(bTab, 'Page.enable');
+    const rejected = assert.rejects(bPending, /extension disconnected/);
+    const aReq = await aMessage; await bMessage;
+    const detached: number[] = []; bridge.on('detached', (e) => detached.push(e.tabId));
+    b.ws.close(); await rejected;
+    assert.equal(bridge.connected, true);
+    assert.equal(bridge.browser, 'chrome');
+    assert.deepEqual(detached, [bTab]);
+    assert.deepEqual(bridge.tabs.map((t) => t.id), [aTab]);
+    a.ws.send(JSON.stringify({ id: aReq.id, result: { ok: true } }));
+    assert.deepEqual(await aPending, { ok: true });
+    assert.equal((await bridge.listTabs(true)).length, 1);
+  } finally { bridge.close(); }
+});
+
+test('reconnect replaces only its browser, preserves session ids, and ignores stale sockets', async () => {
+  const bridge = new Bridge(0); await bridge.listen();
+  try {
+    const a = await connectBrowser(bridge, 'chrome'), b = await connectBrowser(bridge, 'brave');
+    await publishTabs(bridge, a.ws); await publishTabs(bridge, b.ws);
+    const aTab = a.info.tabs[0].id, bTab = b.info.tabs[0].id;
+    const oldSocket = (bridge as any).active.get(a.info.id).ws as WebSocket;
+    const oldRequest = nextRequest(a.ws), oldPending = bridge.cdp(aTab, 'Page.enable');
+    const oldRejected = assert.rejects(oldPending, /connection replaced/);
+    await oldRequest;
+    const replacement = await connectBrowser(bridge, 'chrome');
+    await oldRejected;
+    await publishTabs(bridge, replacement.ws);
+    assert.equal(replacement.info.id, a.info.id);
+    assert.equal(replacement.info.tabs[0].id, aTab);
+    assert.equal(bridge.connections().length, 2);
+    assert.equal(bridge.connectionForTab(bTab)?.id, b.info.id);
+
+    const message = nextRequest(replacement.ws), pending = bridge.cdp(aTab, 'Page.enable');
+    const req = await message;
+    // A late transport callback must not answer a request on the replacement socket or publish stale events.
+    oldSocket.emit('message', Buffer.from(JSON.stringify({ id: req.id, result: { stale: true } })));
+    oldSocket.emit('message', Buffer.from(JSON.stringify({ event: 'tabs', params: [nativeTab(99)] })));
+    replacement.ws.send(JSON.stringify({ id: req.id, result: { fresh: true } }));
+    assert.deepEqual(await pending, { fresh: true });
+    assert.equal(replacement.info.tabs[0].id, aTab);
+
+    const restarted = await connectBrowser(bridge, 'chrome', 'new-browser-session');
+    await publishTabs(bridge, restarted.ws);
+    assert.equal(restarted.info.id, a.info.id);
+    assert.notEqual(restarted.info.tabs[0].id, aTab);
+    assert.equal(bridge.connectionForTab(aTab), undefined);
+    assert.equal(bridge.connectionForTab(bTab)?.id, b.info.id);
+  } finally { bridge.close(); }
+});
+
+test('bridge rejects malformed identities, tabs, and policies without affecting another browser', async () => {
+  const bridge = new Bridge(0); await bridge.listen();
+  try {
+    const healthy = await connectBrowser(bridge, 'healthy'); await publishTabs(bridge, healthy.ws);
+    for (const params of [{ instanceId: {} }, { instanceId: '../escape' }, { browserSessionId: 'orphan' }, { browser: [] }]) {
+      const ws = new WebSocket(`ws://127.0.0.1:${bridge.port}`); await open(ws);
+      const closing = closed(ws); ws.send(hello(params)); assert.equal(await closing, 1003);
+    }
+    const badTabs = await connectBrowser(bridge, 'bad-tabs');
+    const tabsClosed = closed(badTabs.ws);
+    badTabs.ws.send(JSON.stringify({ event: 'tabs', params: [{ ...nativeTab(), id: '1' }] }));
+    assert.equal(await tabsClosed, 1003);
+    const badPolicy = await connectBrowser(bridge, 'bad-policy');
+    const policyClosed = closed(badPolicy.ws);
+    badPolicy.ws.send(JSON.stringify({ event: 'tools.policy', params: { disabled: [null] } }));
+    assert.equal(await policyClosed, 1003);
+    assert.equal(bridge.connections().length, 1);
+    assert.equal(bridge.connectionForTab(healthy.info.tabs[0].id)?.id, healthy.info.id);
+  } finally { bridge.close(); }
 });
