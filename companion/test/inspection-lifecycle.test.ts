@@ -12,11 +12,13 @@ import { Capture } from '../src/devtools/capture.ts';
 import { registerSessionTools } from '../src/devtools/session.ts';
 import { clients, type Ctx } from '../src/context.ts';
 import type { Sessions } from '../src/session.ts';
+import { Bridge } from '../src/bridge.ts';
 
 function fixture() {
   const calls: { tabId: number; method: string; params?: any }[] = [];
   const holds: { tabId: number; on: boolean }[] = [];
   const sessions = Object.assign(new EventEmitter(), {
+    bridge: new Bridge(0),
     resolve: async (id = 1) => id,
     modeOf: () => 'dev',
     devOfTab: () => ({ version: 'inspection-lifecycle-test' }),
@@ -88,7 +90,7 @@ test('closing a stdio relay terminates its upstream inspection membership', asyn
   const connect = (client: Client, port: number) => client.connect(new StdioClientTransport({ command: process.execPath, args: [scriptPath, '--port', String(port)], stderr: 'pipe' }));
   const call = async (client: Client, name: string, args: Record<string, unknown> = {}) => {
     const result = await client.callTool({ name, arguments: args });
-    assert.ok(!result.isError, `${name} failed`);
+    assert.ok(!result.isError, `${name} failed: ${JSON.stringify(result.content)}`);
     return (result.content as { type: string; text: string }[]).filter((c) => c.type === 'text').map((c) => c.text).join('\n');
   };
   try {
@@ -97,7 +99,7 @@ test('closing a stdio relay terminates its upstream inspection membership', asyn
     const port = Number(/port:\s+(\d+)/.exec(status)?.[1]);
     assert.ok(port, 'isolated companion is ready');
     ws = new WebSocket(`ws://127.0.0.1:${port}`);
-    const tabs = [{ id: 71, url: 'https://example.test/', title: 'Fixture', shared: true, attached: true }];
+    const tabs = [{ id: 71, url: 'https://example.test/', title: 'Fixture', shared: true, attached: true, windowId: 1 }];
     ws.on('message', (raw) => {
       const req = JSON.parse(raw.toString());
       if (!req.id) return;
@@ -108,16 +110,18 @@ test('closing a stdio relay terminates its upstream inspection membership', asyn
     ws.send(JSON.stringify({ event: 'hello', params: { version: PROTOCOL_VERSION, extensionVersion: 'test' } }));
     ws.send(JSON.stringify({ event: 'tabs', params: tabs }));
     await connect(relay, port);
-    await call(owner, 'devtools_session', { action: 'start', tabId: 71 });
-    await call(relay, 'devtools_session', { action: 'start', tabId: 71 });
-    const inspection = async () => JSON.parse(await call(owner, 'devtools_session', { action: 'status', tabId: 71 }));
+    const tabId = Number(/^\[(\d+)\]/.exec(await call(owner, 'browser_tabs'))?.[1]);
+    assert.ok(tabId && tabId !== 71, 'MCP uses its own tab ID');
+    await call(owner, 'devtools_session', { action: 'start', tabId });
+    await call(relay, 'devtools_session', { action: 'start', tabId });
+    const inspection = async () => JSON.parse(await call(owner, 'devtools_session', { action: 'status', tabId }));
     assert.equal((await inspection()).users.length, 2);
     await relay.close();
     for (let i = 0; i < 50 && (await inspection()).users.length !== 1; i++) await new Promise((resolve) => setTimeout(resolve, 20));
     const remaining = await inspection();
     assert.deepEqual(remaining.users, ['codex']);
     assert.equal(remaining.active, true);
-    await call(owner, 'devtools_session', { action: 'stop', tabId: 71 });
+    await call(owner, 'devtools_session', { action: 'stop', tabId });
     assert.equal((await inspection()).active, false);
   } finally { await relay.close().catch(() => {}); ws?.terminate(); await owner.close().catch(() => {}); }
 }, 10_000);

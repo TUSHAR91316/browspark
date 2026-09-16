@@ -13,7 +13,7 @@ function fixture() {
   const sessions = Object.assign(new EventEmitter(), {
     resolve: async (id = 1) => id, hold: async () => {},
     cdp: async (_id: number, _method: string, _params?: any): Promise<any> => ({}),
-    bridge: { request: async (_method: string): Promise<any> => [] },
+    bridge: { connectionForTab: (_id: number) => undefined, request: async (_method: string): Promise<any> => [] },
     devOfTab: (_id: number): any => undefined,
   });
   const capture = new Capture(sessions as unknown as Sessions);
