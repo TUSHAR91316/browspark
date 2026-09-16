@@ -13,7 +13,7 @@ try {
   await ext.cdp.send('Target.createTarget', { url: url + 'debug.html' });
   const extTab = await pairAndShare(ext, ok, url + 'debug.html');
   const extCaps = await okJson('devtools_capabilities', { tabId: extTab, refresh: true });
-  await ok('browser_session', { action: 'launch', headless: true, url: url + 'debug.html' });
+  await ok('browser_session', { action: 'launch', headless: true, userRequested: true, url: url + 'debug.html' });
   const devTab = Number(/\[(\d+)\] dev/.exec(await ok('browser_tabs'))![1]);
   const devCaps = await okJson('devtools_capabilities', { tabId: devTab, refresh: true });
   const domains = [...new Set([...Object.keys(extCaps.domains), ...Object.keys(devCaps.domains)])];
@@ -22,6 +22,8 @@ try {
   const md = `# Capability matrix
 
 Probed live by \`bun companion/test/capabilities.ts\` on ${new Date().toISOString().slice(0, 10)}.
+
+These results describe the Chromium build below. They do not describe Firefox or Zen; see [Firefox and Zen coverage](/reference/firefox). Run \`devtools_capabilities\` with the intended \`tabId\` to check another connected browser. A supported domain does not imply that every command is available; Media is left unprobed because its available probes change browser state.
 
 - Extension mode: ${extCaps.browser} via chrome.debugger (extension v${/v([\d.]+)/.exec(await ok('browser_status'))?.[1] ?? '?'})
 - Developer mode: ${devCaps.browser} via direct CDP
@@ -54,6 +56,6 @@ ${rows.join('\n')}
   await ok('browser_session', { action: 'close' }).catch(() => {});
   await client.close().catch(() => {});
   await ext.cleanup();
-  server.close();
-  process.exit(0);
+  server.closeAllConnections();
+  await new Promise<void>((resolve) => server.close(() => resolve()));
 }
