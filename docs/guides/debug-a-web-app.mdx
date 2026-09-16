@@ -3,7 +3,9 @@ title: "Debug a web app"
 description: "Inspection sessions, console and network search, source maps, breakpoints, elements, storage and workers."
 ---
 
-The developer tools mirror Chrome DevTools panel by panel. They work on your shared tabs in extension mode; only heap snapshots, Lighthouse and raw protocol commands need the [developer browser](/concepts/developer-browser).
+The developer tools mirror Chrome DevTools panel by panel. They work on shared Chrome and Brave tabs, with operations such as heap snapshots, Lighthouse and raw protocol commands requiring a Chromium [developer browser](/concepts/developer-browser). Firefox and Zen keep the same tool names but support a subset of these operations; check [their coverage](/reference/firefox) or `devtools_capabilities` for the selected tab.
+
+Use `browser_tabs` to find the tab in the intended browser and pass its `tabId` to inspection tools. Capture state is per tab, so inspecting Chrome and Brave together keeps their console and network logs separate.
 
 ## Start an inspection session
 
@@ -11,7 +13,7 @@ The developer tools mirror Chrome DevTools panel by panel. They work on your sha
 { "tool": "devtools_session", "args": { "action": "start", "tabId": 1234, "bodies": true } }
 ```
 
-While a session is active the companion collects console messages, exceptions, network requests (with bodies when `bodies` is on, capped by `maxBodyBytes`), loaded scripts, navigations, issues, service worker events and debugger pauses, **across reloads**. The tab stays attached for the duration. `status` shows what is collected and which agents share the session; `clear` drops data; `stop` removes every breakpoint, mock, override, blocked URL and emulation the session set and detaches.
+While a session is active the companion collects console messages, exceptions, network requests (with bodies when `bodies` is on, capped by `maxBodyBytes`), loaded scripts, navigations, issues, service worker events and debugger pauses supported by that browser, **across reloads**. Extension tabs stay attached for the duration. `status` shows what is collected and which agents share the session; `clear` drops data. When the last agent stops using the session, `stop` removes its breakpoints, mocks, overrides, blocked URLs and emulation, and releases the tab.
 
 `devtools_events` reads the raw event stream with paging (`afterId`) or blocks (`wait: true`) until an event matching `method` or `text` arrives, for example to wait for a failed request or a breakpoint hit.
 

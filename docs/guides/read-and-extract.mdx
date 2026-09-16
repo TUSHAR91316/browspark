@@ -17,9 +17,9 @@ description: "Markdown from pages and URLs, tables, links, structured records, a
 
 ## A URL you are not on
 
-`browser_fetch {url, what}` opens a background tab in your window, waits for load, reads the main content as markdown (or text or HTML) and closes the tab. It is the fast path for "read this documentation page and summarise it". Pass `keepTab: true` to leave the tab open for follow-up actions, or `context` to fetch inside a developer context instead.
+`browser_fetch {url, what, browserId}` opens a background tab in the selected extension browser, waits for load, reads the main content as markdown (or text or HTML) and closes the tab. It is the fast path for "read this documentation page and summarise it". Get `browserId` from `browser_status`; it is required when several extension profiles are connected. Pass `keepTab: true` to leave the tab open for follow-up actions, or select `context` instead of `browserId` to fetch inside a developer browser.
 
-Because it is a real browser tab, pages that need JavaScript, logins from your session, or your cookies render correctly, unlike a plain HTTP fetch.
+Because it is a real browser tab, pages can use JavaScript and the selected browser profile's logins and cookies. Developer sessions have separate profiles, including Firefox and Zen; they do not inherit your everyday browser's logins.
 
 ## Structured extraction
 

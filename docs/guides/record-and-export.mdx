@@ -5,6 +5,8 @@ description: "Record a flow, add assertions and parameters, replay it, and expor
 
 `devtools_recorder` records what an agent does on a tab and turns it into a replayable flow. Recordings are per agent, so two agents recording at once do not mix.
 
+Select a tab from the intended browser with `browser_tabs` and pass its `tabId` when starting or replaying a flow. Replaying against a tab in another browser uses that browser's profile and supported operations; Firefox and Zen still have their [documented exceptions](/reference/firefox).
+
 <Steps>
   <Step title="Start recording">
     ```json

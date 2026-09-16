@@ -3,7 +3,9 @@ title: "Performance and memory"
 description: "Traces with Web Vitals, CPU profiles, heap snapshots and leak detection, coverage, and Lighthouse."
 ---
 
-Artifacts land in `~/.browspark/artifacts` (or `BROWSPARK_ARTIFACTS`) in Chrome's own formats, so every file opens in DevTools.
+The traces, profiles, heap tools, coverage and Lighthouse workflows below require Chromium (Chrome, Brave or a compatible build). Firefox and Zen support `devtools_performance {action: "vitals"}` for metrics exposed by their page APIs; Chrome traces, V8 profiling and Lighthouse return explicit unsupported errors. See [Firefox and Zen coverage](/reference/firefox).
+
+Pass the intended tab's `tabId` when several browsers are available. Artifacts land in `~/.browspark/artifacts` (or `BROWSPARK_ARTIFACTS`); traces and profiles use Chrome's own formats, and Lighthouse reports use HTML and JSON.
 
 ## Traces
 
@@ -14,7 +16,7 @@ Artifacts land in `~/.browspark/artifacts` (or `BROWSPARK_ARTIFACTS`) in Chrome'
 
 `stop` saves a `.json` trace (DevTools Performance panel, Perfetto) and returns a summary: time by category, long tasks with their heaviest children, script time by URL, observed LCP, FCP and CLS, and user timings. `search` finds events by name or argument, `compare` diffs two recordings, `vitals` reads live Web Vitals observed in the page since the session started (LCP, CLS, INP, FID, FCP, TTFB, long tasks), and `metrics` returns Chrome runtime metrics.
 
-<Note>Traces are browser-wide; activity from other tabs can appear in the raw file. The summary is filtered to the target tab where possible.</Note>
+<Note>Traces are browser-wide within the selected Chromium instance; activity from its other tabs can appear in the raw file. The summary is filtered to the target tab where possible.</Note>
 
 ## CPU profiles
 
@@ -43,4 +45,4 @@ Chrome does not expose the heap profiler to extensions. A typical leak hunt: `gr
 { "tool": "devtools_lighthouse", "args": { "url": "https://example.com", "device": "mobile", "categories": ["performance", "accessibility", "best-practices", "seo"] } }
 ```
 
-Runs the official Lighthouse CLI against the developer browser and returns category scores, key metrics and failing audits, plus HTML and JSON reports as artifacts. Developer mode only; Lighthouse opens its own tab there.
+Runs the official Lighthouse CLI against a Chromium developer browser and returns category scores, key metrics and failing audits, plus HTML and JSON reports as artifacts. Lighthouse opens its own tab there. When several Chromium developer contexts are running, pass a `tabId` from the intended context to choose the browser explicitly.

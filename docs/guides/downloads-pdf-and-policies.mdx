@@ -5,7 +5,9 @@ description: "Collect files the browser downloads, print pages to PDF, and fence
 
 ## Downloads
 
-`browser_download {action: "list"}` reports downloads observed while the debugger is attached to a shared tab. Extension mode uses tab-specific browser events, so another tab's downloads stay private even on the same website. It reports the suggested filename and progress; the local file path is unavailable in this mode. Developer mode reports files in the context's download directory (`~/.browspark/downloads/<context>` unless overridden at launch), including their paths.
+`browser_download {action: "list", tabId}` reports downloads observed while the debugger is attached to the selected shared tab. Extension mode uses tab-specific browser events, so another tab's downloads stay private even on the same website. It reports the suggested filename and progress; the local file path is unavailable in this mode. Developer mode reports files in the context's download directory, including their paths. `browser_status` shows the directory; the default is `~/.browspark/downloads/<browser>/<context>`, while the compatibility choice `"chromium"` retains `~/.browspark/downloads/<context>`.
+
+Firefox and Zen download tracking requires a build with BiDi download events. See [Firefox and Zen coverage](/reference/firefox).
 
 `{action: "wait", urlContains, timeoutMs}` returns a matching completed download immediately, or waits for one to complete. Use it right after clicking an "Export CSV" button; a file path is included when available.
 
@@ -27,4 +29,4 @@ With `default: true` the policy applies to every tab the agent opens from now on
 { "action": "set", "default": true, "block": ["doubleclick.net", "google-analytics.com"] }
 ```
 
-`status` shows the active policy; `clear` removes it. Policies are enforced through Chrome's Fetch domain so they cover subresources, not just top-level navigation.
+`status` shows the active policy; `clear` removes it. Policies use CDP Fetch interception on Chromium and BiDi network interception on Firefox and Zen, covering subresources as well as top-level navigation. A default policy applies to future agent-created tabs across browsers; a tab policy applies only to its selected `tabId`.

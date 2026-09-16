@@ -3,7 +3,9 @@ title: "Network mocking and throttling"
 description: "Mock endpoints, block hosts, throttle, disable the cache, and replay requests during an inspection session."
 ---
 
-All of these are `devtools_network` actions and need a running `devtools_session` on the tab. They are undone by `devtools_session stop`.
+All of these are `devtools_network` actions and need a running `devtools_session` on the tab. Pass the intended browser's `tabId` on each call. They are undone when the last agent stops the inspection session.
+
+Firefox and Zen support mocks, blocking, cache control and HAR export through BiDi, but network and CPU throttling are unavailable. Response-body capture depends on the browser build. See [Firefox and Zen coverage](/reference/firefox).
 
 ## Mock a response
 
@@ -11,7 +13,7 @@ All of these are `devtools_network` actions and need a running `devtools_session
 { "action": "mock", "pattern": "*/api/user", "response": { "status": 200, "json": { "name": "Test User", "plan": "pro" } } }
 ```
 
-`pattern` is a URL glob. `response` takes `status`, `headers`, `contentType`, and either `body` (string) or `json`. `rules` lists active mocks, `unmock` removes one by pattern. Mocks are applied through Chrome's Fetch domain, so they also cover requests made before the page's JavaScript runs.
+`pattern` is a URL glob. `response` takes `status`, `headers`, `contentType`, and either `body` (string) or `json`. `rules` lists active mocks, `unmock` removes one by pattern. Mocks use browser network interception, so they also cover requests made before the page's JavaScript runs.
 
 ## Block requests
 
@@ -39,7 +41,7 @@ Presets: `none`, `offline`, `slow3g`, `fast3g`, `4g`, or custom `latencyMs`, `do
 { "action": "replay", "requestId": "1234.56", "overrides": { "headers": { "x-debug": "1" }, "body": "{\"page\":2}" } }
 ```
 
-Re-issues a captured request from the page with optional changes to method, URL, headers or body, and returns the response. Handy for probing an API without touching the UI.
+Re-issues a captured request from the page with optional changes to method, URL, headers or body, and returns the response. Handy for probing an API without touching the UI. On Firefox and Zen, supply the body explicitly when the original request body was not captured.
 
 ## Export
 

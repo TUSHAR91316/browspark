@@ -5,7 +5,7 @@ description: "Symptoms, causes and fixes for connection, tab, tool and developer
 
 ## The agent says NOT CONNECTED
 
-The extension is not connected or the companion is not running.
+The extension is not connected or the companion is not running. Firefox and Zen developer sessions do not use an extension, so check the **Developer mode** entries in `browser_status` as well.
 
 1. Ask for `browser_status`; it prints the port.
 2. Open the dashboard → Settings, check the port matches, click **Connect**.
@@ -17,11 +17,21 @@ Another companion owns the port and the new one relays to it; that is normal and
 
 ## The agent is looking at the wrong browser
 
-The extension is installed in two browsers (say Chrome and Brave) and both connect. Remove it from the one you do not use; the companion has one extension connection and the last to connect wins.
+Chrome and Brave can stay connected together. Ask the agent to call `browser_status` or `browser_tabs`, then use the target tab's returned `tabId`. To open a new tab, pass the intended extension profile's `browserId` or the developer browser's `context`. Dashboard tab numbers are browser-native IDs and are different from the IDs MCP tools accept.
+
+Browser and tab IDs can change after a companion or browser restart. Refresh the list instead of reusing a saved ID. See [Using multiple browsers](/reference/multiple-browsers).
+
+## Two copied profiles keep reconnecting
+
+Profiles copied with Browspark's extension storage can have the same saved installation ID. They currently replace each other's connection. Use independently created profiles and load Browspark in each, rather than copying its extension storage between profiles.
+
+## A healthy browser waits while another is unresponsive
+
+Tab refresh currently waits for responses from all connected extensions. An unresponsive profile can therefore delay calls targeting another browser until its request times out. Disconnect the unresponsive profile from its dashboard, or close that browser, and retry.
 
 ## No usable tabs
 
-Share a tab on the Tabs page or switch on Share everything. `chrome://` pages, extension pages and the Web Store can never be used. The agent should open a tab with `browser_tabs {action: "new"}` rather than launch a separate browser; if it keeps trying to launch one, set the developer browser policy to **Never**.
+Share a tab on the intended profile's Tabs page or switch on Share everything. Browser-internal pages, extension pages and the Web Store cannot be inspected. The agent can open a tab with `browser_tabs {action: "new", browserId}` using the profile ID from `browser_status`. For an already running developer browser, choose its `context`. Launching another browser is only appropriate when you request it or a tool needs a developer capability.
 
 ## The debugging bar
 
@@ -35,15 +45,17 @@ Quit the browser first. Developer mode has no bar.
 
 ## Tools missing or the dashboard looks stale
 
-The extension was rebuilt but not reloaded. Reload it on `chrome://extensions`; the dashboard shows a banner when it detects this. If the Tools page is empty, the companion has not connected since the extension started; connect once and the catalog arrives.
+The extension was rebuilt but not reloaded. Reload it in every connected profile (`chrome://extensions` in Chrome, `brave://extensions` in Brave); the dashboard shows a banner when it detects this. Restart the companion after updating it. If the Tools page is empty, the companion has not connected since the extension started; connect once and the catalog arrives.
 
 ## A tool says it is switched off
 
-Someone disabled it on the Tools page. Enable it there; no restart needed.
+Someone disabled it on a dashboard's Tools page. For a call targeting an extension tab, check that profile's dashboard. Calls spanning browsers and developer-session calls use the combined disabled list from connected dashboards, so check each one. Enable the tool there; no restart needed.
 
 ## "Needs developer mode"
 
 The operation uses a protocol domain Chrome hides from extensions (heap profiler, target, browser, raw CDP, Lighthouse). The agent may now launch `browser_session` for ten minutes under the default policy. Everything else continues in your tabs.
+
+For Firefox or Zen, an **unsupported in Firefox** message describes a BiDi limitation, not a missing extension permission. The same 43 tools are registered, but Chrome-specific actions are unavailable. Check [Firefox and Zen coverage](/reference/firefox); use a Chromium developer session when you need raw CDP, Lighthouse or Chrome profiling.
 
 ## Stale ref
 
@@ -52,16 +64,21 @@ The element left the DOM or the page navigated. Snapshot again.
 ## Clicks do nothing
 
 - A dialog is open: `browser_status` shows it, `browser_dialog` resolves it.
-- The page is paused on a breakpoint: `devtools_debugger {action: "resume"}`.
-- The element has no box (hidden or zero-size): check with `devtools_elements {action: "box"}`.
+- On Chromium, the page may be paused on a breakpoint: `devtools_debugger {action: "resume"}`.
+- The element may be hidden or zero-size: check with `devtools_elements {action: "box"}` on Chromium, or inspect `getBoundingClientRect()` through `devtools_evaluate` on Firefox and Zen.
+- If the tool reports that foreground interaction is needed, select that tab yourself or turn off **Settings → Browser behavior → Work in background** in its dashboard, then retry.
 
 ## Keyboard shortcuts do not reach the browser
 
 By design. `browser_key` sends keys to the page. DevTools, tab switching and reload are browser UI; use `devtools_*` tools and `browser_navigate {action: "reload"}`.
 
-## Developer browser cannot find Chrome
+## Developer browser cannot find the executable
 
-Set `BROWSPARK_CHROME` to the executable, for example `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`, or pass `chromePath` to `browser_session launch`.
+Pass `browserPath` to `browser_session launch` with the matching `browser`: `"chrome"`, `"brave"`, `"firefox"` or `"zen"`. Environment defaults are `BROWSPARK_CHROME`, `BROWSPARK_BRAVE`, `BROWSPARK_FIREFOX` and `BROWSPARK_ZEN`. For example, Chrome on macOS commonly uses `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`. Legacy `chromePath` and `firefoxPath` options still work.
+
+## A context is already running in another browser
+
+Running context names are unique across all browser choices. Use different names such as `chrome-work` and `zen-work`, or close the existing context before switching it to another browser. Each browser keeps a separate saved profile. See [Developer browser](/concepts/developer-browser).
 
 ## Sandboxed client: module not found or handshake timeout
 

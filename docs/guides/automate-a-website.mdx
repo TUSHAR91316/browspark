@@ -9,7 +9,9 @@ This is the loop every browser task follows. Names in `code` are the tools; the 
 
 > Open the login page of app.example.com in my browser.
 
-The agent calls `browser_status` if it has not yet, then `browser_tabs {action: "new", url}`. The tab opens in your current window and becomes the agent's default target. If you already had the page open and shared, it uses that tab instead.
+The agent calls `browser_status` if it has not yet, then `browser_tabs {action: "new", url, browserId}` using the selected extension browser's ID. The tab opens in that browser's current window, in the background by default, and becomes the agent's default target. If you already had the page open and shared, it uses that tab instead.
+
+For a developer browser, open the tab with `mode: "dev"` and its `context`. Pass the returned `tabId` on subsequent calls when working across browsers. Chrome, Brave, Firefox and Zen use the same workflow; Firefox and Zen have [documented exceptions](/reference/firefox), including literal multiline text input.
 
 ## 2. Look
 
