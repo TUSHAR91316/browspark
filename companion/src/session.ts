@@ -5,18 +5,24 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { Bridge } from './bridge.ts';
 import { DirectChrome, type LaunchOptions } from './cdp.ts';
+import { DirectFirefox } from './firefox.ts';
 import { isNewTab, type TabInfo } from '../../shared/protocol.ts';
 import { currentClient, clients } from './context.ts';
 import { onDetached as interceptDetached, pendingRestore, restoreFetch } from './devtools/intercept.ts';
 
 export type Mode = 'extension' | 'dev';
-export interface TabRecord { id: number; mode: Mode; url: string; title: string; shared: boolean; attached: boolean; unsupported?: string; windowId?: number; agent?: boolean; context?: string }
+export type BrowserType = 'chromium' | 'firefox';
+type DevBrowser = DirectChrome | DirectFirefox;
+export interface TabRecord { id: number; mode: Mode; url: string; title: string; shared: boolean; attached: boolean; unsupported?: string; windowId?: number; agent?: boolean; context?: string; browser?: BrowserType }
 
 const profilesDir = () => process.env.BROWSPARK_PROFILES ?? join(homedir(), '.browspark', 'profiles');
 const CONTEXT_NAME = /^[a-z0-9_-]{1,40}$/i;
 /** Context names become directory names under ~/.browspark; reject anything that is not a plain name. */
 export const assertContextName = (context: string) => { if (!CONTEXT_NAME.test(context)) throw new Error('context names: letters, digits, - and _ only'); };
-export const profileDirFor = (context: string) => (context === 'default' ? process.env.BROWSPARK_PROFILE ?? join(homedir(), '.browspark', 'profile') : join(profilesDir(), context));
+export const profileDirFor = (context: string, browser: BrowserType = 'chromium') => {
+  assertContextName(context);
+  return browser === 'firefox' ? join(profilesDir(), '.firefox', context) : context === 'default' ? process.env.BROWSPARK_PROFILE ?? join(homedir(), '.browspark', 'profile') : join(profilesDir(), context);
+};
 
 /**
  * One object the rest of the companion talks to. Emits, for every tab regardless of transport:
@@ -25,7 +31,7 @@ export const profileDirFor = (context: string) => (context === 'default' ? proce
  */
 export class Sessions extends EventEmitter {
   readonly bridge: Bridge;
-  readonly devs = new Map<string, DirectChrome>();
+  readonly devs = new Map<string, DevBrowser>();
 
   constructor(bridge: Bridge) {
     super();
@@ -37,12 +43,16 @@ export class Sessions extends EventEmitter {
   }
 
   /** The default developer browser (running or not). */
-  get dev(): DirectChrome { return this.devFor('default'); }
-  devFor(context: string): DirectChrome {
+  get dev(): DevBrowser { return this.devFor('default'); }
+  devFor(context: string, browser?: BrowserType): DevBrowser {
+    assertContextName(context);
     let d = this.devs.get(context);
+    if (d && browser && d.browserType !== browser) {
+      if (d.running) throw new Error(`Context "${context}" is running ${d.browserType}; close it first or choose another context name.`);
+      this.devs.delete(context); d = undefined;
+    }
     if (!d) {
-      assertContextName(context);
-      d = new DirectChrome(profileDirFor(context), context);
+      d = browser === 'firefox' ? new DirectFirefox(profileDirFor(context, browser), context) : new DirectChrome(profileDirFor(context), context);
       this.devs.set(context, d);
       d.on('cdp.event', (e) => this.emit('cdp.event', e));
       d.on('detached', (e) => this.emit('detached', e));
@@ -50,19 +60,29 @@ export class Sessions extends EventEmitter {
     }
     return d;
   }
-  runningDevs(): DirectChrome[] { return [...this.devs.values()].filter((d) => d.running); }
-  devOfTab(tabId: number): DirectChrome | undefined { return this.runningDevs().find((d) => d.tab(tabId)); }
-  listContexts(): { name: string; profileDir: string; running: boolean; tabs: number }[] {
-    const names = new Set<string>(['default', ...this.devs.keys()]);
-    if (existsSync(profilesDir())) for (const n of readdirSync(profilesDir())) names.add(n);
-    return [...names].map((name) => { const d = this.devs.get(name); return { name, profileDir: profileDirFor(name), running: !!d?.running, tabs: d?.running ? d.listTabs().length : 0 }; });
+  runningDevs(): DevBrowser[] { return [...this.devs.values()].filter((d) => d.running); }
+  devOfTab(tabId: number): DevBrowser | undefined { return this.runningDevs().find((d) => d.tab(tabId)); }
+  listContexts(): { name: string; browser: BrowserType; profileDir: string; running: boolean; tabs: number }[] {
+    return (['chromium', 'firefox'] as const).flatMap((browser) => {
+      const names = new Set<string>(browser === 'chromium' ? ['default'] : []);
+      for (const d of this.devs.values()) if (d.browserType === browser) names.add(d.name);
+      const dir = browser === 'firefox' ? join(profilesDir(), '.firefox') : profilesDir();
+      if (existsSync(dir)) for (const entry of readdirSync(dir, { withFileTypes: true })) if (entry.isDirectory() && CONTEXT_NAME.test(entry.name)) names.add(entry.name);
+      return [...names].map((name) => { const d = this.devs.get(name); const running = d?.browserType === browser && d.running; return { name, browser, profileDir: profileDirFor(name, browser), running: !!running, tabs: running ? d.listTabs().length : 0 }; });
+    });
   }
-  async launch(context: string, opts: LaunchOptions) { const d = this.devFor(context); await d.launch(opts); return d; }
-  async deleteContext(context: string) {
+  async launch(context: string, opts: LaunchOptions) {
+    const browser = opts.browser ?? this.devs.get(context)?.browserType ?? 'chromium';
+    if (browser === 'firefox' && opts.chromePath) throw new Error('Use firefoxPath for Firefox, not chromePath.');
+    if (browser === 'chromium' && opts.firefoxPath) throw new Error('firefoxPath requires browser:"firefox".');
+    const d = this.devFor(context, browser); await d.launch(opts); return d;
+  }
+  async deleteContext(context: string, browser?: BrowserType) {
     assertContextName(context);
-    const d = this.devs.get(context); if (d?.running) throw new Error(`Context "${context}" is running; close it first`);
-    const dir = profileDirFor(context); if (existsSync(dir)) rmSync(dir, { recursive: true, force: true });
-    this.devs.delete(context);
+    const d = this.devs.get(context), selected = browser ?? d?.browserType ?? 'chromium';
+    if (d?.browserType === selected && d.running) throw new Error(`Context "${context}" is running; close it first`);
+    const dir = profileDirFor(context, selected); if (existsSync(dir)) rmSync(dir, { recursive: true, force: true });
+    if (d?.browserType === selected) this.devs.delete(context);
   }
 
   modeOf(tabId: number): Mode { return this.devOfTab(tabId) ? 'dev' : 'extension'; }
@@ -86,7 +106,7 @@ export class Sessions extends EventEmitter {
       const ext = refresh || !this.bridge.tabs.length ? (this.bridge.tabs = await this.bridge.request<TabInfo[]>('tabs.list')) : this.bridge.tabs;
       for (const t of ext) out.push({ id: t.id, mode: 'extension', url: t.url, title: t.title, shared: t.shared, attached: t.attached, unsupported: t.unsupported, windowId: t.windowId, agent: t.agent });
     }
-    for (const d of this.runningDevs()) for (const t of d.listTabs()) out.push({ id: t.id, mode: 'dev', url: t.url, title: t.title, shared: true, attached: !!t.sessionId, agent: true, context: d.name });
+    for (const d of this.runningDevs()) for (const t of d.listTabs()) out.push({ id: t.id, mode: 'dev', browser: d.browserType, url: t.url, title: t.title, shared: true, attached: !!t.sessionId, agent: true, context: d.name });
     return out;
   }
 
