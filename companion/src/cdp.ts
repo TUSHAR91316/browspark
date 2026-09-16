@@ -8,6 +8,7 @@ import { WebSocket } from 'ws';
 
 export interface DevTab { id: number; targetId: string; url: string; title: string; type: string; sessionId?: string; attachedAt?: number }
 export interface LaunchOptions {
+  browser?: 'chromium' | 'firefox'; firefoxPath?: string;
   url?: string; headless?: boolean; profileDir?: string; chromePath?: string; args?: string[]; windowSize?: string;
   /** Open Chrome DevTools automatically for every tab (default: on when not headless). */ devtools?: boolean;
   /** Proxy server, e.g. "http://proxy.corp:8080" or "socks5://127.0.0.1:1080". */ proxy?: string;
@@ -17,6 +18,7 @@ export interface LaunchOptions {
 export interface Download { guid: string; url: string; filename: string; path?: string; state: 'inProgress' | 'completed' | 'canceled'; receivedBytes: number; totalBytes: number; startedAt: number; tabId?: number }
 // Chrome tab ids are int32; developer-mode ids start above that range so the two namespaces can never collide.
 let nextDevTabId = 2 ** 31;
+export const allocateDevTabId = () => nextDevTabId++;
 
 const CHROME_CANDIDATES: Record<string, string[]> = {
   darwin: ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/Applications/Chromium.app/Contents/MacOS/Chromium', '/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary'],
@@ -36,6 +38,7 @@ export function findChrome(explicit?: string): string {
  * Emits 'cdp.event' {tabId, method, params}, 'detached' {tabId, reason}, 'closed'.
  */
 export class DirectChrome extends EventEmitter {
+  readonly browserType = 'chromium' as const;
   private proc?: ChildProcess;
   private ws?: WebSocket;
   private nextId = 1;
@@ -121,7 +124,7 @@ export class DirectChrome extends EventEmitter {
       const info = m.params.targetInfo;
       if (info.type !== 'page') return;
       let tab = [...this.tabs.values()].find((t) => t.targetId === info.targetId);
-      if (!tab) { tab = { id: nextDevTabId++, targetId: info.targetId, url: info.url, title: info.title, type: info.type }; this.tabs.set(tab.id, tab); }
+      if (!tab) { tab = { id: allocateDevTabId(), targetId: info.targetId, url: info.url, title: info.title, type: info.type }; this.tabs.set(tab.id, tab); }
       else { tab.url = info.url; tab.title = info.title; }
       return;
     }
