@@ -140,7 +140,7 @@ const stat = (k: string, v: string | number, extra?: string, cls = '', agoTs?: n
 const empty = (ic: keyof typeof I, title: string, sub?: string, action?: Node) => h('div', { class: 'empty' }, icon(ic), h('b', {}, title), sub ? h('span', {}, sub) : null, action ?? null);
 const stopResume = (s: State) => s.stopped
   ? h('button', { class: 'btn primary', disabled: connectionBusy(s), 'aria-busy': String(connectionBusy(s)), onclick: () => changeConnection({ type: 'connect' }) }, icon('play'), 'Resume access')
-  : h('button', { class: 'btn danger', disabled: !s.connected && !s.connecting, onclick: () => changeConnection({ type: 'stop' }), title: 'Detach from every tab and disconnect' }, icon('stop'), 'Stop access');
+  : h('button', { class: 'btn danger', disabled: !s.connected && !s.connecting, onclick: () => changeConnection({ type: 'stop' }), title: 'Detach from this profile’s tabs and disconnect this extension' }, icon('stop'), 'Stop access');
 
 function copyBtn(text: string, label = 'Copy') {
   return h('button', { class: 'btn sm icon ghost', title: label, 'aria-label': label, onclick: async (e: Event) => { const b = e.currentTarget as HTMLElement; await navigator.clipboard.writeText(text); b.replaceChildren(icon('check')); setTimeout(() => b.replaceChildren(icon('copy')), 1200); } }, icon('copy'));
@@ -221,7 +221,7 @@ function viewOverview(s: State) {
     h('div', { class: 'card-b steps' },
       h('div', { class: `step ${companionOk ? 'done' : step === 2 ? 'now' : ''}` }, h('div', { class: 'num' }, companionOk ? icon('check') : '1'), h('div', {},
         h('h3', {}, 'Run the companion'),
-        h('p', {}, 'Register it with your MCP client. It starts the local bridge on ', h('code', {}, `127.0.0.1:${s.port}`), '.'),
+        h('p', {}, 'Register it once with your MCP client. Every browser profile can use the same companion at ', h('code', {}, `127.0.0.1:${s.port}`), '.'),
         clientSetup(s.port))),
       h('div', { class: `step ${step > 2 ? 'done' : step === 2 ? 'now' : ''}` }, h('div', { class: 'num' }, step > 2 ? icon('check') : '2'), h('div', {},
         h('h3', {}, 'Connect this extension'),
@@ -230,7 +230,7 @@ function viewOverview(s: State) {
         s.lastError && !s.connected ? h('div', { class: 'notice bad', style: 'margin-top:10px' }, icon('alert'), s.lastError) : null)),
       h('div', { class: `step ${step > 3 ? 'done' : step === 3 ? 'now' : ''}` }, h('div', { class: 'num' }, step > 3 ? icon('check') : '3'), h('div', {},
         h('h3', {}, 'Share tabs'),
-        h('p', {}, 'Choose the tabs your agent can control. Change access at any time.'),
+        h('p', {}, 'Choose the tabs your agent can control in this browser profile. Change access at any time.'),
         h('a', { href: '#/tabs', class: 'btn' }, icon('tabs'), s.shareAll ? 'Sharing everything · manage' : shared.length ? `${shared.length} shared · manage` : 'Choose tabs')))));
 
   const ready = !editing && (!s.stopped || !!s.lastError);
@@ -242,9 +242,11 @@ function viewOverview(s: State) {
       : empty('tabs', 'Your tabs stay private', 'Choose a tab to give your agent access.', h('a', { class: 'btn primary', href: '#/tabs' }, 'Choose tabs')),
     shared.length ? h('a', { class: 'panel-footer', href: '#/tabs' }, 'Manage tab access', icon('arrow')) : null);
   return h('div', { class: 'page' },
-    pageHeader('Overview', 'Your browser workspace, at a glance.', ready ? h('a', { class: 'btn primary', href: '#/tabs' }, icon('tabs'), 'Manage tabs') : null, stopResume(s)),
-    s.stopped && !s.lastError ? h('div', { class: 'notice warn', style: 'margin-bottom:16px' }, icon('alert'), 'Access is stopped. The agent cannot reach any tab until you resume.', h('button', { class: 'btn sm', disabled: connectionBusy(s), 'aria-busy': String(connectionBusy(s)), onclick: () => changeConnection({ type: 'connect' }) }, 'Resume')) : null,
+    pageHeader('Overview', 'Sharing, connection and activity for this browser profile.', ready ? h('a', { class: 'btn primary', href: '#/tabs' }, icon('tabs'), 'Manage tabs') : null, stopResume(s)),
+    s.stopped && !s.lastError ? h('div', { class: 'notice warn', style: 'margin-bottom:16px' }, icon('alert'), 'Access to this profile is stopped. Resume, then share tabs again. Other browsers and developer sessions remain available.', h('button', { class: 'btn sm', disabled: connectionBusy(s), 'aria-busy': String(connectionBusy(s)), onclick: () => changeConnection({ type: 'connect' }) }, 'Resume')) : null,
     onboarding,
+    h('div', { class: 'callout', style: 'margin-bottom:16px' }, icon('globe'),
+      h('div', { class: 'body' }, h('b', {}, 'Use browsers together'), h('div', { class: 'muted' }, 'Connect the extension in each Chrome or Brave profile. Firefox and Zen use separate developer sessions launched by your agent, with the same tool names and documented exceptions. ', h('a', { href: 'https://docs.browspark.krishm.dev/reference/multiple-browsers', target: '_blank', rel: 'noreferrer' }, 'Multi-browser guide')))),
     ready ? h('div', { class: 'card connection-panel', 'aria-busy': String(s.connecting) },
       h('div', { class: 'connection-icon' }, s.connecting ? spinner() : icon('plug')),
       h('div', { class: 'connection-copy' }, h('h2', {}, s.connecting ? 'Reconnecting…' : s.connected ? 'Your browser is connected' : 'Disconnected'), h('p', {}, s.connecting ? 'Waiting for the companion to confirm the connection.' : s.connected ? shared.length ? 'Your agent can work in the tabs you’ve shared.' : 'Share a tab to start working with your agent.' : s.lastError ?? 'Start the companion, then reconnect.')),
@@ -279,7 +281,7 @@ function viewTabs(s: State) {
 
   const row = (t: TabInfo) => {
     const eligible = canShare(t);
-    const cb = h('input', { type: 'checkbox', checked: t.shared && eligible, 'aria-label': `Share ${t.title || t.url}`, disabled: !eligible, title: !eligible ? `Chrome does not allow automation on ${t.unsupported}s` : t.shared ? 'Stop sharing' : isNewTab(t.url) ? 'Share this New Tab so the agent can navigate it to a website' : 'Share with agent', onchange: (e: Event) => ask({ type: 'setShared', tabIds: [t.id], shared: checked(e) }).then(paint) }) as HTMLInputElement;
+    const cb = h('input', { type: 'checkbox', checked: t.shared && eligible, 'aria-label': `Share ${t.title || t.url}`, disabled: !eligible, title: !eligible ? `The browser does not allow automation on ${t.unsupported}s` : t.shared ? 'Stop sharing' : isNewTab(t.url) ? 'Share this New Tab so the agent can navigate it to a website' : 'Share with agent', onchange: (e: Event) => ask({ type: 'setShared', tabIds: [t.id], shared: checked(e) }).then(paint) }) as HTMLInputElement;
     const fav = h('div', { class: 'fav' });
     if (t.favIconUrl) { const img = h('img', { src: t.favIconUrl, alt: '' }) as HTMLImageElement; img.onerror = () => fav.replaceChildren(initial(t)); fav.append(img); } else fav.textContent = initial(t);
     return h('div', { class: `tab ${!eligible ? 'off' : t.shared ? 'shared' : ''}`, 'data-key': String(t.id) },
@@ -288,20 +290,20 @@ function viewTabs(s: State) {
       h('div', { class: 'badges' },
         t.agent ? h('span', { class: 'pill accent' }, 'agent') : null,
         t.shared && eligible ? h('span', { class: 'pill ok' }, 'Shared') : null,
-        t.attached ? h('span', { class: 'pill ok', title: 'The debugger is attached: Chrome shows its "started debugging" bar. It detaches after 30s of inactivity unless an inspection session is running.' }, 'debugging') : null,
-        isNewTab(t.url) ? h('span', { class: 'pill', title: 'Share this tab to let the agent navigate it to a website. Chrome’s New Tab content cannot be inspected directly.' }, 'New tab') : t.unsupported ? h('span', { class: 'pill' }, t.unsupported) : null),
+        t.attached ? h('span', { class: 'pill ok', title: 'The debugger is attached: the browser shows its debugging indicator. It detaches after 30s of inactivity unless an inspection session is running.' }, 'debugging') : null,
+        isNewTab(t.url) ? h('span', { class: 'pill', title: 'Share this tab to let the agent navigate it to a website. The browser’s New Tab content cannot be inspected directly.' }, 'New tab') : t.unsupported ? h('span', { class: 'pill' }, t.unsupported) : null),
       h('label', { class: 'switch' }, cb));
   };
 
   const allCb = h('input', { type: 'checkbox', checked: s.shareAll, 'aria-label': 'Share everything', onchange: (e: Event) => ask({ type: 'setShareAll', on: checked(e) }).then(paint) }) as HTMLInputElement;
   return h('div', { class: 'page' },
-    pageHeader('Tabs', 'Choose which tabs your agent can use across all windows. Tabs opened by the agent are shared automatically.',
+    pageHeader('Tabs', 'Choose tabs across all windows in this browser profile. Tabs opened by the agent here are shared automatically.',
       h('button', { class: 'btn', disabled: !shareable.some((t) => !t.shared), onclick: () => setMany(shareable.filter((t) => !t.shared).map((t) => t.id), true) }, `Share ${q || ui.tabFilter !== 'all' ? 'matching' : 'listed'}`),
       h('button', { class: 'btn', disabled: !list.some((t) => t.shared), onclick: () => setMany(list.filter((t) => t.shared).map((t) => t.id), false) }, 'Unshare'),
       stopResume(s)),
     h('div', { class: `callout ${s.shareAll ? 'sharing-all' : ''}`, style: 'margin-bottom:16px' },
       icon(s.shareAll ? 'globe' : 'shield'),
-      h('div', { class: 'body' }, h('b', {}, 'Share everything'), h('div', { class: 'muted' }, s.shareAll ? 'Supported tabs across every window are shared, including new tabs. Stopped or unshared tabs stay private until you share them again.' : 'Allow access to supported tabs across every window, including new tabs. Explicitly stopped or unshared tabs stay private.')),
+      h('div', { class: 'body' }, h('b', {}, 'Share everything'), h('div', { class: 'muted' }, s.shareAll ? 'Supported tabs in this profile are shared across every window, including new tabs. Stopped or unshared tabs stay private until you share them again.' : 'Allow access to supported tabs in this profile across every window, including new tabs. Explicitly stopped or unshared tabs stay private.')),
       h('label', { class: 'switch ctl' }, allCb)),
     h('div', { class: 'card' },
       h('div', { class: 'toolbar' },
@@ -309,7 +311,7 @@ function viewTabs(s: State) {
         h('div', { class: 'seg' }, seg('all', `All ${all.length}`), seg('available', 'Available'), seg('shared', `Shared ${all.filter((t) => t.shared && canShare(t)).length}`)),
         h('div', { class: 'right' }, h('span', { class: 'sub', style: 'color:var(--fg-3);font-size:12.5px' }, `${list.length} shown`))),
       groups.length ? h('div', {}, ...groups.flatMap((g) => [h('div', { class: 'group' }, icon('globe'), g.w.label, h('span', { style: 'font-weight:500;text-transform:none;letter-spacing:0' }, `· ${g.tabs.length}`)), ...g.tabs.map(row)]))
-        : empty('search', 'No tabs match', q ? `Nothing for “${ui.search}”.` : 'Open a page in Chrome and it will appear here.')));
+        : empty('search', 'No tabs match', q ? `Nothing for “${ui.search}”.` : 'Open a page in this browser profile and it will appear here.')));
 }
 
 const TOOL_GROUPS: [RegExp, string][] = [
@@ -336,9 +338,10 @@ function viewTools(s: State) {
       h('label', { class: 'switch' }, h('input', { type: 'checkbox', checked: !off.has(t.name), 'aria-label': `Enable ${t.name}`, onchange: (e: Event) => ask({ type: 'setToolEnabled', name: t.name, enabled: checked(e) }).then(paint) })));
   };
   return h('div', { class: 'page' },
-    pageHeader('Tools', 'Manage your agent’s capabilities. Disabled tools require your approval before they can be used.',
+    pageHeader('Tools', 'Switch tools on or off for this browser profile. Turn a disabled tool back on here to allow it.',
       h('button', { class: 'btn', disabled: !list.some((t) => off.has(t.name)), onclick: () => setMany(list.filter((t) => off.has(t.name)).map((t) => t.name), true) }, `Enable ${q || ui.toolFilter !== 'all' ? 'matching' : 'all'}`),
       h('button', { class: 'btn', disabled: !list.some((t) => !off.has(t.name)), onclick: () => setMany(list.filter((t) => !off.has(t.name)).map((t) => t.name), false) }, `Disable ${q || ui.toolFilter !== 'all' ? 'matching' : 'all'}`)),
+    h('div', { class: 'notice', style: 'margin-bottom:16px' }, icon('shield'), h('span', {}, 'Calls targeting this profile use these switches. Calls across browsers and in developer sessions use the combined restrictions from connected profiles. ', h('a', { href: 'https://docs.browspark.krishm.dev/concepts/tool-policy', target: '_blank', rel: 'noreferrer' }, 'Tool policy'))),
     h('div', { class: 'card' },
       h('div', { class: 'toolbar' },
         h('label', { class: 'field' }, icon('search'), h('input', { id: 'toolsearch', placeholder: 'Search tools…', 'aria-label': 'Search tools', value: ui.toolSearch, oninput: (e: Event) => { ui.toolSearch = (e.target as HTMLInputElement).value; repaint(); } }), h('kbd', { class: 'kbd', 'aria-hidden': 'true' }, '/')),
@@ -350,13 +353,13 @@ function viewTools(s: State) {
 }
 
 function viewActivity(s: State) {
-  if (!s.activityLog) return h('div', { class: 'page' }, pageHeader('Activity', 'The last 200 commands recorded while activity logging is enabled.'),
+  if (!s.activityLog) return h('div', { class: 'page' }, pageHeader('Activity', 'The last 200 commands for this profile, recorded while activity logging is enabled.'),
     h('div', { class: 'card' }, empty('activity', 'Activity log is off', 'Nothing is being recorded. Enable it in Settings to see commands, latency, and errors here.', h('button', { class: 'btn primary sm', style: 'margin-top:8px', onclick: () => ask({ type: 'setActivityLog', on: true }).then(paint) }, 'Enable activity log'))));
   const errors = s.recent.filter((r) => !r.ok);
   const list = ui.logFilter === 'errors' ? errors : s.recent;
   const seg = (v: typeof ui.logFilter, label: string) => h('button', { class: ui.logFilter === v ? 'on' : '', 'aria-pressed': String(ui.logFilter === v), onclick: () => { ui.logFilter = v; repaint(); } }, label);
   return h('div', { class: 'page' },
-    pageHeader('Activity', 'The last 200 commands recorded while activity logging is enabled.',
+    pageHeader('Activity', 'The last 200 commands for this profile, recorded while activity logging is enabled.',
       h('button', { class: 'btn ghost', disabled: !s.recent.length, onclick: () => ask({ type: 'clearLog' }).then(paint) }, icon('trash'), 'Clear')),
     h('div', { class: 'grid c4', style: 'margin-bottom:16px' },
       stat('Operations', s.recent.length), stat('Errors', errors.length, undefined, errors.length ? 'bad' : ''),
@@ -379,36 +382,36 @@ function viewSettings(s: State) {
   const port = h('input', { id: 'port', type: 'number', min: 1, max: 65535, 'aria-label': 'Bridge port', value: String(s.port), class: 'mono' }) as HTMLInputElement;
   const save = () => changeConnection({ type: 'setConfig', port: Number(inputValue('port')) || 9223 });
   return h('div', { class: 'page' },
-    pageHeader('Settings', 'Your connection, privacy, and agent access preferences.'),
+    pageHeader('Settings', 'Connection, privacy and agent access for this browser profile.'),
     h('div', { class: 'card', style: 'margin-bottom:16px' },
       h('div', { class: 'card-h' }, h('h2', {}, 'Companion')),
-      h('div', { class: 'setting' }, h('div', {}, h('h3', {}, 'Bridge port'), h('p', {}, 'Where the companion listens on localhost. Change it if you run the companion with ', h('code', {}, '--port'), '.')), h('div', { class: 'ctl' }, h('label', { class: 'field narrow' }, port))),
+      h('div', { class: 'setting' }, h('div', {}, h('h3', {}, 'Bridge port'), h('p', {}, 'Use the same port in each browser profile to connect to one companion. Change it if you run the companion with ', h('code', {}, '--port'), '.')), h('div', { class: 'ctl' }, h('label', { class: 'field narrow' }, port))),
       h('div', { class: 'setting' }, h('div', {}, h('h3', {}, 'Connection'), h('p', s.connected ? { 'data-ago': String(s.connectedAt), 'data-ago-fmt': 'Connected for {ago}.' } : {}, s.connecting ? 'Reconnecting… Waiting for the companion.' : s.connected ? `Connected for ${ago(s.connectedAt!)}.` : `Disconnected.${s.lastError ? ' ' + s.lastError : ''}`)), h('div', { class: 'ctl' }, h('button', { id: 'reconnect', class: 'btn ghost', 'aria-label': 'Reconnect', disabled: connectionBusy(s), 'aria-busy': String(connectionBusy(s)), onclick: () => changeConnection({ type: 'connect' }) }, s.connecting ? spinner() : icon('refresh'), s.connecting ? 'Reconnecting…' : 'Reconnect'), h('button', { class: 'btn primary', disabled: connectionBusy(s), 'aria-busy': String(connectionBusy(s)), onclick: save }, 'Save')))),
     h('div', { class: 'card', style: 'margin-bottom:16px' },
       h('div', { class: 'card-h' }, h('h2', {}, 'Other clients')),
-      h('div', { class: 'setting' }, h('div', {}, h('h3', {}, 'HTTP endpoint'), h('p', {}, 'Clients that take a URL instead of a command (web agents, hosted assistants) connect here while the companion runs. Localhost only; web pages are refused.'),
+      h('div', { class: 'setting' }, h('div', {}, h('h3', {}, 'HTTP endpoint'), h('p', {}, 'Local MCP clients that take a URL can connect here while the companion runs. The endpoint is available only on this machine; web pages are refused.'),
         h('div', { class: 'cmd', style: 'margin-top:8px' }, h('code', {}, `http://127.0.0.1:${s.port}/mcp`), copyBtn(`http://127.0.0.1:${s.port}/mcp`))),
         h('div', { class: 'ctl' }))),
     h('div', { class: 'card', style: 'margin-bottom:16px' },
       h('div', { class: 'card-h' }, h('h2', {}, 'Developer browser')),
-      h('div', { class: 'setting' }, h('div', {}, h('h3', {}, 'When the agent may open a separate Chrome'), h('p', {}, 'Everyday work happens in your tabs. A developer-mode Chrome is only needed for things Chrome blocks for extensions: heap snapshots, Lighthouse, raw protocol commands.')),
+      h('div', { class: 'setting' }, h('div', {}, h('h3', {}, 'When the agent may launch a browser'), h('p', {}, 'Separate Chrome, Brave, Firefox and Zen sessions have their own saved profiles. Only when needed allows a launch when a tool requires it or you explicitly request it.'), h('p', {}, 'With multiple connected profiles, Never takes priority, followed by Only when needed, then Always. Firefox and Zen have ', h('a', { href: 'https://docs.browspark.krishm.dev/reference/firefox', target: '_blank', rel: 'noreferrer' }, 'documented tool exceptions'), '.')),
         h('div', { class: 'ctl' }, h('div', { class: 'seg', role: 'group', 'aria-label': 'Developer browser mode' }, ...([['auto', 'Only when needed'], ['always', 'Always'], ['never', 'Never']] as const).map(([v, label]) =>
           h('button', { class: s.devMode === v ? 'on' : '', 'aria-pressed': String(s.devMode === v), onclick: () => ask({ type: 'setDevMode', mode: v }).then(paint) }, label)))))),
     h('div', { class: 'card', style: 'margin-bottom:16px' },
       h('div', { class: 'card-h' }, h('h2', {}, 'Browser behavior')),
-      h('div', { class: 'setting' }, h('div', {}, h('h3', {}, 'Work in background'), h('p', {}, 'Do not switch away from my active tab. If an operation needs foreground interaction, select the agent tab yourself or temporarily turn this off.')),
+      h('div', { class: 'setting' }, h('div', {}, h('h3', {}, 'Work in background'), h('p', {}, 'On by default for this profile. Commands target the assigned tab without switching your active tab or focusing its window. If an operation needs foreground interaction, select the agent tab yourself or temporarily turn this off.')),
         h('div', { class: 'ctl' }, h('label', { class: 'switch' }, h('input', { type: 'checkbox', checked: s.backgroundMode, 'aria-label': 'Work in background', onchange: (e: Event) => ask({ type: 'setBackgroundMode', on: checked(e) }).then(paint) }), h('span', {}))))),
     h('div', { class: 'card', style: 'margin-bottom:16px' },
       h('div', { class: 'card-h' }, h('h2', {}, 'Agent overlay')),
-      h('div', { class: 'setting' }, h('div', {}, h('h3', {}, 'Show the agent at work'), h('p', {}, 'A soft cyan halo around the tab, a cursor that moves to each click, and a Stop button while the agent is driving it. Stop revokes the tab instantly.')),
+      h('div', { class: 'setting' }, h('div', {}, h('h3', {}, 'Show the agent at work'), h('p', {}, 'Show a cyan halo, moving cursor and Stop button on this profile’s tabs. Stop revokes only that tab. Developer sessions show the overlay only if every connected profile enables it.')),
         h('div', { class: 'ctl' }, h('label', { class: 'switch' }, h('input', { type: 'checkbox', checked: s.overlay, 'aria-label': 'Agent overlay', onchange: (e: Event) => ask({ type: 'setOverlay', on: (e.target as HTMLInputElement).checked }).then(paint) }), h('span', {}))))),
     h('div', { class: 'card', style: 'margin-bottom:16px' },
       h('div', { class: 'card-h' }, h('h2', {}, 'Privacy')),
       h('div', { class: 'setting' }, h('div', {}, h('h3', {}, 'Activity log'), h('p', {}, s.activityLog ? 'Keeps the last 200 commands in memory for this session.' : 'Off. No command history is kept. Operations and Errors are hidden on Overview.')), h('div', { class: 'ctl' }, h('label', { class: 'switch' }, h('input', { type: 'checkbox', checked: s.activityLog, 'aria-label': 'Activity log', onchange: (e: Event) => ask({ type: 'setActivityLog', on: checked(e) }).then(paint) }))))),
     h('div', { class: 'card danger-card' },
       h('div', { class: 'card-h' }, h('h2', {}, 'Emergency stop')),
-      h('div', { class: 'setting' }, h('div', {}, h('h3', {}, s.stopped ? 'Access is stopped' : 'Stop all agent access'), h('p', {}, 'Detaches the debugger from every tab, clears the shared list, and disconnects. Nothing is retried on resume.')), h('div', { class: 'ctl' }, stopResume(s)))),
-    h('p', { style: 'color:var(--fg-3);font-size:12px;margin-top:24px' }, `Browspark extension v${s.extensionVersion} · Chrome restricts automation on browser-internal pages and the Web Store.`));
+      h('div', { class: 'setting' }, h('div', {}, h('h3', {}, s.stopped ? 'This profile’s access is stopped' : 'Stop access to this profile'), h('p', {}, 'Detaches this profile’s tabs, clears sharing, turns off Share everything and disconnects this extension. Other browser profiles and developer sessions remain available. Resume reconnects; share tabs again to restore access.')), h('div', { class: 'ctl' }, stopResume(s)))),
+    h('p', { style: 'color:var(--fg-3);font-size:12px;margin-top:24px' }, `Browspark extension v${s.extensionVersion} · Chromium browsers restrict automation on browser-internal pages and extension stores.`));
 }
 
 // ---------- paint loop ----------
@@ -438,7 +441,7 @@ function paint(raw: State) {
   try { paintInner(s); }
   catch (e) {
     // a rendering bug must never leave a blank page
-    $('main').replaceChildren(h('div', { class: 'notice bad', style: 'margin:16px' }, icon('alert'), h('span', {}, `The dashboard failed to render: ${(e as Error).message}. Try reloading the extension at chrome://extensions and reopening this page.`), h('button', { class: 'btn sm', onclick: () => chrome.runtime.reload() }, 'Reload extension')));
+    $('main').replaceChildren(h('div', { class: 'notice bad', style: 'margin:16px' }, icon('alert'), h('span', {}, `The dashboard failed to render: ${(e as Error).message}. Try reloading the extension from your browser’s extensions page and reopening this dashboard.`), h('button', { class: 'btn sm', onclick: () => chrome.runtime.reload() }, 'Reload extension')));
   }
 }
 function paintInner(s: State) {

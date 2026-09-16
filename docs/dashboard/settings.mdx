@@ -20,7 +20,7 @@ http://127.0.0.1:9223/mcp
 
 ## Developer browser
 
-Whether the agent may open a separate Chrome. **Only when needed** (default), **Always**, or **Never**. See [Tool policy](/concepts/tool-policy#developer-browser-policy).
+Whether the agent may launch separate Chrome, Brave, Firefox or Zen sessions. **Only when needed** (default), **Always**, or **Never**. When several dashboards are connected, the most restrictive setting applies. See [Tool policy](/concepts/tool-policy#developer-browser-policy).
 
 ## Browser behavior
 
@@ -30,7 +30,7 @@ If a page needs foreground interaction, select the agent tab yourself or tempora
 
 ## Agent overlay
 
-**Show the agent at work** switch, on by default. Draws the soft cyan halo, moving cursor and Stop button on tabs while the agent drives them. See [The agent overlay](/concepts/tabs-and-sharing#the-agent-overlay).
+**Show the agent at work** switch, on by default. Draws the soft cyan halo, moving cursor and Stop button on this profile's tabs while the agent drives them. See [The agent overlay](/concepts/tabs-and-sharing#the-agent-overlay).
 
 ## Privacy
 
@@ -38,7 +38,7 @@ If a page needs foreground interaction, select the agent tab yourself or tempora
 
 ## Emergency stop
 
-Detaches the debugger from every tab, clears the shared list, switches Share everything off and disconnects. Nothing is retried on resume. **Resume** reconnects; share tabs again afterwards.
+Detaches the debugger from this profile's tabs, clears its shared list, switches Share everything off and disconnects this extension. Other connected profiles and developer sessions remain available. **Resume** reconnects this profile; share tabs again afterwards. To close developer sessions, ask the agent to use `browser_session` with `action: "close"` and the context name, or `all: true`.
 
 ## Appearance
 

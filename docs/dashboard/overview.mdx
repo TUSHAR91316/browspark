@@ -5,11 +5,13 @@ description: "Connection state, setup snippets for every client, and today's num
 
 Click the extension icon to open the dashboard in a full browser tab. It has five pages in the sidebar: Overview, Tabs, Tools, Activity and Settings. The sidebar also shows the connection state, a theme switch (system, light, dark) and the extension and companion versions.
 
+Each Chrome or Brave profile has its own dashboard, showing that profile's tabs, connection and settings. They can connect to the same companion together. Ask the agent for `browser_status` to see all connected browsers and developer contexts; Firefox and Zen developer sessions have no extension dashboard.
+
 <img src="/images/dashboard-overview-dark.png" alt="Overview page" />
 
 ## Connection card
 
-Shows whether the extension is connected to the companion (`127.0.0.1:<port>`), reconnecting, or stopped, how long the session has been live, and the companion version. **Stop** and **Resume** are the same emergency controls as on the Settings page.
+Shows whether this profile's extension is connected to the companion (`127.0.0.1:<port>`), reconnecting, or stopped, how long the session has been live, and the companion version. **Stop** and **Resume** affect this profile, as on the Settings page.
 
 ## Setup
 
@@ -21,4 +23,4 @@ Shared tabs and attached tabs are always shown. **Operations** and **Errors** co
 
 ## Stale worker banner
 
-When you rebuild the extension without reloading it, the files on disk are newer than the running service worker. The dashboard detects the version mismatch and shows a banner asking you to reload the extension on `chrome://extensions`. The same banner appears when the running worker predates a setting the dashboard expects.
+When you rebuild the extension without reloading it, the files on disk are newer than the running service worker. The dashboard detects a version mismatch and shows a banner asking you to reload the extension. Reload it in every connected profile, using `chrome://extensions` in Chrome or `brave://extensions` in Brave. The same banner appears when the running worker predates a setting the dashboard expects.
