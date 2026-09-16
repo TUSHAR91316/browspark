@@ -2,24 +2,15 @@
 import { EventEmitter } from 'node:events';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { homedir, platform } from 'node:os';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { WebSocket } from 'ws';
 import { allocateDevTabId, type DevTab, type Download, type LaunchOptions } from './cdp.ts';
 import { FirefoxNetwork } from './firefox-network.ts';
 import { FirefoxDOM } from './firefox-dom.ts';
+import { findBrowser } from './browsers.ts';
 
-const CANDIDATES: Record<string, string[]> = {
-  darwin: ['Firefox.app/Contents/MacOS/firefox', 'Firefox Developer Edition.app/Contents/MacOS/firefox', 'Firefox Nightly.app/Contents/MacOS/firefox', 'LibreWolf.app/Contents/MacOS/librewolf', 'Zen.app/Contents/MacOS/zen'].flatMap((p) => [join('/Applications', p), join(homedir(), 'Applications', p)]),
-  linux: ['/usr/bin/firefox', '/usr/bin/firefox-esr', '/usr/bin/librewolf', '/usr/bin/zen-browser', '/opt/firefox/firefox', '/snap/bin/firefox'],
-  win32: ['Mozilla Firefox\\firefox.exe', 'Firefox Developer Edition\\firefox.exe', 'Firefox Nightly\\firefox.exe', 'LibreWolf\\librewolf.exe', 'Zen Browser\\zen.exe'].flatMap((p) => [join(process.env.ProgramFiles ?? 'C:\\Program Files', p), join(process.env['ProgramFiles(x86)'] ?? 'C:\\Program Files (x86)', p)]),
-};
-export function findFirefox(explicit?: string): string {
-  const path = explicit ?? process.env.BROWSPARK_FIREFOX;
-  if (path) { if (existsSync(path)) return path; throw new Error(`Firefox not found at ${path}`); }
-  for (const candidate of CANDIDATES[platform()] ?? []) if (existsSync(candidate)) return candidate;
-  throw new Error('Could not find Firefox. Set BROWSPARK_FIREFOX or firefoxPath to a Firefox-based browser executable.');
-}
+export const findFirefox = (explicit?: string): string => findBrowser('firefox', explicit);
 
 export function firefoxProxy(value: string): Record<string, unknown> {
   const url = new URL(value.includes('://') ? value : `http://${value}`);
@@ -72,6 +63,7 @@ export class DirectFirefox extends EventEmitter {
   readonly browserType = 'firefox' as const;
   readonly profileDir: string;
   readonly name: string;
+  readonly browserName: 'firefox' | 'zen';
   port = 0;
   version?: string;
   wsEndpoint?: string;
@@ -87,6 +79,8 @@ export class DirectFirefox extends EventEmitter {
   private nextObject = 1;
   private nextRealm = 1;
   private launching = false;
+  private launchCancelled = false;
+  private closing?: Promise<void>;
   private stopping?: Promise<void>;
   private pending = new Map<number, { resolve: (v: any) => void; reject: (e: Error) => void }>();
   private tabs = new Map<number, FirefoxTab>();
@@ -98,20 +92,21 @@ export class DirectFirefox extends EventEmitter {
   private readonly network = new FirefoxNetwork((method, params) => this.bidi(method, params), (tabId, method, params) => this.event(tabId, method, params));
   private readonly dom = new FirefoxDOM((tabId, method, params) => this.cdp(tabId, method, params));
 
-  constructor(profileDir = join(homedir(), '.browspark', 'firefox-profile'), name = 'default') { super(); this.profileDir = profileDir; this.name = name; }
+  constructor(profileDir = join(homedir(), '.browspark', 'firefox-profile'), name = 'default', browserName: 'firefox' | 'zen' = 'firefox') { super(); this.profileDir = profileDir; this.name = name; this.browserName = browserName; }
   get running(): boolean { return this.ws?.readyState === WebSocket.OPEN; }
+  get busy(): boolean { return this.running || this.launching || !!this.proc || !!this.closing || !!this.stopping; }
   get pid(): number | undefined { return this.proc?.pid; }
 
   async launch(opts: LaunchOptions = {}): Promise<void> {
-    if (this.running || this.launching || this.proc) throw new Error('Development browser already running');
+    if (this.busy) throw new Error('Development browser already running or changing state');
     if (opts.extensions?.length) throw this.unsupported('Loading unpacked extensions');
     if (opts.devtools) throw this.unsupported('Automatically opening DevTools');
     if (opts.args?.some((a) => /^--?(?:profile(?:=|$)|P(?:=|$)|remote-debugging-port(?:=|$))/.test(a))) throw new Error('Firefox profile and debugging-port arguments are managed by Browspark');
-    const executable = realpathSync(findFirefox(opts.firefoxPath));
+    const executable = findBrowser(this.browserName, opts.browserPath ?? opts.firefoxPath);
     const proxy = opts.proxy ? firefoxProxy(opts.proxy) : undefined;
-    this.launching = true;
+    this.launching = true; this.launchCancelled = false;
     this.headless = !!opts.headless; this.proxy = opts.proxy;
-    this.downloadDir = opts.downloadDir ?? join(homedir(), '.browspark', 'downloads', 'firefox', this.name);
+    this.downloadDir = opts.downloadDir ?? join(homedir(), '.browspark', 'downloads', this.browserName, this.name);
     try {
       mkdirSync(this.profileDir, { recursive: true }); mkdirSync(this.downloadDir, { recursive: true });
       // Keep Firefox's startup metadata isolated too; macOS 27 protects the user's default app-data directory.
@@ -128,19 +123,22 @@ export class DirectFirefox extends EventEmitter {
       this.proc = proc;
       let stderr = '', endpoint: string | undefined, processError: Error | undefined;
       proc.stderr?.on('data', (data) => { stderr = (stderr + data.toString()).slice(-8192); const match = /WebDriver BiDi listening on (ws:\/\/[^\s]+)/.exec(stderr); if (match) endpoint = match[1].replace(/\/$/, '') + '/session'; });
-      proc.once('error', (error) => { processError = error; });
+      proc.once('error', (error) => { processError = error; if (!proc.pid && this.proc === proc) this.proc = undefined; });
       proc.once('exit', () => { if (this.proc === proc) { this.proc = undefined; this.ws?.terminate(); } });
       for (let i = 0; i < 150 && !endpoint; i++) {
+        if (this.launchCancelled) throw new Error('Development browser launch cancelled');
         if (processError) throw processError;
         if (proc.exitCode !== null || proc.signalCode !== null) throw new Error(`Firefox exited before opening WebDriver BiDi${stderr ? `: ${stderr.trim().slice(-1000)}` : ''}`);
         try { const { ws_host, ws_port } = JSON.parse(readFileSync(serverFile, 'utf8')); if (Number.isInteger(ws_port) && ws_port > 0 && ws_port <= 65535 && ['127.0.0.1', 'localhost', '::1', '[::1]'].includes(ws_host)) endpoint = `ws://${ws_host === '::1' ? '[::1]' : ws_host}:${ws_port}/session`; } catch {}
         if (!endpoint) await new Promise((resolve) => setTimeout(resolve, 100));
       }
+      if (this.launchCancelled) throw new Error('Development browser launch cancelled');
       if (!endpoint) throw new Error(`Firefox started but never exposed its WebDriver BiDi endpoint${stderr ? `: ${stderr.trim().slice(-1000)}` : ''}`);
       const address = new URL(endpoint);
       if (!['127.0.0.1', 'localhost', '[::1]'].includes(address.hostname)) throw new Error('Firefox debugging endpoint must be on loopback');
       this.port = Number(address.port); this.wsEndpoint = endpoint;
       await this.connect(endpoint);
+      if (this.launchCancelled) throw new Error('Development browser launch cancelled');
       const session = await this.bidi('session.new', { capabilities: { alwaysMatch: { unhandledPromptBehavior: 'ignore', ...(proxy && { proxy }) } } });
       this.version = `${session.capabilities.browserName ?? 'Firefox'}/${session.capabilities.browserVersion ?? 'unknown'}`;
       await this.bidi('session.subscribe', { events: ['browsingContext.contextCreated', 'browsingContext.contextDestroyed', 'browsingContext.navigationStarted', 'browsingContext.domContentLoaded', 'browsingContext.load', 'browsingContext.fragmentNavigated', 'browsingContext.userPromptOpened', 'browsingContext.userPromptClosed', 'log.entryAdded', 'script.realmCreated', 'script.realmDestroyed'] });
@@ -156,6 +154,7 @@ export class DirectFirefox extends EventEmitter {
         const first = this.listTabs()[0];
         if (first) await this.cdp(first.id, 'Page.navigate', { url: opts.url }); else await this.newTab(opts.url);
       }
+      if (this.launchCancelled) throw new Error('Development browser launch cancelled');
     } catch (error) { await this.close(); throw error; }
     finally { this.launching = false; }
   }
@@ -451,12 +450,17 @@ export class DirectFirefox extends EventEmitter {
     if (original) { const { state, width, height, x, y } = original; await this.bidi('browser.setClientWindowState', { clientWindow, state, ...(state === 'normal' && { width, height, x, y }) }); this.windowBounds.delete(clientWindow); }
     return { restored: !!original };
   }
-  async close() {
-    const ws = this.ws;
-    if (this.running) await this.bidi('browser.close', {}, 3000).catch(() => {});
-    if (ws && ws.readyState !== WebSocket.CLOSED) ws.terminate();
-    if (this.ws === ws && ws) this.disconnected();
-    await this.stopProcess();
+  close(): Promise<void> {
+    this.launchCancelled = true;
+    if (this.closing) return this.closing;
+    this.closing = (async () => {
+      const ws = this.ws;
+      if (this.running) await this.bidi('browser.close', {}, 3000).catch(() => {});
+      if (ws && ws.readyState !== WebSocket.CLOSED) ws.terminate();
+      if (this.ws === ws && ws) this.disconnected();
+      await this.stopProcess();
+    })().finally(() => { this.closing = undefined; });
+    return this.closing;
   }
   private stopProcess(): Promise<void> {
     if (this.stopping) return this.stopping;

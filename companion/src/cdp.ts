@@ -1,14 +1,15 @@
 // Direct CDP connection to a Chrome the companion launched itself (full developer mode).
 import { EventEmitter } from 'node:events';
 import { spawn, type ChildProcess } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
-import { homedir, platform } from 'node:os';
+import { mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { WebSocket } from 'ws';
+import { findBrowser, type BrowserName } from './browsers.ts';
 
 export interface DevTab { id: number; targetId: string; url: string; title: string; type: string; sessionId?: string; attachedAt?: number }
 export interface LaunchOptions {
-  browser?: 'chromium' | 'firefox'; firefoxPath?: string;
+  browser?: BrowserName; browserPath?: string; firefoxPath?: string;
   url?: string; headless?: boolean; profileDir?: string; chromePath?: string; args?: string[]; windowSize?: string;
   /** Open Chrome DevTools automatically for every tab (default: on when not headless). */ devtools?: boolean;
   /** Proxy server, e.g. "http://proxy.corp:8080" or "socks5://127.0.0.1:1080". */ proxy?: string;
@@ -16,25 +17,15 @@ export interface LaunchOptions {
   /** Where downloads land (default ~/.browspark/downloads/<context>). */ downloadDir?: string;
 }
 export interface Download { guid: string; url: string; filename: string; path?: string; state: 'inProgress' | 'completed' | 'canceled'; receivedBytes: number; totalBytes: number; startedAt: number; tabId?: number }
-// Chrome tab ids are int32; developer-mode ids start above that range so the two namespaces can never collide.
+// Companion-wide tab ids are shared by every extension connection and developer browser, above native int32 ids.
 let nextDevTabId = 2 ** 31;
 export const allocateDevTabId = () => nextDevTabId++;
 
-const CHROME_CANDIDATES: Record<string, string[]> = {
-  darwin: ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/Applications/Chromium.app/Contents/MacOS/Chromium', '/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary'],
-  linux: ['/usr/bin/google-chrome', '/usr/bin/google-chrome-stable', '/usr/bin/chromium', '/usr/bin/chromium-browser', '/snap/bin/chromium'],
-  win32: ['C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe', 'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe'],
-};
-export function findChrome(explicit?: string): string {
-  const c = explicit ?? process.env.BROWSPARK_CHROME;
-  if (c) { if (existsSync(c)) return c; throw new Error(`Chrome not found at ${c}`); }
-  for (const p of CHROME_CANDIDATES[platform()] ?? []) if (existsSync(p)) return p;
-  throw new Error('Could not find Chrome. Set BROWSPARK_CHROME to the browser executable.');
-}
+export const findChrome = (explicit?: string): string => findBrowser('chromium', explicit);
 
 /**
  * Launches Chrome with a dedicated profile and speaks CDP to it over the browser WebSocket.
- * Page targets get numeric tab ids (starting at 1) so the tools can address them like extension tabs.
+ * Page targets get globally unique numeric tab ids so tools can address them like extension tabs.
  * Emits 'cdp.event' {tabId, method, params}, 'detached' {tabId, reason}, 'closed'.
  */
 export class DirectChrome extends EventEmitter {
@@ -47,6 +38,7 @@ export class DirectChrome extends EventEmitter {
   private tabs = new Map<number, DevTab>();
   readonly profileDir: string;
   readonly name: string;
+  readonly browserName: 'chromium' | 'chrome' | 'brave';
   port = 0;
   version?: string;
   wsEndpoint?: string;
@@ -55,62 +47,84 @@ export class DirectChrome extends EventEmitter {
   downloadDir = '';
   readonly downloads = new Map<string, Download>();
   readonly loadedExtensions: { id: string; path: string }[] = [];
-  private ownsProcess = false;
+  private launching = false;
+  private launchCancelled = false;
+  private closing?: Promise<void>;
+  private stopping?: Promise<void>;
 
-  constructor(profileDir = join(homedir(), '.browspark', 'profile'), name = 'default') { super(); this.profileDir = profileDir; this.name = name; }
+  constructor(profileDir = join(homedir(), '.browspark', 'profile'), name = 'default', browserName: 'chromium' | 'chrome' | 'brave' = 'chromium') { super(); this.profileDir = profileDir; this.name = name; this.browserName = browserName; }
 
   get running(): boolean { return this.ws?.readyState === 1; }
+  get busy(): boolean { return this.running || this.launching || !!this.proc || !!this.closing || !!this.stopping; }
   get pid(): number | undefined { return this.proc?.pid; }
 
   async launch(opts: LaunchOptions = {}): Promise<void> {
-    if (this.running) throw new Error('Development browser already running');
-    const exe = findChrome(opts.chromePath);
-    mkdirSync(this.profileDir, { recursive: true });
-    try { rmSync(join(this.profileDir, 'DevToolsActivePort')); } catch {}
-    const args = [
-      `--user-data-dir=${this.profileDir}`, '--remote-debugging-port=0', '--no-first-run', '--no-default-browser-check',
-      '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows',
-      `--window-size=${opts.windowSize ?? '1280,900'}`, ...(opts.headless ? ['--headless=new'] : []), ...((opts.devtools ?? !opts.headless) ? ['--auto-open-devtools-for-tabs'] : []),
-      ...(opts.proxy ? [`--proxy-server=${opts.proxy}`] : []), ...(opts.extensions?.length ? ['--enable-unsafe-extension-debugging', `--load-extension=${opts.extensions.join(',')}`] : []),
-      ...(opts.args ?? []), opts.url ?? 'about:blank',
-    ];
-    this.headless = !!opts.headless; this.proxy = opts.proxy;
-    this.downloadDir = opts.downloadDir ?? join(homedir(), '.browspark', 'downloads', this.name);
-    mkdirSync(this.downloadDir, { recursive: true });
-    this.proc = spawn(exe, args, { stdio: 'ignore', detached: false });
-    this.ownsProcess = true;
-    this.proc.once('exit', () => { this.ws?.close(); this.proc = undefined; });
-    let endpoint: string | undefined;
-    for (let i = 0; i < 150 && !endpoint; i++) {
-      try {
-        const [port] = readFileSync(join(this.profileDir, 'DevToolsActivePort'), 'utf8').split('\n');
-        this.port = Number(port);
-        const v = await (await fetch(`http://127.0.0.1:${port}/json/version`)).json() as { webSocketDebuggerUrl: string; Browser: string };
-        endpoint = v.webSocketDebuggerUrl; this.version = v.Browser; this.wsEndpoint = endpoint;
-      } catch { await new Promise((r) => setTimeout(r, 100)); }
-    }
-    if (!endpoint) { this.proc?.kill(); throw new Error('Chrome started but never exposed its DevTools endpoint'); }
-    await this.connect(endpoint);
-    await this.browser('Browser.setDownloadBehavior', { behavior: 'allowAndName', downloadPath: this.downloadDir, eventsEnabled: true }).catch(() => {});
-    // Chrome 137+ ignores --load-extension in branded builds; load through the protocol as well.
-    for (const path of opts.extensions ?? []) {
-      const r = await this.browser('Extensions.loadUnpacked', { path }).catch((e) => ({ error: e.message }));
-      if ('id' in r) this.loadedExtensions.push({ id: r.id, path }); else this.emit('warning', `extension ${path}: ${r.error}`);
-    }
+    if (this.busy) throw new Error('Development browser already running or changing state');
+    const exe = findBrowser(this.browserName, opts.browserPath ?? opts.chromePath);
+    this.launching = true; this.launchCancelled = false;
+    try {
+      mkdirSync(this.profileDir, { recursive: true });
+      try { rmSync(join(this.profileDir, 'DevToolsActivePort')); } catch {}
+      const args = [
+        `--user-data-dir=${this.profileDir}`, '--remote-debugging-port=0', '--no-first-run', '--no-default-browser-check',
+        '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows',
+        `--window-size=${opts.windowSize ?? '1280,900'}`, ...(opts.headless ? ['--headless=new'] : []), ...((opts.devtools ?? !opts.headless) ? ['--auto-open-devtools-for-tabs'] : []),
+        ...(opts.proxy ? [`--proxy-server=${opts.proxy}`] : []), ...(opts.extensions?.length ? ['--enable-unsafe-extension-debugging', `--load-extension=${opts.extensions.join(',')}`] : []),
+        ...(opts.args ?? []), opts.url ?? 'about:blank',
+      ];
+      this.headless = !!opts.headless; this.proxy = opts.proxy;
+      this.downloadDir = opts.downloadDir ?? join(homedir(), '.browspark', 'downloads', ...(this.browserName === 'chromium' ? [] : [this.browserName]), this.name);
+      mkdirSync(this.downloadDir, { recursive: true });
+      const proc = spawn(exe, args, { stdio: 'ignore', detached: false });
+      this.proc = proc;
+      let processError: Error | undefined;
+      proc.once('error', error => { processError = error; if (!proc.pid && this.proc === proc) this.proc = undefined; });
+      proc.once('exit', () => { if (this.proc === proc) { this.proc = undefined; this.ws?.terminate(); } });
+      let endpoint: string | undefined;
+      for (let i = 0; i < 150 && !endpoint; i++) {
+        if (this.launchCancelled) throw new Error('Development browser launch cancelled');
+        if (processError) throw processError;
+        if (proc.exitCode !== null || proc.signalCode !== null) throw new Error(`${this.browserName} exited before opening its DevTools endpoint`);
+        try {
+          const [port] = readFileSync(join(this.profileDir, 'DevToolsActivePort'), 'utf8').split('\n');
+          this.port = Number(port);
+          const v = await (await fetch(`http://127.0.0.1:${port}/json/version`, { signal: AbortSignal.timeout(2000) })).json() as { webSocketDebuggerUrl: string; Browser: string };
+          endpoint = v.webSocketDebuggerUrl; this.version = v.Browser; this.wsEndpoint = endpoint;
+        } catch { await new Promise((r) => setTimeout(r, 100)); }
+      }
+      if (this.launchCancelled) throw new Error('Development browser launch cancelled');
+      if (!endpoint) throw new Error(`${this.browserName} started but never exposed its DevTools endpoint`);
+      await this.connect(endpoint);
+      if (this.launchCancelled) throw new Error('Development browser launch cancelled');
+      await this.browser('Browser.setDownloadBehavior', { behavior: 'allowAndName', downloadPath: this.downloadDir, eventsEnabled: true }).catch(() => {});
+      // Chrome 137+ ignores --load-extension in branded builds; load through the protocol as well.
+      for (const path of opts.extensions ?? []) {
+        const r = await this.browser('Extensions.loadUnpacked', { path }).catch((e) => ({ error: e.message }));
+        if ('id' in r) this.loadedExtensions.push({ id: r.id, path }); else this.emit('warning', `extension ${path}: ${r.error}`);
+      }
+      if (this.launchCancelled) throw new Error('Development browser launch cancelled');
+      if (this.launchCancelled) throw new Error('Development browser launch cancelled');
+    } catch (error) { await this.close(); throw error; }
+    finally { this.launching = false; }
   }
 
   private async connect(endpoint: string) {
-    const ws = new WebSocket(endpoint, { perMessageDeflate: false, maxPayload: 1024 * 1024 * 1024 });
-    await new Promise<void>((res, rej) => { ws.once('open', () => res()); ws.once('error', rej); });
+    const ws = new WebSocket(endpoint, { perMessageDeflate: false, maxPayload: 1024 * 1024 * 1024, handshakeTimeout: 10_000 });
     this.ws = ws;
-    ws.on('message', (d) => this.onMessage(JSON.parse(d.toString())));
-    ws.on('close', () => {
-      for (const [id, p] of this.pending) { p.reject(new Error('development browser disconnected')); this.pending.delete(id); }
-      for (const t of this.tabs.values()) this.emit('detached', { tabId: t.id, reason: 'browser closed' });
-      this.tabs.clear(); this.bySession.clear(); this.ws = undefined;
-      this.emit('closed');
-    });
+    ws.on('message', (d) => { try { this.onMessage(JSON.parse(d.toString())); } catch (error) { this.emit('warning', `Invalid Chromium protocol message: ${(error as Error).message}`); } });
+    ws.on('error', () => {});
+    ws.on('close', () => { if (this.ws === ws) this.disconnected(); });
+    await new Promise<void>((res, rej) => { ws.once('open', () => res()); ws.once('error', rej); ws.once('close', () => rej(new Error('Development browser disconnected during connection'))); });
     await this.browser('Target.setDiscoverTargets', { discover: true });
+  }
+
+  private disconnected() {
+    this.ws = undefined;
+    void this.stopProcess();
+    for (const [id, p] of this.pending) { p.reject(new Error('development browser disconnected')); this.pending.delete(id); }
+    for (const t of this.tabs.values()) this.emit('detached', { tabId: t.id, reason: 'browser closed' });
+    this.tabs.clear(); this.bySession.clear(); this.windowBounds.clear();
+    this.emit('closed');
   }
 
   private onMessage(m: any) {
@@ -206,10 +220,31 @@ export class DirectChrome extends EventEmitter {
     return { restored: !!orig };
   }
 
-  async close() {
-    if (this.ws?.readyState === 1) { try { await this.browser('Browser.close', undefined, 3000); } catch {} }
-    this.ws?.close();
-    if (this.ownsProcess && this.proc) { const p = this.proc; setTimeout(() => { try { p.kill('SIGKILL'); } catch {} }, 2000).unref(); try { p.kill(); } catch {} }
-    this.proc = undefined;
+  close(): Promise<void> {
+    this.launchCancelled = true;
+    if (this.closing) return this.closing;
+    this.closing = (async () => {
+      const ws = this.ws;
+      if (this.running) await this.browser('Browser.close', undefined, 3000).catch(() => {});
+      if (ws && ws.readyState !== WebSocket.CLOSED) ws.terminate();
+      if (this.ws === ws && ws) this.disconnected();
+      await this.stopProcess();
+    })().finally(() => { this.closing = undefined; });
+    return this.closing;
+  }
+
+  private stopProcess(): Promise<void> {
+    if (this.stopping) return this.stopping;
+    const proc = this.proc;
+    if (!proc) return Promise.resolve();
+    if (proc.exitCode !== null || proc.signalCode !== null) { this.proc = undefined; return Promise.resolve(); }
+    this.stopping = new Promise<void>((resolve) => {
+      const finish = () => { clearTimeout(force); clearTimeout(deadline); if (this.proc === proc) this.proc = undefined; resolve(); };
+      const force = setTimeout(() => { if (proc.exitCode === null && proc.signalCode === null) proc.kill('SIGKILL'); }, 2000);
+      const deadline = setTimeout(finish, 5000);
+      proc.once('exit', finish);
+      proc.kill();
+    }).finally(() => { this.stopping = undefined; });
+    return this.stopping;
   }
 }
