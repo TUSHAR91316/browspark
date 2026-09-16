@@ -274,7 +274,11 @@ describe.skipIf(skip)('devtools e2e (extension mode)', () => {
     // developer browser is gated by the dashboard setting while the extension is connected
     await (await dashboard(ext))({ type: 'setDevMode', mode: 'never' }); await new Promise((r) => setTimeout(r, 300));
     const never = await call('browser_session', { action: 'launch', headless: true }); assert.ok(never.err && /disabled in the Browspark dashboard/.test(never.txt), never.txt);
+    const neverAsked = await call('browser_session', { action: 'launch', headless: true, userRequested: true }); assert.ok(neverAsked.err && /disabled in the Browspark dashboard/.test(neverAsked.txt), neverAsked.txt);
     await (await dashboard(ext))({ type: 'setDevMode', mode: 'auto' }); await new Promise((r) => setTimeout(r, 300));
+    const refused = await call('browser_session', { action: 'launch', headless: true }); assert.ok(refused.err && /nothing so far needed one/.test(refused.txt), refused.txt);
+    const asked = await call('browser_session', { action: 'launch', headless: true, userRequested: true }); assert.ok(!asked.err && /Launched/.test(asked.txt), asked.txt);
+    assert.match(await ok('browser_session', { action: 'close' }), /Closed/);
     await call('devtools_memory', { tabId, action: 'snapshot' }); // unsupported in extension mode: this is what justifies a launch in auto mode
     const allowed = await call('browser_session', { action: 'launch', headless: true }); assert.ok(!allowed.err && /Launched/.test(allowed.txt), allowed.txt);
     assert.match(await ok('browser_session', { action: 'close' }), /Closed/);

@@ -14,6 +14,8 @@ export const EXAMPLES: Record<string, Ex> = {
   browser_status: {},
   browser_session: [
     { title: 'Launch the default context', args: { action: 'launch' } },
+    { title: 'Launch because the user asked for a developer browser', args: { action: 'launch', userRequested: true } },
+    { title: 'Launch Firefox in an isolated profile', args: { action: 'launch', browser: 'firefox', context: 'firefox', userRequested: true } },
     { title: 'Launch a named, headless context behind a proxy', args: { action: 'launch', context: 'scraper', headless: true, proxy: 'socks5://127.0.0.1:1080', url: 'https://example.com' } },
     { title: 'Close everything', args: { action: 'close', all: true } },
   ],
