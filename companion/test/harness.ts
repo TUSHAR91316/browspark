@@ -33,12 +33,24 @@ export class Cdp {
 export interface Ext { chrome: ChildProcess; cdp: Cdp; profile: string; extId: string; cleanup: () => Promise<void>; msg?: (m: unknown) => Promise<any>; eval?: (expr: string) => Promise<any> }
 
 /** Launch a throwaway Chrome with the extension loaded via CDP (Chrome 137+ ignores --load-extension in branded builds). */
-export async function launchExtensionChrome(): Promise<Ext> {
+export async function launchExtensionChrome(executable = CHROME): Promise<Ext> {
   const profile = mkdtempSync(join(tmpdir(), 'bmcp-e2e-'));
-  const chrome = spawn(CHROME, [`--user-data-dir=${profile}`, '--remote-debugging-port=0', '--enable-unsafe-extension-debugging', '--no-first-run', '--no-default-browser-check', '--window-size=1200,900', 'about:blank'], { stdio: 'ignore' });
-  const cdp = await Cdp.connect(profile);
-  const { id: extId } = await cdp.send('Extensions.loadUnpacked', { path: join(ROOT, 'extension') });
-  return { chrome, cdp, profile, extId, cleanup: async () => { cdp.close(); chrome.kill(); setTimeout(() => { try { chrome.kill('SIGKILL'); } catch {} rmSync(profile, { recursive: true, force: true }); }, 1500).unref(); } };
+  const chrome = spawn(executable, [`--user-data-dir=${profile}`, '--remote-debugging-port=0', '--enable-unsafe-extension-debugging', '--no-first-run', '--no-default-browser-check', '--window-size=1200,900', 'about:blank'], { stdio: 'ignore' });
+  let cdp: Cdp | undefined, spawnError: Error | undefined;
+  chrome.once('error', (error) => { spawnError = error; });
+  const cleanup = async () => {
+    cdp?.close();
+    if (chrome.pid && chrome.exitCode === null && chrome.signalCode === null) await new Promise<void>((resolve) => {
+      const timer = setTimeout(() => { chrome.kill('SIGKILL'); resolve(); }, 1500);
+      chrome.once('exit', () => { clearTimeout(timer); resolve(); }); chrome.kill();
+    });
+    rmSync(profile, { recursive: true, force: true });
+  };
+  try {
+    cdp = await Cdp.connect(profile);
+    const { id: extId } = await cdp.send('Extensions.loadUnpacked', { path: join(ROOT, 'extension') });
+    return { chrome, cdp, profile, extId, cleanup };
+  } catch (error) { await cleanup(); throw spawnError ?? error; }
 }
 
 export async function startCompanion(): Promise<Client> {
@@ -58,7 +70,6 @@ export function callers(client: Client) {
   return { call, ok, okJson };
 }
 
-/** Point the extension at a running companion and share the tab whose URL starts with `urlPrefix`. Returns its tab id. */
 /** Talk to the extension worker the way the dashboard does (opens the dashboard page once). */
 export async function dashboard(ext: Ext): Promise<(m: unknown) => Promise<any>> {
   if (ext.msg) return ext.msg;
@@ -70,15 +81,29 @@ export async function dashboard(ext: Ext): Promise<(m: unknown) => Promise<any>>
   return ext.msg;
 }
 
+/** Resolve a tab's companion id; extension dashboard ids belong to the browser and must never go to MCP. */
+export async function companionTab(ok: (n: string, a?: Record<string, unknown>) => Promise<string>, url: string, windowId?: number): Promise<{ id: number; browserId?: string; line: string }> {
+  for (let i = 0; i < 50; i++) {
+    const rows = (await ok('browser_tabs', { onlyUsable: false })).split('\n').filter((line) => (line.endsWith(` — ${url}`) || line.includes(` — ${url} `)) && (windowId === undefined || line.includes(`(window ${windowId})`)));
+    assert.ok(rows.length <= 1, `Multiple companion tabs have URL ${url}; use unique fixture URLs`);
+    const line = rows[0], id = line && /^\s*\[(\d+)\]/.exec(line)?.[1];
+    if (id) return { id: Number(id), browserId: /ext:[a-f0-9-]+/i.exec(line)?.[0], line };
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error(`Companion did not list tab ${url}`);
+}
+
+/** Point the extension at a companion and share the matching native tab. Returns its companion id. */
 export async function pairAndShare(ext: Ext, ok: (n: string, a?: Record<string, unknown>) => Promise<string>, urlPrefix: string, shareAll = false): Promise<number> {
   const status = await ok('browser_status');
-  const port = Number(/port:\s+(\d+)/.exec(status)![1]);
+  const port = Number(/ws:\/\/127\.0\.0\.1:(\d+)/.exec(status)![1]);
   const msg = await dashboard(ext);
   await msg({ type: 'setConfig', port });
   let st: any;
   for (let i = 0; i < 50 && !(st = await msg({ type: 'getState' })).connected; i++) await new Promise((r) => setTimeout(r, 100));
   assert.equal(st.connected, true, `extension did not connect: ${JSON.stringify({ ...st, tabs: undefined, recent: undefined })}`);
-  const tabId = st.tabs.find((t: any) => t.url.startsWith(urlPrefix)).id;
-  if (shareAll) await msg({ type: 'setShareAll', on: true }); else await msg({ type: 'setShared', tabIds: [tabId], shared: true });
-  return tabId;
+  const tab = st.tabs.find((t: any) => t.url.startsWith(urlPrefix));
+  assert.ok(tab, `No native tab found for ${urlPrefix}`);
+  if (shareAll) await msg({ type: 'setShareAll', on: true }); else await msg({ type: 'setShared', tabIds: [tab.id], shared: true });
+  return (await companionTab(ok, tab.url, tab.windowId)).id;
 }

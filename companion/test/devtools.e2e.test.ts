@@ -13,7 +13,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
 const skip = !process.env.E2E;
-let ext: Ext, http: Server, appUrl: string, tabId: number;
+let ext: Ext, http: Server, appUrl: string, tabId: number, nativeTabId: number;
 let call: ReturnType<typeof callers>['call'], ok: ReturnType<typeof callers>['ok'], okJson: ReturnType<typeof callers>['okJson'];
 let client: Awaited<ReturnType<typeof startCompanion>>;
 const appSrc = readFileSync(join(ROOT, 'test-apps/src/app.ts'), 'utf8').split('\n');
@@ -31,6 +31,7 @@ describe.skipIf(skip)('devtools e2e (extension mode)', () => {
     ({ call, ok, okJson } = callers(client));
     await ext.cdp.send('Target.createTarget', { url: appUrl + 'debug.html' });
     tabId = await pairAndShare(ext, ok, appUrl + 'debug.html');
+    nativeTabId = (await (await dashboard(ext))({ type: 'getState' })).tabs.find((t: any) => t.url === appUrl + 'debug.html').id;
     await ok('devtools_session', { action: 'start', tabId, bodies: true });
   }, 120_000);
   afterAll(async () => { await call('devtools_session', { action: 'stop', tabId }).catch(() => {}); await client?.close().catch(() => {}); await ext?.cleanup(); http?.close(); }, 30_000);
@@ -253,11 +254,11 @@ describe.skipIf(skip)('devtools e2e (extension mode)', () => {
 
   test('scenario 10: revoked access, unavailable capability, no duplicated actions', async () => {
     const msg = await dashboard(ext);
-    await msg({ type: 'setShared', tabIds: [tabId], shared: false });
+    await msg({ type: 'setShared', tabIds: [nativeTabId], shared: false });
     const denied = await call('browser_snapshot', { tabId }); assert.ok(denied.err && /not shared/.test(denied.txt), denied.txt);
     const evalDenied = await call('devtools_evaluate', { tabId, expression: '1' }); assert.ok(evalDenied.err && /not shared/.test(evalDenied.txt));
     const st = await okJson('devtools_session', { action: 'status', tabId }).catch(() => null); void st; // status reads companion state only
-    await msg({ type: 'setShared', tabIds: [tabId], shared: true });
+    await msg({ type: 'setShared', tabIds: [nativeTabId], shared: true });
     assert.match(await ok('browser_snapshot', { tabId }), /Debug App/);
     const before = JSON.parse(await ok('devtools_evaluate', { tabId, expression: "document.getElementById('out').textContent" })).value;
     const bad = await call('devtools_cdp', { tabId, method: 'Browser.getVersion' }); assert.ok(bad.err && /developer mode/.test(bad.txt));
@@ -269,7 +270,7 @@ describe.skipIf(skip)('devtools e2e (extension mode)', () => {
   test('agent tabs remain the default target and release the debugger when idle', async () => {
     const opened = await ok('browser_tabs', { action: 'new', url: appUrl + 'page2.html' }); const id2 = Number(/tab (\d+)/.exec(opened)![1]);
     const st = await (await dashboard(ext))({ type: 'getState' });
-    const mine = st.tabs.find((t: any) => t.id === id2);
+    const mine = st.tabs.find((t: any) => t.url === appUrl + 'page2.html');
     assert.ok(mine?.agent === true && mine.shared, 'the agent-created tab is shared');
     // developer browser is gated by the dashboard setting while the extension is connected
     await (await dashboard(ext))({ type: 'setDevMode', mode: 'never' }); await new Promise((r) => setTimeout(r, 300));
@@ -350,7 +351,7 @@ describe.skipIf(skip)('devtools e2e (extension mode)', () => {
     assert.equal(after.port, before.port);
     for (let i = 0; i < 30 && !(await msg({ type: 'getState' })).connected; i++) await new Promise((r) => setTimeout(r, 100));
     assert.equal((await msg({ type: 'getState' })).connected, true, 'reconnected');
-    await msg({ type: 'setShared', tabIds: [tabId], shared: true });
+    await msg({ type: 'setShared', tabIds: [nativeTabId], shared: true });
   });
 
   test('MCP over HTTP: the endpoint serves the same tools to a second client and refuses web pages', async () => {

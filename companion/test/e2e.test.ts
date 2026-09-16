@@ -11,12 +11,13 @@ import { WebSocket, WebSocketServer } from 'ws';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { isNewTab } from '../../shared/protocol.ts';
+import { companionTab } from './harness.ts';
 
 const CHROME = process.env.CHROME ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const ROOT = resolve(import.meta.dirname, '../..');
 const skip = !process.env.E2E;
 
-let chrome: ChildProcess, http: Server, appUrl: string, cdp: Cdp, client: Client, profile: string, tabId: number, dashboardSession: string;
+let chrome: ChildProcess, http: Server, appUrl: string, cdp: Cdp, client: Client, profile: string, tabId: number, nativeTabId: number, dashboardSession: string;
 
 /** Minimal CDP client for the browser target (test harness only). */
 class Cdp {
@@ -85,7 +86,7 @@ beforeAll(async () => {
   client = new Client({ name: 'e2e', version: '0' });
   await client.connect(new StdioClientTransport({ command: 'bun', args: [join(ROOT, 'companion/src/index.ts'), '--port', '0'], stderr: 'pipe' }));
   const status = await ok('browser_status');
-  const PORT = Number(/port:\s+(\d+)/.exec(status)![1]);
+  const PORT = Number(/ws:\/\/127\.0\.0\.1:(\d+)/.exec(status)![1]);
   assert.notEqual(PORT, 0);
   assert.match(status, /NOT CONNECTED/);
 
@@ -101,8 +102,9 @@ beforeAll(async () => {
   for (let i = 0; i < 50 && !(await msg({ type: 'getState' })).connected; i++) await new Promise((r) => setTimeout(r, 100));
   const st = await msg({ type: 'getState' });
   assert.equal(st.connected, true, `extension did not connect: ${JSON.stringify({ ...st, tabs: undefined, recent: undefined })}`);
-  tabId = st.tabs.find((t: any) => t.url.startsWith(appUrl)).id;
-  await msg({ type: 'setShared', tabIds: [tabId], shared: true });
+  nativeTabId = st.tabs.find((t: any) => t.url === appUrl).id;
+  await msg({ type: 'setShared', tabIds: [nativeTabId], shared: true });
+  tabId = (await companionTab(ok, appUrl)).id;
   void app;
 }, 120_000);
 
@@ -149,7 +151,7 @@ test('connected dashboard keeps setup first and follows activity logging setting
       if (on) await navigate('settings', 'Settings');
     }
     await navigate('tabs', 'Tabs');
-    assert.ok(await evaluate(`document.querySelector('[data-key="${tabId}"] input[type="checkbox"]').checked`), 'fixture tab must remain shared');
+    assert.ok(await evaluate(`document.querySelector('[data-key="${nativeTabId}"] input[type="checkbox"]').checked`), 'fixture tab must remain shared');
     assert.ok(await evaluate(`!!document.querySelector('input[aria-label="Search tabs"]')`));
     await navigate('overview', 'Overview');
   } finally {
@@ -336,12 +338,12 @@ for (const strictTypes of [false, true]) test(`agent overlay appears, stays out 
     if (!strictTypes) await evaluate(`chrome.runtime.sendMessage({type:'setShareAll',on:true})`);
     const { object: stopObject } = await cdp.send('DOM.resolveNode', { backendNodeId: stopButton.backendDOMNodeId }, sessionId);
     await cdp.send('Runtime.callFunctionOn', { objectId: stopObject.objectId, functionDeclaration: 'function() { this.click(); }' }, sessionId);
-    await waitFor(`chrome.runtime.sendMessage({type:'getState'}).then(s => !s.tabs.find(t => t.id === ${tabId}).shared)`);
+    await waitFor(`chrome.runtime.sendMessage({type:'getState'}).then(s => !s.tabs.find(t => t.id === ${nativeTabId}).shared)`);
     if (!strictTypes) assert.equal(await evaluate(`chrome.runtime.sendMessage({type:'getState'}).then(s => s.shareAll)`), true, 'Stop revokes one tab while Share everything stays enabled');
     const denied = await call('browser_click', { tabId, ref: name });
     assert.ok(denied.err, 'commands are refused after Stop: ' + denied.txt);
-    await evaluate(`chrome.runtime.sendMessage(${JSON.stringify({ type: 'setShared', tabIds: [tabId], shared: true })})`);
-    await waitFor(`chrome.runtime.sendMessage({type:'getState'}).then(s => s.tabs.find(t => t.id === ${tabId}).shared)`);
+    await evaluate(`chrome.runtime.sendMessage(${JSON.stringify({ type: 'setShared', tabIds: [nativeTabId], shared: true })})`);
+    await waitFor(`chrome.runtime.sendMessage({type:'getState'}).then(s => s.tabs.find(t => t.id === ${nativeTabId}).shared)`);
     const resumed = await ok('browser_snapshot', { tabId });
     assert.doesNotMatch(resumed, /browspark-overlay|Stop Browspark/, 'agent snapshots exclude the accessible control');
     await ok('browser_click', { tabId, ref: name });
@@ -350,8 +352,8 @@ for (const strictTypes of [false, true]) test(`agent overlay appears, stays out 
     assert.ok(resumedAX.nodes.some((n: any) => !n.ignored && n.name?.value === 'Stop Browspark on this tab'), 'Stop is available again after re-sharing');
   } finally {
     await evaluate(`chrome.runtime.sendMessage({type:'setShareAll',on:false})`);
-    await evaluate(`chrome.runtime.sendMessage(${JSON.stringify({ type: 'setShared', tabIds: [tabId], shared: true })})`);
-    await waitFor(`chrome.runtime.sendMessage({type:'getState'}).then(s => s.tabs.find(t => t.id === ${tabId}).shared)`);
+    await evaluate(`chrome.runtime.sendMessage(${JSON.stringify({ type: 'setShared', tabIds: [nativeTabId], shared: true })})`);
+    await waitFor(`chrome.runtime.sendMessage({type:'getState'}).then(s => s.tabs.find(t => t.id === ${nativeTabId}).shared)`);
     await cdp.send('Target.detachFromTarget', { sessionId }).catch(() => {});
     if (strictTypes) await ok('browser_navigate', { tabId, url: appUrl });
   }
@@ -428,35 +430,35 @@ test('native New Tab in another window can be shared and navigated without grant
     if (previousShareAll) await evaluate('chrome.runtime.sendMessage({type:"setShareAll",on:false})');
     const secondWindow = await evaluate('chrome.windows.create({url:"chrome://newtab/",focused:false})');
     windowId = secondWindow.id;
-    const newTabId = secondWindow.tabs[0].id;
-    const originalWindowId = await evaluate(`chrome.tabs.get(${tabId}).then(tab => tab.windowId)`);
+    const newTabNativeId = secondWindow.tabs[0].id;
+    const originalWindowId = await evaluate(`chrome.tabs.get(${nativeTabId}).then(tab => tab.windowId)`);
     assert.notEqual(windowId, originalWindowId);
-    await waitFor(`chrome.tabs.get(${newTabId}).then(tab => tab.status === 'complete' && tab.url.startsWith('chrome://new'))`);
-    const nativeUrl = await evaluate(`chrome.tabs.get(${newTabId}).then(tab => tab.url)`);
+    await waitFor(`chrome.tabs.get(${newTabNativeId}).then(tab => tab.status === 'complete' && tab.url.startsWith('chrome://new'))`);
+    const nativeUrl = await evaluate(`chrome.tabs.get(${newTabNativeId}).then(tab => tab.url)`);
     assert.ok(isNewTab(nativeUrl), nativeUrl);
-    await ok('browser_tabs', { onlyUsable: false });
+    const newTabId = (await companionTab(ok, nativeUrl, windowId)).id;
     const unsharedSnapshot = await call('browser_snapshot', { tabId: newTabId });
     assert.ok(unsharedSnapshot.err && /not shared/.test(unsharedSnapshot.txt), unsharedSnapshot.txt);
     const unsharedNavigation = await call('browser_navigate', { tabId: newTabId, action: 'goto', url: appUrl + 'page2.html', timeoutMs: 5000 });
     assert.ok(unsharedNavigation.err && /not shared/.test(unsharedNavigation.txt), unsharedNavigation.txt);
-    assert.equal(await evaluate(`chrome.tabs.get(${newTabId}).then(tab => tab.url)`), nativeUrl, 'unshared New Tab must not be replaced');
+    assert.equal(await evaluate(`chrome.tabs.get(${newTabNativeId}).then(tab => tab.url)`), nativeUrl, 'unshared New Tab must not be replaced');
 
     await evaluate(`document.querySelector('#nav a[href="#/tabs"]').click()`);
-    await waitFor(`${checkbox(newTabId)} && !${checkbox(newTabId)}.disabled`);
-    assert.equal(await evaluate(`${checkbox(newTabId)}.checked`), false);
-    await evaluate(`${checkbox(newTabId)}.click()`);
-    await waitFor(`chrome.runtime.sendMessage({type:'getState'}).then(state => state.tabs.some(tab => tab.id === ${newTabId} && tab.shared))`);
+    await waitFor(`${checkbox(newTabNativeId)} && !${checkbox(newTabNativeId)}.disabled`);
+    assert.equal(await evaluate(`${checkbox(newTabNativeId)}.checked`), false);
+    await evaluate(`${checkbox(newTabNativeId)}.click()`);
+    await waitFor(`chrome.runtime.sendMessage({type:'getState'}).then(state => state.tabs.some(tab => tab.id === ${newTabNativeId} && tab.shared))`);
     assert.match(await ok('browser_tabs', { onlyUsable: false }), new RegExp(`\\[${newTabId}\\] extension shared`));
     const nativeSnapshot = await call('browser_snapshot', { tabId: newTabId });
     assert.ok(nativeSnapshot.err && /browser-internal|does not allow automation/.test(nativeSnapshot.txt), nativeSnapshot.txt);
-    assert.equal(await evaluate(`chrome.tabs.get(${newTabId}).then(tab => tab.url)`), nativeUrl, 'snapshot must not convert a native New Tab');
+    assert.equal(await evaluate(`chrome.tabs.get(${newTabNativeId}).then(tab => tab.url)`), nativeUrl, 'snapshot must not convert a native New Tab');
     assert.match(await ok('browser_navigate', { tabId: newTabId, action: 'goto', url: appUrl + 'page2.html', timeoutMs: 5000 }), /Page Two/);
-    const navigated = await evaluate(`chrome.tabs.get(${newTabId})`);
-    assert.equal(navigated.id, newTabId);
+    const navigated = await evaluate(`chrome.tabs.get(${newTabNativeId})`);
+    assert.equal(navigated.id, newTabNativeId);
     assert.equal(navigated.windowId, windowId);
     assert.equal(navigated.url, appUrl + 'page2.html');
     assert.match(await ok('browser_snapshot', { tabId: newTabId }), /heading "Page Two"/);
-    await waitFor(`${checkbox(newTabId)}?.checked && !${checkbox(newTabId)}.disabled`);
+    await waitFor(`${checkbox(newTabNativeId)}?.checked && !${checkbox(newTabNativeId)}.disabled`);
     const groups = await evaluate(`[...document.querySelectorAll('#main .group')].map(group => group.textContent)`);
     assert.equal(groups.length, 2, 'both browser windows are listed');
     assert.doesNotMatch(groups.join(' '), /current/i);
@@ -483,8 +485,8 @@ test('native New Tab in another window can be shared and navigated without grant
     assert.equal(await evaluate(`${checkbox(settings.id)}.checked`), false, 'Settings remains unavailable even while sharing everything');
     await evaluate(`document.querySelector('input[aria-label="Share everything"]').click()`);
     await waitFor(`!${checkbox(automatic.id)}?.checked && ${checkbox(automatic.id)} && !${checkbox(automatic.id)}.disabled`);
-    assert.ok(await evaluate(`${checkbox(newTabId)}.checked`), 'manual sharing must survive turning Share everything off');
-    assert.ok(await evaluate(`${checkbox(tabId)}.checked`), 'the existing fixture tab must remain shared');
+    assert.ok(await evaluate(`${checkbox(newTabNativeId)}.checked`), 'manual sharing must survive turning Share everything off');
+    assert.ok(await evaluate(`${checkbox(nativeTabId)}.checked`), 'the existing fixture tab must remain shared');
     assert.ok(await evaluate(`${checkbox(settings.id)}.disabled`), 'Settings must remain disabled');
   } finally {
     if (windowId !== undefined) await evaluate(`chrome.windows.remove(${windowId})`).catch(() => {});
