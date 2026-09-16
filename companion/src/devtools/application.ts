@@ -69,6 +69,8 @@ export function registerApplicationTools(ctx: Ctx) {
         const origin = await originOf(id, a.origin);
         const r = await cdp('Storage.clearDataForOrigin', { origin, storageTypes: a.types.join(',') }).catch(() => undefined);
         if (r) return `Cleared ${a.types.join(', ')} for ${origin}`;
+        const unavailable = a.types.filter(t => t === 'websql' || t === 'shader_cache');
+        if (unavailable.length) throw new Error(`Storage domain unavailable in this mode; cannot clear: ${unavailable.join(', ')}`);
         // The in-page fallback can only touch the current document's origin; refuse anything else rather than clearing the wrong app.
         const here = await page.evaluate<string>(id, 'location.origin');
         if (here !== new URL(origin).origin) throw new Error(`Storage domain unavailable in this mode, and the page's origin (${here}) is not ${origin}; navigate the tab there first`);
@@ -78,7 +80,14 @@ export function registerApplicationTools(ctx: Ctx) {
           if (t === 'session_storage' || t === 'all') { await page.evaluate(id, 'sessionStorage.clear()'); done.push('session_storage'); }
           if (t === 'cache_storage' || t === 'all') { await page.evaluate(id, 'caches.keys().then(ks => Promise.all(ks.map(k => caches.delete(k))))'); done.push('cache_storage'); }
           if (t === 'indexeddb' || t === 'all') { await page.evaluate(id, 'indexedDB.databases().then(ds => Promise.all(ds.map(d => new Promise(r => { const q = indexedDB.deleteDatabase(d.name); q.onsuccess = q.onerror = q.onblocked = () => r(1); }))))'); done.push('indexeddb'); }
-          if (t === 'cookies' || t === 'all') { const cs = await cdp('Network.getCookies'); for (const ck of cs.cookies) await cdp('Network.deleteCookies', { name: ck.name, domain: ck.domain, path: ck.path }); done.push('cookies'); }
+          if (t === 'cookies' || t === 'all') {
+            const host = new URL(origin).hostname, cs = await cdp('Network.getAllCookies');
+            for (const ck of cs.cookies) {
+              const domain = ck.domain.toLowerCase(), matches = domain.startsWith('.') ? host === domain.slice(1) || host.endsWith(domain) : host === domain;
+              if (matches) await cdp('Network.deleteCookies', { name: ck.name, domain: ck.domain, path: ck.path });
+            }
+            done.push('cookies');
+          }
           if (t === 'service_workers' || t === 'all') { await page.evaluate(id, 'navigator.serviceWorker.getRegistrations().then(rs => Promise.all(rs.map(r => r.unregister())))'); done.push('service_workers'); }
         }
         return `Cleared ${done.join(', ')} for ${origin} (in-page; Storage domain unavailable in this mode)`;
