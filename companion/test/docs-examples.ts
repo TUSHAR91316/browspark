@@ -2,10 +2,10 @@
 type Ex = Record<string, unknown> | { title?: string; args: Record<string, unknown>; text?: string }[];
 
 export const NOTES: Record<string, string> = {
-  browser_session: 'Everyday work happens in the user\'s shared tabs. The dashboard\'s Settings page decides whether a separate browser may open at all (Only when needed, Always, Never).',
-  devtools_cdp: 'Developer mode only. Extension mode cannot send raw protocol commands; the tool reports that the operation needs developer mode.',
-  devtools_lighthouse: 'Developer mode only. Lighthouse opens its own tab in the developer browser and needs a window, so headless contexts are not supported.',
-  devtools_memory: 'Heap snapshots, class diffs, retainers and allocation sampling need developer mode because Chrome does not expose HeapProfiler to extensions. usage and growth work in both modes.',
+  browser_session: 'Use a different context name for each running browser. Connected dashboards apply the most restrictive developer-browser setting: Never, then Only when needed, then Always. An explicit user request satisfies Only when needed.',
+  devtools_cdp: 'Chromium developer mode only. Firefox, Zen and extension tabs cannot send raw CDP commands. For target:browser, specify context when several developer browsers are running.',
+  devtools_lighthouse: 'Chromium developer mode only. Lighthouse opens its own tab in the selected developer browser. Pass a developer tabId to choose between running Chromium contexts. Firefox and Zen are unsupported.',
+  devtools_memory: 'Heap snapshots, class diffs, retainers and allocation sampling need Chromium developer mode because extensions cannot use HeapProfiler. usage and growth also work in Chromium extension mode. Firefox and Zen do not support this tool.',
   browser_key: 'Keys reach the web page only. Browser shortcuts such as opening DevTools or switching tabs are handled by the browser UI and cannot be triggered here.',
   browser_batch: 'Each step is a normal tool call. The batch stops at the first error and returns the results collected so far.',
 };
@@ -16,12 +16,17 @@ export const EXAMPLES: Record<string, Ex> = {
     { title: 'Launch the default context', args: { action: 'launch' } },
     { title: 'Launch because the user asked for a developer browser', args: { action: 'launch', userRequested: true } },
     { title: 'Launch Firefox in an isolated profile', args: { action: 'launch', browser: 'firefox', context: 'firefox', userRequested: true } },
+    { title: 'Launch Chrome in a named context', args: { action: 'launch', browser: 'chrome', context: 'chrome-work', userRequested: true } },
+    { title: 'Run Brave alongside the other contexts', args: { action: 'launch', browser: 'brave', context: 'brave-work', userRequested: true } },
+    { title: 'Run Zen in its own profile', args: { action: 'launch', browser: 'zen', context: 'zen-work', userRequested: true } },
     { title: 'Launch a named, headless context behind a proxy', args: { action: 'launch', context: 'scraper', headless: true, proxy: 'socks5://127.0.0.1:1080', url: 'https://example.com' } },
     { title: 'Close everything', args: { action: 'close', all: true } },
   ],
   browser_tabs: [
     { title: 'List usable tabs', args: { action: 'list', onlyUsable: true } },
     { title: 'Open a page in the user\'s window', args: { action: 'new', url: 'https://example.com' } },
+    { title: 'Choose a connected extension browser', args: { action: 'new', browserId: 'ext:example-browser-id', url: 'https://example.com' }, text: 'Use a browserId returned by browser_status or browser_tabs.' },
+    { title: 'Open in a named developer context', args: { action: 'new', context: 'zen-work', url: 'https://example.com' } },
   ],
   browser_navigate: [
     { args: { tabId: 1234, url: 'https://example.com/login' } },
@@ -29,7 +34,7 @@ export const EXAMPLES: Record<string, Ex> = {
   ],
   browser_snapshot: [{ args: { tabId: 1234 } }, { title: 'Only what changed since the last snapshot', args: { tabId: 1234, diff: true } }],
   browser_read: [{ title: 'Main content as markdown', args: { tabId: 1234, what: 'markdown' } }, { title: 'Tables inside one element', args: { tabId: 1234, what: 'tables', ref: 'e42' } }],
-  browser_fetch: { url: 'https://developer.chrome.com/docs/devtools/', what: 'markdown' },
+  browser_fetch: [{ title: 'Read main content', args: { url: 'https://developer.chrome.com/docs/devtools/', what: 'markdown' } }, { title: 'Read using a specific browser', args: { url: 'https://example.com', browserId: 'ext:example-browser-id' }, text: 'Use a connected browserId from browser_status.' }],
   browser_policy: [
     { title: 'Allow-list for one tab', args: { action: 'set', tabId: 1234, allow: ['example.com', 'cdn.example.net'] } },
     { title: 'Block trackers on every tab the agent opens from now on', args: { action: 'set', default: true, block: ['doubleclick.net', 'google-analytics.com'] } },

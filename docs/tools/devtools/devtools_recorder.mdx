@@ -7,6 +7,8 @@ description: "Record and replay browser actions."
 
 Record and replay browser actions. start records every browser_navigate/click/fill/select/key/wait on the tab (with a stable selector per element); stop saves the flow as a JSON artifact. add_assertion appends a browser_wait check; add_checkpoint marks a place replay can stop at; parameterize turns a recorded literal into &#123;&#123;name&#125;&#125;. replay runs a flow on a tab with params, resolving selectors to fresh refs, and stops at the first failure or at stopAtCheckpoint.
 
+<Note>The tool names stay the same across browsers. See [browser selection](/reference/multiple-browsers) and [Firefox and Zen exceptions](/reference/firefox) before choosing an operation.</Note>
+
 
 ## Parameters
 

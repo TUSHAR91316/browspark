@@ -7,7 +7,9 @@ description: "Memory panel."
 
 Memory panel. snapshot captures a .heapsnapshot artifact (opens in DevTools Memory) and summarizes objects by class with sizes and detached DOM node count. compare diffs two snapshots by class (growth). retainers lists what holds instances of a class. sampling start/stop records an allocation sampling profile (.heapprofile) with top allocating functions. usage returns current heap size; growth samples heap usage over time to spot leaks.
 
-<Note>Heap snapshots, class diffs, retainers and allocation sampling need developer mode because Chrome does not expose HeapProfiler to extensions. usage and growth work in both modes.</Note>
+<Note>The tool names stay the same across browsers. See [browser selection](/reference/multiple-browsers) and [Firefox and Zen exceptions](/reference/firefox) before choosing an operation.</Note>
+
+<Note>Heap snapshots, class diffs, retainers and allocation sampling need Chromium developer mode because extensions cannot use HeapProfiler. usage and growth also work in Chromium extension mode. Firefox and Zen do not support this tool.</Note>
 
 ## Parameters
 

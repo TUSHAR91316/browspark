@@ -7,7 +7,9 @@ description: "Developer mode only: run any Chrome DevTools Protocol command on a
 
 Developer mode only: run any Chrome DevTools Protocol command on a tab (or on the browser target with target:"browser"). Params must be a JSON object valid for the method.
 
-<Note>Developer mode only. Extension mode cannot send raw protocol commands; the tool reports that the operation needs developer mode.</Note>
+<Note>The tool names stay the same across browsers. See [browser selection](/reference/multiple-browsers) and [Firefox and Zen exceptions](/reference/firefox) before choosing an operation.</Note>
+
+<Note>Chromium developer mode only. Firefox, Zen and extension tabs cannot send raw CDP commands. For target:browser, specify context when several developer browsers are running.</Note>
 
 ## Parameters
 

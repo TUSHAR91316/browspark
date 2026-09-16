@@ -73,6 +73,8 @@ description: "${attr(summary)}"
 
 ${esc(t.description)}
 
+<Note>The tool names stay the same across browsers. See [browser selection](/reference/multiple-browsers) and [Firefox and Zen exceptions](/reference/firefox) before choosing an operation.</Note>
+
 ${note ? `<Note>${note}</Note>\n` : ''}
 ## Parameters
 
