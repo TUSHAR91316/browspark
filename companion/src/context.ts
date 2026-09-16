@@ -9,6 +9,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Sessions } from './session.ts';
 import type { Page } from './page.ts';
 import type { Capture } from './devtools/capture.ts';
+import { firefoxUnsupportedTool } from './firefox-support.ts';
 
 export type Result = { content: ({ type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string })[]; isError?: boolean };
 export const text = (t: string): Result => ({ content: [{ type: 'text', text: t }] });
@@ -51,7 +52,13 @@ export function setDisabledTools(names: string[]) {
 const disabledResult = (name: string): Result => ({ content: [{ type: 'text', text: `The ${name} tool is switched off in the Browspark dashboard. Tell the user to turn it on under the Tools page of the extension, then try again.` }], isError: true });
 
 export function tool<S extends z.ZodRawShape>(ctx: Ctx, name: string, description: string, schema: S, handler: (args: z.infer<z.ZodObject<S>>) => Promise<Result | string | object>) {
-  const wrapped = (args: any) => clientStore.run(ctx.client, () => (disabledTools.has(name) ? Promise.resolve(disabledResult(name)) : run(() => handler(args))));
+  const wrapped = (args: any) => clientStore.run(ctx.client, () => (disabledTools.has(name) ? Promise.resolve(disabledResult(name)) : run(async () => {
+    if (firefoxUnsupportedTool(name, args)) {
+      const id = await ctx.sessions.resolve(args.tabId);
+      if (ctx.sessions.devOfTab(id)?.browserType === 'firefox') throw new Error(`${name}${args.action ? ` action:${args.action}` : ''} is unsupported in Firefox. See the Firefox support guide for available operations.`);
+    }
+    return handler(args);
+  })));
   ctx.registry.set(name, (args) => wrapped(z.object(schema).parse(args)));
   if (!toolCatalog.some((t) => t.name === name)) toolCatalog.push({ name, description });
   ctx.server.registerTool(name, { description, inputSchema: schema }, wrapped as any);

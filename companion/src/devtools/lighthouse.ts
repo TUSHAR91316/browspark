@@ -30,6 +30,7 @@ export function registerLighthouseTools(ctx: Ctx) {
     const id = await sessions.resolve(a.tabId);
     const dev = sessions.devOfTab(id) ?? sessions.runningDevs()[0];
     if (!dev) throw new Error('Lighthouse needs developer mode. Launch it with browser_session {action:"launch"}.');
+    if (dev.browserType === 'firefox') throw new Error('Lighthouse is unsupported in Firefox. The official Lighthouse CLI requires a Chromium browser.');
     if (!existsSync(CLI)) throw new Error(`Lighthouse is not installed at ${CLI}. Run: bun add lighthouse`);
     const url = a.url ?? await page.evaluate<string>(id, 'location.href');
     mkdirSync(artifactDir(), { recursive: true });

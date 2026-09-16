@@ -18,6 +18,7 @@ class FakeSessions extends EventEmitter {
   failTraceStart = false;
   locale = ''; timezone = ''; playbackRate = 1;
   async resolve(id = 1) { return id; }
+  devOfTab() { return undefined; }
   modeOf() { return 'dev' as const; }
   async hold() {}
   async cdp(tabId: number, method: string, params: any = {}) {

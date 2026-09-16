@@ -1,6 +1,7 @@
 // devtools_session, devtools_events, devtools_capabilities, devtools_cdp
 import { z } from 'zod';
 import { type Ctx, clients, tool, tabArg, matcher, paginate } from '../context.ts';
+import { FIREFOX_DOMAINS, FIREFOX_LIMITATIONS } from '../firefox-support.ts';
 
 /** Read-only probes; commands without a query deliberately omit required arguments, so validation rejects them before mutation. */
 const PROBES: [string, string, unknown?][] = [
@@ -51,11 +52,13 @@ export function registerSessionTools(ctx: Ctx) {
     return { collectionStart: new Date(st.startedAt).toISOString(), dropped: st.dropped.events, lastId: st.seq, events: items.map((e) => ({ id: e.id, ts: new Date(e.ts).toISOString(), method: e.method, summary: e.summary, ...(includeParams && { params: e.params }) })) };
   });
 
-  tool(ctx, 'devtools_capabilities', 'Report the browser version, connection mode, and which CDP domains work for a tab (probed live, cached per browser). Extension mode blocks some domains that direct CDP allows.', {
+  tool(ctx, 'devtools_capabilities', 'Report the browser version, connection mode, and supported operations. Chromium CDP domains are probed live and cached; Firefox reports the WebDriver BiDi adapter coverage and explicit exceptions. A partial domain does not support every Chrome command.', {
     tabId: tabArg, refresh: z.boolean().optional(),
   }, async ({ tabId, refresh }) => {
     const id = await tab(tabId);
     const mode = sessions.modeOf(id);
+    const dev = sessions.devOfTab(id);
+    if (dev?.browserType === 'firefox') return { mode, browser: dev.version, protocol: 'webdriver-bidi', tools: [...ctx.registry.keys()], domains: FIREFOX_DOMAINS, downloads: dev.downloadsSupported, unsupportedOperations: FIREFOX_LIMITATIONS };
     const key = mode === 'dev' ? `dev:${sessions.devOfTab(id)?.version}` : `ext:${sessions.bridge.extensionVersion}`;
     if (refresh) capCache.delete(key);
     let caps = capCache.get(key);
@@ -66,7 +69,7 @@ export function registerSessionTools(ctx: Ctx) {
         catch (e) {
           const m = (e as Error).message;
           // A validation error means the domain answered; only "not allowed"/"not found" means unsupported.
-          caps[domain] = /not allowed|isn't allowed|wasn't found|method.*not found|Domain.*not|restricted/i.test(m) ? `unsupported: ${m.slice(0, 80)}` : 'supported';
+          caps[domain] = /unsupported|not allowed|isn't allowed|wasn't found|method.*not found|Domain.*not|restricted/i.test(m) ? `unsupported: ${m.slice(0, 80)}` : 'supported';
         }
       }
       capCache.set(key, caps);
@@ -88,10 +91,11 @@ export function registerSessionTools(ctx: Ctx) {
   }, async ({ tabId, target, method, params, timeoutMs, context }) => {
     const running = sessions.runningDevs();
     if (!running.length) throw new Error('devtools_cdp requires developer mode. Launch it with browser_session {action:"launch"}.');
-    if (target === 'browser') { const d = context ? sessions.devs.get(context) : running.length === 1 ? running[0] : sessions.devs.get('default'); if (!d?.running) throw new Error(`Context ${context ?? 'default'} is not running; running: ${running.map((x) => x.name).join(', ')}`); return await d.browser(method, params, timeoutMs); }
+    if (target === 'browser') { const d = context ? sessions.devs.get(context) : running.length === 1 ? running[0] : sessions.devs.get('default'); if (!d?.running) throw new Error(`Context ${context ?? 'default'} is not running; running: ${running.map((x) => x.name).join(', ')}`); if (d.browserType === 'firefox') throw new Error('Raw CDP is unsupported in Firefox; this browser uses WebDriver BiDi.'); return await d.browser(method, params, timeoutMs); }
     const id = await tab(tabId);
     const d = sessions.devOfTab(id);
     if (!d) throw new Error(`Tab ${id} is an extension-mode tab. devtools_cdp only runs against developer-mode tabs.`);
+    if (d.browserType === 'firefox') throw new Error('Raw CDP is unsupported in Firefox; this browser uses WebDriver BiDi.');
     return await d.cdp(id, method, params, timeoutMs);
   });
 
