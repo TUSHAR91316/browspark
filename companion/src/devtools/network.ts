@@ -134,6 +134,7 @@ export function registerNetworkTools(ctx: Ctx) {
         const r = req(a.requestId);
         if (!/^https?:/.test(r.url)) throw new Error('Only http(s) requests can be replayed');
         const o = a.overrides ?? {};
+        if (r.hasPostData && r.postData === undefined && o.body === undefined) throw new Error('The original request body was not captured; provide overrides.body to replay it.');
         const headers = Object.fromEntries(Object.entries({ ...r.requestHeaders, ...(o.headers ?? {}) }).filter(([k]) => !/^(:|host$|content-length$|cookie$|origin$|referer$|accept-encoding$|connection$|sec-|user-agent$)/i.test(k)));
         const bodyExpr = o.body !== undefined ? JSON.stringify(o.body) : r.postData !== undefined ? JSON.stringify(r.postData) : 'undefined';
         const res = await page.evaluate(id, `fetch(${JSON.stringify(o.url ?? r.url)}, { method: ${JSON.stringify(o.method ?? r.method)}, headers: ${JSON.stringify(headers)}, body: ${bodyExpr}, credentials: 'include' }).then(async (res) => ({ status: res.status, statusText: res.statusText, headers: Object.fromEntries(res.headers.entries()), body: (await res.text()).slice(0, ${a.maxChars ?? 20000}) }))`);
