@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Browspark",
-  "version": "0.4.0",
-  "description": "Lets a local MCP companion automate and debug tabs you explicitly share.",
+  "version": "0.5.0",
+  "description": "Share tabs from this Chromium browser profile with a local MCP companion, alongside other connected browsers.",
   "permissions": ["debugger", "tabs", "storage", "alarms", "downloads"],
   "background": { "service_worker": "dist/background.js" },
   "action": { "default_title": "Open Browspark", "default_icon": "assets/logo.png" },

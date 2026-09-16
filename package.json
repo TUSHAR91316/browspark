@@ -1,6 +1,6 @@
 {
   "name": "browspark-mcp",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "license": "MIT",
   "type": "module",
   "files": [
@@ -20,6 +20,7 @@
     "docs:tools": "bun companion/test/docs.ts",
     "test:e2e": "E2E=1 bun test --timeout 120000",
     "test:firefox": "FIREFOX_E2E=1 bun test companion/test/firefox.e2e.test.ts --timeout 120000",
+    "test:multi-browser": "MULTI_BROWSER_E2E=1 bun test companion/test/multi-developer.e2e.test.ts --timeout 240000",
     "compile": "bun build --compile companion/src/index.ts --outfile dist/browspark",
     "release": "bun publish --access public && for a in aliases/*; do (cd $a && ([ \"$(bun -p 'require(\"./package.json\").version')\" = \"$npm_package_version\" ] || bun pm version $npm_package_version --no-git-tag-version) && bun publish --access public); done"
   },

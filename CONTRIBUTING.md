@@ -13,11 +13,14 @@ Browspark uses [Bun](https://bun.sh) for everything: install, run, bundle and te
 bun install
 bun run build        # extension bundles
 bun run typecheck
-bun test             # unit tests, no browser
-bun run test:e2e     # launches throwaway Chromes; slower
+bun run --cwd frontend build # required before the landing-page smoke tests
+bun test             # unit, bridge and landing-page tests; no browsers
+bun run test:e2e     # launches throwaway Chromium browsers
+bun run test:firefox # Firefox acceptance scenarios
+bun run test:multi-browser # Chrome, Brave, Firefox and Zen together
 ```
 
-Load `extension/` unpacked in Chrome and run the companion from source with `bun companion/src/index.ts`. See the [development reference](https://docs.browspark.krishm.dev/reference/development) for the full workflow.
+Load `extension/` unpacked in Chrome or Brave and run the companion from source with `bun companion/src/index.ts`. Multiple profiles can connect to the same companion. Firefox and Zen use separate developer contexts without an extension. Install the required browsers before running their acceptance suites, and run browser suites one at a time. See the [development reference](https://docs.browspark.krishm.dev/reference/development) for executable overrides and the full workflow.
 
 ## Pull requests
 - Keep each pull request to one change. Small diffs get reviewed quickly.

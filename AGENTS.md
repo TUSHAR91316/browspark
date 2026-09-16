@@ -38,16 +38,18 @@ Two processes, one wire protocol:
 Two ways to reach a page, hidden behind one layer:
 
 - **Extension mode**: companion → bridge `cdp` request → worker → `chrome.debugger.sendCommand` on a shared tab.
-- **Developer mode**: companion launches its own Chrome (`cdp.ts`, `DirectChrome`, persistent profiles under `~/.browspark`) and speaks CDP directly. Dev tab ids come from a companion-wide counter and share the id namespace with `chrome.tabs` ids.
+- **Developer mode**: companion launches named Chrome/Chromium or Brave contexts (`cdp.ts`, `DirectChrome`) over CDP, or Firefox/Zen contexts (`firefox.ts`, `DirectFirefox`) over WebDriver BiDi with documented tool exceptions. Profiles persist under `~/.browspark`. `browsers.ts` handles brand-specific executable discovery.
+
+The bridge accepts multiple extension profiles, gives each a `browserId`, and translates native tab IDs at the boundary. Extension and developer tabs use one companion-wide public ID counter. Choose `browserId` for a new extension tab or `context` for a developer tab when several are available; existing tabs use `tabId`.
 
 `session.ts` (`Sessions`) is the only place that knows which mode a tab is in: `modeOf`/`cdp` fork on it, and `resolve(tabId?)` is where "which tab" is decided (explicit id must be shared and supported; no id → this agent's most recent tab, else the single usable tab, else an error listing candidates). Everything above it (`page.ts`, `tools.ts`, `devtools/*`) is mode-agnostic and only calls `sessions.cdp` or `ctx.page`.
 
 Tool call path: MCP → `tool()` wrapper in `context.ts` (sets the current agent via `AsyncLocalStorage`, checks the disabled list, normalises errors) → `sessions.resolve` → `page.*` / `sessions.cdp` → mode-specific transport. CDP events flow back on one `cdp.event` stream consumed by `page.ts` (dialogs, loads) and `devtools/capture.ts` (ring buffers per tab).
 
-Multi-agent: each MCP transport gets its own `McpServer` + `ClientState` (name, owned tabs, recording), while `Sessions`, `Page` and `Capture` are shared. If port 9223 is taken, a second companion becomes a stdio→HTTP relay to the first instead of failing, so every agent ends up on one extension. `devtools_session` is shared between agents and only tears down when the last user stops.
+Multi-agent: each MCP transport gets its own `McpServer` + `ClientState` (name, owned tabs, recording), while `Sessions`, `Page` and `Capture` are shared. If port 9223 is taken, a second companion becomes a stdio→HTTP relay to the first instead of failing, so every agent uses the same companion and connected browsers. `devtools_session` is shared between agents and only tears down when the last user stops.
 
 Key files when something misbehaves:
-- `companion/src/index.ts` wiring and relay; `bridge.ts` Origin check (web pages refused), handshake close codes (4001 no hello, 4002 version), one extension at a time.
+- `companion/src/index.ts` wiring, relay and combined tool policy; `bridge.ts` Origin check (web pages refused), handshake close codes (4001 no hello, 4002 version), per-profile connections and native/public tab-ID translation. Disconnect cleanup must stay scoped to that browser's tabs.
 - `companion/src/page.ts` snapshot/refs (`window.__bmcp`, refs never reused, wiped on navigation), dialog racing, New Tab `tabs.prepare` dance.
 - `companion/src/devtools/capture.ts` session start/stop; `intercept.ts` is the single owner of the Fetch domain (policies, mocks, overrides).
 - `extension/src/background.ts` the trust boundary: `isShared` is checked on every command and again after attach; idle detach after 30 s unless held by a session; Background Mode defaults on; CDP targets assigned tabs without activation. Settings can restore foreground input/screenshots.

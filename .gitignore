@@ -4,3 +4,4 @@ test-apps/dist/
 dist/
 demo/
 .vscode/
+.DS_Store

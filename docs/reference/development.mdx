@@ -10,21 +10,29 @@ Bun is the only toolchain: install, run, bundle and test. There is no Node, npm 
 ```bash
 bun install
 bun run build            # extension bundles → extension/dist/
-bun run typecheck        # tsc for companion and extension
+bun run typecheck        # tsc for companion, extension and shared
+bun run --cwd frontend build # landing page + setup.sh; run before root tests
+bun run --cwd frontend test  # landing-page smoke tests
 bun test                 # unit + bridge tests, no browser
-bun run test:e2e         # launches throwaway Chromes; every acceptance scenario
+bun run test:e2e          # Chromium acceptance scenarios, including two extension instances
 E2E_LIGHTHOUSE=1 bun run test:e2e   # also a real Lighthouse audit
-bun run capabilities     # probe both modes, rewrite docs/reference/capability-matrix.mdx
+bun run test:firefox      # real Firefox through BiDi; install Firefox first
+bun run test:multi-browser # Chrome, Brave, Firefox and Zen developer sessions together
+bun run capabilities     # probe both Chromium modes, rewrite the capability matrix
 bun run docs:tools       # rewrite docs/tools/** and the Tools navigation
 bun run package          # dist/browspark-extension.zip
 bun run compile          # dist/browspark
 ```
 
-Tests run with `--timeout 120000` because the e2e suite launches real browsers. The harness kills every Chrome it started in a `finally` block; if a test crashes hard, `pgrep -fl remote-debugging-port` shows leftovers.
+Browser tests use extended timeouts because they launch real browsers. Build the extension first and run only one E2E invocation at a time. The harness closes the browsers it launched in `finally` blocks; if a run is interrupted, close its leftover test browsers before starting another.
+
+The Chromium harness defaults to Chrome on macOS; set `CHROME` to use another executable. To exercise simultaneous Chrome and Brave extensions, set `BROWSPARK_TEST_SECOND_BROWSER` to the Brave executable and run `E2E=1 bun test companion/test/multi-browser.e2e.test.ts --timeout 120000`. Without this override the test launches two isolated Chrome profiles. The developer-browser test requires all four browsers; `BROWSPARK_CHROME`, `BROWSPARK_BRAVE`, `BROWSPARK_FIREFOX` and `BROWSPARK_ZEN` override executable discovery.
 
 ## Test fixtures
 
 `test-apps/` is served by `test-apps/server.ts` and provides deterministic pages: a form page, a debug page with console noise, exceptions, timers and a source-mapped script, an iframe page, a second page for navigation, a service worker, a manifest, a JSON API with configurable latency, a download endpoint and a WebSocket echo. The e2e suites drive the real companion through the MCP client against these pages in both modes.
+
+Unit and bridge tests cover browser discovery, colliding native tab IDs, connection ownership, per-profile policy and disconnect cleanup. Firefox and Zen use the same MCP registrations with explicit unsupported actions; keep [their coverage](/reference/firefox) in sync with the adapter and its guards. The generated capability matrix covers Chromium only.
 
 ## Adding a tool
 
