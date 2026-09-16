@@ -21,13 +21,19 @@ or the compiled `dist/browspark` with the same flags.
 | Variable | Default | Purpose |
 |---|---|---|
 | `BROWSPARK_PORT` | `9223` | Same as `--port`. |
-| `BROWSPARK_CHROME` | auto-detected | Chromium executable for developer mode. |
-| `BROWSPARK_FIREFOX` | auto-detected | Firefox executable for `browser_session` with `browser: "firefox"`; `firefoxPath` overrides it. |
+| `BROWSPARK_CHROME` | auto-detected | Executable for `browser: "chrome"` or `"chromium"`. |
+| `BROWSPARK_BRAVE` | auto-detected | Brave executable for `browser_session` with `browser: "brave"`. |
+| `BROWSPARK_FIREFOX` | auto-detected | Firefox executable for `browser_session` with `browser: "firefox"`. |
+| `BROWSPARK_ZEN` | auto-detected | Zen executable for `browser_session` with `browser: "zen"`. |
 | `BROWSPARK_PROFILE` | `~/.browspark/profile` | Profile directory of the `default` Chrome developer context. |
-| `BROWSPARK_PROFILES` | `~/.browspark/profiles` | Parent directory of named Chrome contexts; Firefox profiles live in its `.firefox/<context>` subdirectory. |
+| `BROWSPARK_PROFILES` | `~/.browspark/profiles` | Parent of named Chrome profiles and the `.brave/<context>`, `.firefox/<context>` and `.zen/<context>` profiles. |
 | `BROWSPARK_ARTIFACTS` | `~/.browspark/artifacts` | Output directory for traces, profiles, snapshots, HAR, PDFs, reports and flows. |
 
 Recorder exports read flow parameters from environment variables named after the parameter in upper case (`{{email}}` → `EMAIL`).
+
+On `browser_session launch`, `browserPath` overrides the executable for the chosen `browser`. Legacy `chromePath` and `firefoxPath` options remain supported. `"chrome"` and the default `"chromium"` selection share the existing Chrome profile paths.
+
+Several extension browsers can connect to the same port. Select an extension instance by the `browserId` returned by `browser_status`; select a developer session by `context`. Tab tools use globally unique `tabId` values. See [using multiple browsers](/reference/multiple-browsers).
 
 ## Package scripts
 
@@ -39,8 +45,10 @@ Recorder exports read flow parameters from environment variables named after the
 | `bun run start` | Run the companion from source. |
 | `bun run typecheck` | Type-check companion and extension. |
 | `bun test` | Unit and bridge tests (no browser). |
-| `bun run test:e2e` | Launch throwaway Chromes and run every acceptance scenario. |
-| `bun run capabilities` | Regenerate the [capability matrix](/reference/capability-matrix) by probing both modes. |
+| `bun run test:e2e` | Run Chromium acceptance scenarios, including simultaneous extension instances. Build the extension first. |
+| `bun run test:firefox` | Run Firefox developer-session acceptance tests through BiDi. |
+| `bun run test:multi-browser` | Run Chrome, Brave, Firefox and Zen developer sessions together. Install all four or set their executable environment variables. |
+| `bun run capabilities` | Regenerate the [capability matrix](/reference/capability-matrix) by probing both Chromium modes. |
 | `bun run docs:tools` | Regenerate the tool reference pages and their navigation from the tool registrations. |
 
 ## What the companion prints
@@ -49,13 +57,12 @@ Everything goes to stderr, because stdout is the MCP stdio channel.
 
 ```text
 browspark: ready on ws://127.0.0.1:9223; MCP over HTTP at http://127.0.0.1:9223/mcp
-browspark: extension connected
-browspark: 2 tool(s) disabled from the dashboard; developer browser: auto
+browspark: extension connected: ext:<id> (Google Chrome <version>)
 browspark: agent connected: claude-code
 browspark: http client session 5f1e9c0a
 browspark: relaying stdio to the companion already running on port 9223
 browspark: agent disconnected: claude-code
-browspark: extension disconnected
+browspark: extension disconnected: ext:<id>
 ```
 
 ## Exit behaviour

@@ -1,13 +1,16 @@
 ---
 title: "Tools overview"
-description: "All 43 tools by group, with the mode each needs."
+description: "All 43 tools, browser selection, and Chromium versus Firefox and Zen coverage."
 ---
 
-Every page in this section is generated from the companion's tool registrations by `bun run docs:tools`, so parameter names, types, enums and defaults match the running code. Each example is validated against the tool's schema when the docs are generated.
+Individual tool pages are generated from the companion's registrations by `bun run docs:tools`, so parameter names, types, enums and defaults match the running code. Each example is validated against the tool's schema when the docs are generated.
+
+Chrome, Brave, Firefox and Zen expose the same 43 tool names. Firefox and Zen use developer sessions through BiDi with [documented exceptions](/reference/firefox); identical names do not mean that every Chromium action is available.
 
 Conventions shared by all tools:
 
-- `tabId` is optional everywhere. Without it the companion uses the calling agent's own tab or the only usable tab; see [Tabs and sharing](/concepts/tabs-and-sharing#choosing-the-target-tab).
+- Page tools accept a `tabId` from `browser_tabs` or `browser_status`, unique across connected browsers. Without it the companion uses the calling agent's own tab or the only usable tab; see [Tabs and sharing](/concepts/tabs-and-sharing#choosing-the-target-tab).
+- For new tabs and `browser_fetch`, use `browserId` to select an extension profile or `context` to select a developer browser. See [Using multiple browsers](/reference/multiple-browsers).
 - `ref` values come from `browser_snapshot` or `devtools_elements search`; see [Snapshots and refs](/concepts/snapshots-and-refs).
 - Search tools take `query` with optional `regex: true`, and paginate with `offset` and `limit` (default 50).
 - Long results are clipped; ask for a narrower `query`, a specific `id`, or a higher `limit`.
@@ -42,6 +45,8 @@ Conventions shared by all tools:
 
 ## Developer tools
 
+The mode column below describes **Chromium**: "both" means extension and developer mode. On Firefox and Zen, consult [their coverage](/reference/firefox) or `devtools_capabilities` on the target tab before choosing an action.
+
 | Tool | Purpose | Mode |
 |---|---|---|
 | [devtools_session](/tools/devtools/devtools_session) | Start, stop, clear an inspection session | both |
@@ -66,4 +71,4 @@ Conventions shared by all tools:
 | [devtools_lighthouse](/tools/devtools/devtools_lighthouse) | Lighthouse audit with reports | developer |
 | [devtools_recorder](/tools/devtools/devtools_recorder) | Record, parameterise, replay, export to Playwright | both |
 
-The exact per-domain picture is in the [capability matrix](/reference/capability-matrix).
+The per-domain Chromium picture is in the [capability matrix](/reference/capability-matrix). Firefox and Zen return explicit errors for unsupported actions, including raw CDP and Lighthouse.

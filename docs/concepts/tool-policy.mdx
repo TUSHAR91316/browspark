@@ -13,7 +13,9 @@ The browser_upload tool is switched off in the Browspark dashboard. Tell the use
 
 So the agent knows exactly what to ask for instead of guessing at workarounds. Typical uses: block `browser_upload` and `browser_download` on a shared machine, block `devtools_cdp` and `devtools_evaluate` when you do not want arbitrary code run, or keep only the read-only tools for a research agent.
 
-The extension sends the disabled list to the companion whenever it connects or the list changes. The companion writes it to `~/.browspark/tools.json` so the policy applies from the first call after a restart, before the extension has reconnected.
+Each extension dashboard sends its disabled list to the companion whenever it connects or the list changes. Calls targeting an extension browser with `browserId` or its tab with `tabId` use that browser's switches. Page tools that resolve an omitted `tabId` to the agent's own or only usable tab also use the owning browser's switches. Calls spanning browsers and calls in developer sessions use the combined disabled list: a tool disabled in any connected dashboard is disabled for those calls.
+
+The companion saves the combined list to `~/.browspark/tools.json` so it applies after a restart, before dashboards reconnect. Sharing remains independent in each browser profile. See [Using multiple browsers](/reference/multiple-browsers).
 
 The catalog itself comes from the companion on connect (`tools.catalog` event with name, description and companion version). If the dashboard shows no tools, the companion has not connected yet.
 
@@ -27,8 +29,10 @@ The catalog itself comes from the companion on connect (`tools.catalog` event wi
 | Always | Launches are always allowed. |
 | Never | Launches are refused with a message asking the agent to work in your tabs or ask you to change the setting. |
 
-The setting travels with the same `tools.policy` message as the disabled list.
+An explicit user request can also authorize a launch in **Only when needed** mode; the agent marks it with `userRequested: true`. **Never** still refuses the launch.
+
+When several dashboards are connected, the most restrictive developer-browser setting applies: **Never**, then **Only when needed**, then **Always**. The setting travels with the same `tools.policy` message as the disabled list.
 
 ## Emergency stop
 
-**Settings → Emergency stop** detaches the debugger from every tab, clears the shared list, switches Share everything off and disconnects from the companion. The agent's next call fails with a "not connected" status and instructions to reconnect. **Resume** reconnects but shares nothing until you share again.
+**Settings → Emergency stop** detaches the debugger from that browser profile's tabs, clears its shared list, switches Share everything off and disconnects that extension from the companion. Commands for those tabs fail. Other connected browser profiles and separate developer sessions remain available. **Resume** reconnects that profile but shares nothing until you share again.

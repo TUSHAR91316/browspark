@@ -7,20 +7,21 @@ description: "Which tabs an agent can see, how a target tab is chosen, and what 
 
 An agent can only reach tabs you share. Sharing happens in the dashboard's [Tabs page](/dashboard/tabs): share individual tabs, or switch on **Share everything** to include current and future tabs. **Stop** or **Unshare** revokes that tab even with Share everything enabled; explicitly share it again to resume. Per-tab grants and revocations live in `chrome.storage.session`, so they reset when the browser restarts; Share everything is persistent.
 
-Tabs from every Chrome window count. `browser_tabs` and `browser_status` list them with their `windowId`.
+Tabs from every connected Chrome or Brave profile count. `browser_tabs` and `browser_status` list each tab with its owning `browserId` and `windowId`. Public `tabId` values are unique across all browsers, even if two browsers assign the same native tab number. Sharing and Stop controls remain independent in each profile.
 
 ## Tabs the agent opens
 
-`browser_tabs {action: "new", url}` and `browser_fetch` open ordinary tabs in your **current window**, next to your own. They are shared automatically and recorded as owned by the agent that opened them. There is no dedicated agent window. Close them with `browser_tabs {action: "close"}` or yourself; `browser_fetch` closes its tab when it is done unless `keepTab` is set.
+`browser_tabs {action: "new", url, browserId}` and `browser_fetch` open ordinary tabs in the selected extension browser's **current window**, next to your own. When several extension browsers are connected, use the `browserId` displayed by `browser_status`. They are shared automatically and recorded as owned by the agent that opened them. There is no dedicated agent window. Close them with `browser_tabs {action: "close", tabId}` or yourself; `browser_fetch` closes its tab when it is done unless `keepTab` is set.
+
+For a separate developer browser, select its `context` instead. See [Using multiple browsers](/reference/multiple-browsers).
 
 ## Choosing the target tab
 
-Every tool takes an optional `tabId`. When it is omitted the companion resolves in this order:
+Page tools take an optional `tabId`. When it is omitted the companion resolves in this order:
 
 1. The calling agent's most recently opened usable tab.
-2. A tab opened by an agent that has since disconnected.
-3. The only usable shared tab, if there is exactly one.
-4. Otherwise the call fails and lists the usable tabs, asking for an explicit `tabId`.
+2. The only usable tab, if there is exactly one.
+3. Otherwise the call fails and lists the usable tabs, asking for an explicit `tabId`.
 
 "Usable" means shared and not a browser-internal page. `chrome://newtab` is usable for `browser_navigate` so an empty tab can be pointed at a website; other `chrome://`, extension and Web Store pages are reported as unsupported. Developer-mode tabs are always usable.
 
@@ -45,11 +46,11 @@ While the agent drives a shared tab, the tab shows a soft cyan halo around the p
 
 The pill has a **Stop** button. Pressing it revokes the tab on the spot, exactly like unsharing it from the dashboard: the debugger detaches, the agent's next command is refused, and you share the tab again when you want to resume.
 
-The overlay uses an isolated script world and a closed shadow root to separate its controls and styles from the page. Stop remains available to screen readers; decorative effects are hidden from them. Agent snapshots and text reads exclude the overlay, and screenshots and PDFs temporarily hide it. It appears on the main frame only, and it is switched off from **Settings → Agent overlay**. Developer-mode tabs show the frame and cursor without the Stop button, since there is nothing to unshare there.
+The overlay uses an isolated script world and a closed shadow root to separate its controls and styles from the page. Stop remains available to screen readers; decorative effects are hidden from them. Agent snapshots and text reads exclude the overlay, and screenshots and PDFs temporarily hide it. It appears on the main frame only, and each profile can switch it off from **Settings → Agent overlay**. Chromium developer-mode tabs show the frame and cursor without the Stop button, since there is nothing to unshare there.
 
 ## Activation
 
-Chrome drops input events and screenshots for background tabs. Before `browser_click`, `browser_fill`, `browser_key`, `browser_scroll` and `browser_screenshot`, the extension activates the target tab within its window. If you are working in the same window you will see it switch; put the agent's tabs in another window if that bothers you.
+**Settings → Work in background** is on by default in each extension profile. The agent interacts with its assigned tab without activating it. If an operation needs foreground interaction, it reports that requirement. You can select the tab yourself or turn off Work in background for that profile; foreground mode lets input and screenshots activate the target tab.
 
 ## Watching in DevTools
 

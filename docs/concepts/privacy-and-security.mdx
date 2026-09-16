@@ -11,7 +11,9 @@ description: "What leaves your machine (nothing), what the agent can reach, and 
 
 ## Access is opt-in per tab
 
-The agent reaches exactly the tabs you share, plus tabs it opened itself in your window. `chrome://` pages, extension pages and the Web Store are never automatable. Emergency stop revokes everything at once.
+In extension mode, the agent reaches exactly the tabs you share, plus tabs it opened itself in the selected browser. `chrome://` pages, extension pages and the Web Store are never automatable. Each Chrome or Brave profile enforces its own sharing. Sharing a tab in one browser grants no access in another.
+
+Emergency stop revokes access to that extension profile's tabs. Other connected profiles and separately launched developer browsers remain available; close a developer context with `browser_session` when you are finished with it.
 
 ## What the agent can see in a shared tab
 
@@ -27,7 +29,7 @@ Everything the page can: DOM, cookies for the page origin, local and session sto
 ## Secrets
 
 - Recorder exports and HAR files can contain form values, cookies and headers. They are written to `~/.browspark/artifacts` or the path you give.
-- Developer-context profiles under `~/.browspark/` hold logins like any Chrome profile.
+- Developer-context profiles under `~/.browspark/` hold logins like any browser profile. Chrome, Brave, Firefox and Zen developer sessions use separate profiles from your everyday browsers.
 
 ## The debugger permission
 

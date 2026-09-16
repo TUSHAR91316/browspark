@@ -1,0 +1,99 @@
+---
+title: "Using multiple browsers"
+description: "Connect Chrome and Brave profiles and run Firefox or Zen developer sessions through one companion."
+---
+
+Browspark can use Chrome, Brave, Firefox and Zen at the same time. All browsers share one companion and the same 43 MCP tools. Each tab has a unique `tabId`, so a command always goes to the selected browser and tab.
+
+| Browser | Your existing tabs | Separate developer session |
+|---|---|---|
+| Chrome | Install the extension and share tabs | `browser: "chrome"` |
+| Brave | Install the extension and share tabs | `browser: "brave"` |
+| Firefox | Unavailable | `browser: "firefox"` |
+| Zen | Unavailable | `browser: "zen"` |
+| Other Chromium browsers | Install the extension where supported | `browser: "chromium"` with `browserPath` |
+
+Firefox and Zen use WebDriver BiDi and have [documented tool exceptions](/reference/firefox). Their developer sessions have separate profiles and do not attach to your everyday Firefox or Zen tabs.
+
+## Connect Chrome and Brave
+
+1. [Register the companion](/get-started/quickstart) once with your MCP client.
+2. Load the Browspark extension in Chrome at `chrome://extensions` and Brave at `brave://extensions`. You can use the same unpacked extension folder in both.
+3. Open each dashboard and share the tabs you want the agent to access. Every browser profile connects to `127.0.0.1:9223`, or the port you configured.
+4. Ask the agent to call `browser_status` or `browser_tabs`. Connected extension instances have a `browserId`; their tabs have unique `tabId` values.
+
+Connecting Brave keeps Chrome connected. Multiple profiles of the same browser can also connect independently. Sharing a tab in one profile grants no access to tabs in another, and its Stop controls affect that profile's tabs.
+
+Create profiles independently: copying a profile's Browspark storage duplicates its installation identity and currently makes the copies replace each other's connection. See [troubleshooting](/guides/troubleshooting#two-copied-profiles-keep-reconnecting).
+
+## Choose where a new tab opens
+
+For a connected extension browser, use its displayed `browserId` with `browser_tabs`:
+
+```json
+{
+  "action": "new",
+  "mode": "extension",
+  "browserId": "<browserId from browser_status>",
+  "url": "https://example.com"
+}
+```
+
+Replace the placeholder with the value returned by the tool. Browser IDs identify connections, so copy the returned ID instead of guessing one from a browser name. When multiple browsers are connected, specify your choice; Browspark will not pick whichever connected last.
+
+For an existing tab, pass its `tabId` to `browser_navigate`, `browser_snapshot` or another tab tool. A `tabId` already identifies the browser; it does not need an extra `browserId`.
+
+The dashboard displays browser-native tab numbers, which differ from MCP tab IDs. Refresh `browser_status` after restarting the companion or browser instead of reusing old IDs.
+
+`browser_fetch` also accepts `browserId` when it opens temporary tabs in an extension browser. Pass the ID from `browser_status` to choose which browser performs the fetch; pass `context` to use a developer browser instead.
+
+## Run developer browsers side by side
+
+Ask your agent to launch the browsers you need, each in a named context. Active context names must be unique across browsers. For example, launch Brave with:
+
+```json
+{
+  "action": "launch",
+  "browser": "brave",
+  "context": "brave-work",
+  "userRequested": true
+}
+```
+
+Then launch Zen with:
+
+```json
+{
+  "action": "launch",
+  "browser": "zen",
+  "context": "zen-work",
+  "userRequested": true
+}
+```
+
+These are `browser_session` calls. Use `"chrome"` or `"firefox"` for those browsers. The existing `"chromium"` choice remains supported and is the default for a new context.
+
+Use `context` to open a new tab in a developer browser:
+
+```json
+{
+  "action": "new",
+  "mode": "dev",
+  "context": "zen-work",
+  "url": "https://example.com"
+}
+```
+
+Developer profiles persist separately by browser and context. Closing a context keeps its profile; `browser_session` with `action: "delete"` removes a stopped profile. See [developer browser profiles and options](/concepts/developer-browser).
+
+## Sharing and tool settings
+
+Each extension profile owns its shared tabs, overlay setting and Stop controls. A tool call targeting an extension browser or tab uses that browser's tool switches, including page tools that resolve to the agent's own or only usable tab. Calls spanning browsers and calls in developer sessions use the combined disabled list from connected dashboards.
+
+Developer launches use the most restrictive connected dashboard setting: **Never**, then **Only when needed**, then **Always**. See [Tool policy](/concepts/tool-policy) for details.
+
+## Select an executable
+
+Set `browserPath` on `browser_session launch` when a browser is installed outside the usual locations. Keep `browser` set to the matching browser so the companion uses the correct protocol and profile.
+
+The environment variables `BROWSPARK_CHROME`, `BROWSPARK_BRAVE`, `BROWSPARK_FIREFOX` and `BROWSPARK_ZEN` select the corresponding executable. Existing `chromePath` and `firefoxPath` launch options remain supported. See [CLI and environment](/reference/cli-and-environment).

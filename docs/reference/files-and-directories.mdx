@@ -7,15 +7,18 @@ description: "Everything Browspark writes to disk and what each file is for."
 
 | Path | Written by | Contents |
 |---|---|---|
-| `tools.json` | companion, when the dashboard changes the policy | `{"disabled": ["browser_upload", …]}`. Loaded on start so disabled tools stay disabled before the extension reconnects. |
-| `profile/` | Chrome | Persistent profile of the `default` developer context. |
-| `profiles/<name>/` | Chrome | Profiles of named developer contexts. `browser_session delete` removes one. |
-| `downloads/<context>/` | Chrome | Downloads made in a developer context. |
+| `tools.json` | companion, when dashboard policies change | `{"disabled": ["browser_upload", …]}`. The combined disabled list is loaded on start before extensions reconnect. |
+| `profile/` | Chrome/Chromium | Persistent profile of the `default` developer context. |
+| `profiles/<name>/` | Chrome/Chromium | Profiles of named developer contexts. The `chrome` and `chromium` choices share these legacy paths. |
+| `profiles/.brave/<name>/` | Brave | Profiles of Brave developer contexts. |
+| `profiles/.firefox/<name>/` | Firefox | Profiles of Firefox developer contexts. |
+| `profiles/.zen/<name>/` | Zen | Profiles of Zen developer contexts. |
+| `downloads/` | developer browsers | Downloads made in developer contexts; `browser_status` gives the exact directory. |
 | `artifacts/` | companion | Exports, see below. |
 
 ## Artifacts
 
-Files are named by kind and id. Formats are Chrome's own so each opens in DevTools or the usual tools.
+Files are named by kind and id. Chromium-specific traces and profiles open in DevTools; other exports use their usual formats. Firefox and Zen have [documented export limits](/reference/firefox).
 
 | Kind | Extension | Opens in |
 |---|---|---|
@@ -35,17 +38,17 @@ Tools that accept `path` write there as well as, or instead of, the artifacts di
 
 | Storage | Keys | Lifetime |
 |---|---|---|
-| `chrome.storage.local` | `port`, `shareAll`, `stopped`, `activityLog`, `devMode`, `disabledTools`, `toolCatalog`, `idleDetachMs` | Persistent per browser profile |
-| `chrome.storage.session` | `shared` (tab ids shared individually) | Until the browser restarts |
+| `chrome.storage.local` | `port`, `instanceId`, `shareAll`, `stopped`, `activityLog`, `devMode`, `disabledTools`, `toolCatalog`, `idleDetachMs`, `overlay`, `backgroundMode` | Persistent per browser profile |
+| `chrome.storage.session` | `browserSessionId`, `shared` (tab ids shared individually), `excluded` | Until the browser restarts |
 | `localStorage` of the dashboard page | theme, last selected setup client, expanded rows | Persistent, UI conveniences only |
 
-The activity log itself is held in the service worker's memory only.
+Each profile has its own extension storage. `instanceId` identifies that extension installation and `browserSessionId` distinguishes browser runs, so recycled native tab IDs do not select stale tabs. The activity log itself is held in the service worker's memory only.
 
 ## Repository layout
 
 | Folder | Contents |
 |---|---|
-| `companion/src/` | MCP server: `index.ts` (transports, relay, HTTP), `bridge.ts` (WebSocket and HTTP routes), `session.ts` (tab routing, contexts), `cdp.ts` (developer browsers), `page.ts` (snapshots, input, reading), `tools.ts` (browser tools), `live.ts`, `artifacts.ts`, `context.ts` (tool wrapper, policy, per-agent state), `devtools/` (one module per DevTools panel) |
+| `companion/src/` | MCP server: `index.ts` (transports, relay, HTTP), `bridge.ts` (WebSocket and HTTP routes), `session.ts` (tab routing, contexts), `cdp.ts` (Chromium developer browsers), `firefox.ts` (Firefox/Zen developer browsers), `browsers.ts` (executable discovery), `page.ts` (snapshots, input, reading), `tools.ts` (browser tools), `live.ts`, `artifacts.ts`, `context.ts` (tool wrapper, policy, per-agent state), `devtools/` (one module per DevTools panel) |
 | `companion/test/` | Unit tests, e2e scenarios, the harness, the capability and docs generators |
 | `extension/` | `manifest.json`, `app.html`, `app.css`, `assets/`, `src/background.ts` (service worker), `src/app.ts` (dashboard), `src/state.ts` |
 | `shared/` | `protocol.ts`, the wire protocol |

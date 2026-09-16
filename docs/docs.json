@@ -2,7 +2,7 @@
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
   "name": "Browspark",
-  "description": "Local MCP server for shared Chromium tabs and separate Chrome or Firefox developer sessions.",
+  "description": "Local MCP server for simultaneous Chrome, Brave, Firefox, and Zen browser sessions.",
   "colors": {
     "primary": "#1f8a5f",
     "light": "#4dab9a",
@@ -79,6 +79,7 @@
               "reference/files-and-directories",
               "reference/capability-matrix",
               "reference/firefox",
+              "reference/multiple-browsers",
               "reference/wire-protocol",
               "reference/development"
             ]
