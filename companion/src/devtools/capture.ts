@@ -121,7 +121,7 @@ export class Capture {
     await this.sessions.cdp(tabId, 'Runtime.evaluate', { expression: VITALS_SCRIPT }).catch(() => {});
     const tree = await this.sessions.cdp(tabId, 'Page.getFrameTree').catch(() => undefined);
     const walk = (n: any) => { if (!n) return; st!.frames.set(n.frame.id, { id: n.frame.id, parentId: n.frame.parentId, url: n.frame.url, name: n.frame.name }); for (const c of n.childFrames ?? []) walk(c); };
-    walk(tree?.frameTree);
+    if (tree?.frameTree) { st.frames.clear(); walk(tree.frameTree); }
     return st;
   }
 
