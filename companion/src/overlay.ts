@@ -115,17 +115,16 @@ export class Overlay {
   enabled = true;
   private installed = new Set<number>();
   private contexts = new Map<number, number>();
+  private frames = new Map<number, string>();
   private lastBeat = new Map<number, number>();
   private readonly s: Sessions;
   constructor(s: Sessions) {
     this.s = s;
-    const forget = (tabId: number) => { this.installed.delete(tabId); this.contexts.delete(tabId); this.lastBeat.delete(tabId); };
+    const forget = (tabId: number) => { this.installed.delete(tabId); this.contexts.delete(tabId); this.frames.delete(tabId); this.lastBeat.delete(tabId); };
     s.on('detached', ({ tabId }) => forget(tabId));
-    s.on('disconnected', () => { this.installed.clear(); this.contexts.clear(); });
-    s.on('dev.closed', () => { this.installed.clear(); this.contexts.clear(); });
     s.on('cdp.event', ({ tabId, method, params, sessionId }) => {
       if (sessionId) return;
-      if (method === 'Runtime.executionContextCreated' && params?.context?.auxData?.name === OVERLAY_WORLD && params.context.auxData.frameId && !params.context.auxData.isDefault) {
+      if (method === 'Runtime.executionContextCreated' && params?.context?.auxData?.name === OVERLAY_WORLD && params.context.auxData.frameId === this.frames.get(tabId) && !params.context.auxData.isDefault) {
         // The on-new-document script re-creates the world after each navigation; track its fresh context id.
         this.contexts.set(tabId, params.context.id);
       }
@@ -134,10 +133,11 @@ export class Overlay {
   }
 
   private agent() { return currentClient()?.name ?? 'agent'; }
+  private enabledFor(tabId: number) { const connection = this.s.bridge?.connectionForTab(tabId); return connection ? connection.policy?.overlay !== false : this.enabled; }
 
   /** Install the world, the on-new-document script and (extension mode) the Stop binding once per attachment. */
   private async ensure(tabId: number): Promise<number | undefined> {
-    if (!this.enabled) return undefined;
+    if (!this.enabledFor(tabId)) return undefined;
     if (!this.installed.has(tabId)) {
       this.installed.add(tabId);
       await this.s.cdp(tabId, 'Runtime.enable');
@@ -148,6 +148,7 @@ export class Overlay {
     let ctx = this.contexts.get(tabId);
     if (ctx === undefined) {
       const { frameTree } = await this.s.cdp(tabId, 'Page.getFrameTree');
+      this.frames.set(tabId, frameTree.frame.id);
       const r = await this.s.cdp(tabId, 'Page.createIsolatedWorld', { frameId: frameTree.frame.id, worldName: OVERLAY_WORLD });
       ctx = r.executionContextId as number;
       this.contexts.set(tabId, ctx);
@@ -173,7 +174,7 @@ export class Overlay {
 
   /** Keep the frame lit while commands flow; at most one call per second per tab. */
   beat(tabId: number) {
-    if (!this.enabled) return;
+    if (!this.enabledFor(tabId)) return;
     const now = Date.now();
     if (now - (this.lastBeat.get(tabId) ?? 0) < BEAT_MS) return;
     this.lastBeat.set(tabId, now);
@@ -182,7 +183,7 @@ export class Overlay {
 
   /** Wait for travel before clicks/hover; drag keeps dispatching input while the cursor moves. */
   async cursor(tabId: number, x: number, y: number, kind: 'click' | 'hover' | 'drag') {
-    if (!this.enabled) return;
+    if (!this.enabledFor(tabId)) return;
     this.lastBeat.set(tabId, Date.now());
     const duration = await this.call(tabId, `cursor(${Math.round(x)},${Math.round(y)},${JSON.stringify(kind)},${JSON.stringify(this.agent())})`);
     // Leave two frames for animation startup, using a bounded timer even if a background tab stops painting.
@@ -191,7 +192,7 @@ export class Overlay {
 
   /** Outline the focused element while text is entered. */
   async typing(tabId: number) {
-    if (!this.enabled) return;
+    if (!this.enabledFor(tabId)) return;
     this.lastBeat.set(tabId, Date.now());
     await this.call(tabId, `typing(${JSON.stringify(this.agent())})`);
   }

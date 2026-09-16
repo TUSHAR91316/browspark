@@ -4,7 +4,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import type { ToolInfo } from '../../shared/protocol.ts';
+import type { ToolInfo, ToolPolicy } from '../../shared/protocol.ts';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Sessions } from './session.ts';
 import type { Page } from './page.ts';
@@ -49,16 +49,26 @@ export function setDisabledTools(names: string[]) {
   disabledTools.clear(); for (const n of names) disabledTools.add(n);
   try { if (!existsSync(join(homedir(), '.browspark'))) mkdirSync(join(homedir(), '.browspark'), { recursive: true }); writeFileSync(POLICY_FILE, JSON.stringify({ disabled: names })); } catch {}
 }
+export const combinedPolicy = (policies: ToolPolicy[]): ToolPolicy => ({
+  disabled: [...new Set(policies.flatMap(p => p.disabled))],
+  devMode: policies.some(p => p.devMode === 'never') ? 'never' : policies.some(p => p.devMode !== 'always') ? 'auto' : 'always',
+  overlay: policies.every(p => p.overlay !== false),
+});
 const disabledResult = (name: string): Result => ({ content: [{ type: 'text', text: `The ${name} tool is switched off in the Browspark dashboard. Tell the user to turn it on under the Tools page of the extension, then try again.` }], isError: true });
 
 export function tool<S extends z.ZodRawShape>(ctx: Ctx, name: string, description: string, schema: S, handler: (args: z.infer<z.ZodObject<S>>) => Promise<Result | string | object>) {
-  const wrapped = (args: any) => clientStore.run(ctx.client, () => (disabledTools.has(name) ? Promise.resolve(disabledResult(name)) : run(async () => {
+  const wrapped = (args: any) => clientStore.run(ctx.client, () => run(async () => {
+    const browserSelection = name === 'browser_fetch' || name === 'browser_tabs' && ['list', 'new'].includes(args.action);
+    const global = name === 'browser_status' || name === 'browser_session' || name === 'devtools_lighthouse' || name === 'browser_policy' && (args.default || args.action === 'status') || name === 'devtools_cdp' && args.target === 'browser' || name === 'devtools_recorder' && !['start', 'replay'].includes(args.action);
+    if (!global && !browserSelection && 'tabId' in schema) args = { ...args, tabId: await ctx.sessions.resolve(args.tabId, name === 'browser_navigate' && args.action === 'goto') };
+    const connection = global ? undefined : browserSelection ? ctx.sessions.bridge?.connections().find(c => c.id === args.browserId) : ctx.sessions.bridge?.connectionForTab(args.tabId);
+    if (connection?.policy ? connection.policy.disabled.includes(name) : disabledTools.has(name)) return disabledResult(name);
     if (firefoxUnsupportedTool(name, args)) {
       const id = await ctx.sessions.resolve(args.tabId);
       if (ctx.sessions.devOfTab(id)?.browserType === 'firefox') throw new Error(`${name}${args.action ? ` action:${args.action}` : ''} is unsupported in Firefox. See the Firefox support guide for available operations.`);
     }
     return handler(args);
-  })));
+  }));
   ctx.registry.set(name, (args) => wrapped(z.object(schema).parse(args)));
   if (!toolCatalog.some((t) => t.name === name)) toolCatalog.push({ name, description });
   ctx.server.registerTool(name, { description, inputSchema: schema }, wrapped as any);

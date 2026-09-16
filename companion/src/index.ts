@@ -8,12 +8,13 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { ListToolsRequestSchema, CallToolRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { Bridge } from './bridge.ts';
+import { Bridge, type BridgeConnection } from './bridge.ts';
 import { Sessions } from './session.ts';
 import { Page } from './page.ts';
 import { Capture } from './devtools/capture.ts';
 import { installLiveView } from './live.ts';
-import { type Ctx, type ClientState, clients, toolCatalog, setDisabledTools, devGate } from './context.ts';
+import { type Ctx, type ClientState, clients, toolCatalog, setDisabledTools, disabledTools, devGate, combinedPolicy } from './context.ts';
+import { version as VERSION } from '../../package.json';
 import type { ToolPolicy } from '../../shared/protocol.ts';
 import { registerBrowserTools } from './tools.ts';
 import { registerSessionTools } from './devtools/session.ts';
@@ -37,14 +38,19 @@ const httpOnly = process.argv.includes('--http-only');
 const upstreamUrl = `http://127.0.0.1:${port}/mcp`;
 const portTaken = (e: any) => e?.code === 'EADDRINUSE' || /in use|EADDRINUSE/i.test(String(e?.message));
 // false: another companion already owns the port (another agent launched it). We become a thin stdio relay to it, so
-// every client shares one companion, one extension, and one set of shared tabs; see relayTo() at the bottom.
+// every client shares one companion and its connected browsers; see relayTo() at the bottom.
 const owner = await bridge.listen().then(() => true, (e) => { if (!portTaken(e)) { console.error(`browspark: cannot listen on 127.0.0.1:${port}: ${e.message}`); process.exit(1); } return false; });
 
-const VERSION = '0.3.2';
-const sendCatalog = () => bridge.request('tools.catalog', { tools: toolCatalog, version: VERSION }).catch((e) => console.error(`browspark: could not send tool catalog: ${e.message}`));
-bridge.on('connected', () => { console.error('browspark: extension connected'); sendCatalog(); });
-bridge.on('tools.policy', (p: ToolPolicy) => { setDisabledTools(p.disabled ?? []); devGate.policy = p.devMode ?? 'auto'; page.overlay.enabled = p.overlay !== false; console.error(`browspark: ${p.disabled?.length ?? 0} tool(s) disabled from the dashboard; developer browser: ${devGate.policy}`); if (!p.haveCatalog) sendCatalog(); });
-bridge.on('disconnected', () => console.error('browspark: extension disconnected'));
+const sendCatalog = (browserId: string) => bridge.request('tools.catalog', { tools: toolCatalog, version: VERSION }, undefined, browserId).catch((e) => console.error(`browspark: could not send tool catalog: ${e.message}`));
+const updatePolicy = () => {
+  const connections = bridge.connections();
+  if (!connections.length) return; // Retain the last saved restrictions until an extension reconnects.
+  const p = combinedPolicy(connections.map(c => c.policy ?? { disabled: [...disabledTools], devMode: 'auto' }));
+  setDisabledTools(p.disabled); devGate.policy = p.devMode ?? 'auto'; page.overlay.enabled = p.overlay !== false;
+};
+bridge.on('connected', (c: BridgeConnection) => { updatePolicy(); console.error(`browspark: extension connected: ${c.id} (${c.browser})`); sendCatalog(c.id); });
+bridge.on('tools.policy', (p: ToolPolicy, c: BridgeConnection) => { updatePolicy(); if (!p.haveCatalog) sendCatalog(c.id); });
+bridge.on('disconnected', (c: BridgeConnection) => { updatePolicy(); console.error(`browspark: extension disconnected: ${c.id}`); });
 
 const sessions = new Sessions(bridge);
 const page = new Page(sessions), capture = new Capture(sessions);
