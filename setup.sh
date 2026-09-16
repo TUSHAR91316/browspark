@@ -46,7 +46,7 @@ else
 fi
 
 # 02 ───────────────────────────────────────────────────────────────────────────
-step 02 "Downloading the extension"
+step 02 "Downloading the Chromium extension"
 if [ "$TEST" = 1 ]; then
   dim "would download: $ZIP_URL"
   dim "would unzip to:  $EXT_DIR"
@@ -143,10 +143,13 @@ done
 
 # 06 ───────────────────────────────────────────────────────────────────────────
 step 06 "Load the extension"
+dim "Chromium browsers only. For Firefox, skip loading the extension and use the instructions below."
 say "  1. Open ${B}chrome://extensions${X}, switch on ${B}Developer mode${X}, click ${B}Load unpacked${X}"
 say "     and pick ${G}$EXT_DIR${X}"
 say "  2. Click the Browspark toolbar icon. The dashboard connects to the companion on its own;"
 say "     share the tabs your agent may use."
 say "  3. Ask your agent to run ${B}browser_status${X} to confirm it sees them."
+say '  Firefox: ask your agent to launch browser_session with browser:"firefox", userRequested:true.'
+dim "No Firefox extension is needed. Setup and tool coverage: https://docs.browspark.krishm.dev/reference/firefox"
 if [ "$TEST" = 1 ]; then printf '\n  %s●%s %sTest passed.%s Run without --test to apply.\n\n' "$G" "$X" "$B" "$X"
 else printf '\n  %s●%s %sYou are good to go.%s  %shttps://docs.browspark.krishm.dev%s\n\n' "$G" "$X" "$B" "$X" "$D" "$X"; fi
