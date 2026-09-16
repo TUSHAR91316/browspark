@@ -28,7 +28,10 @@ export function registerLighthouseTools(ctx: Ctx) {
     categories: z.array(z.enum(['performance', 'accessibility', 'best-practices', 'seo', 'pwa'])).optional(), timeoutMs: z.number().int().max(600_000).optional(), extraArgs: z.array(z.string()).optional(),
   }, async (a) => {
     const id = await sessions.resolve(a.tabId);
-    const dev = sessions.devOfTab(id) ?? sessions.runningDevs()[0];
+    const chromium = sessions.runningDevs().filter(d => d.browserType === 'chromium');
+    const target = sessions.devOfTab(id);
+    if (!target && chromium.length > 1) throw new Error('Lighthouse needs a developer tabId when several Chromium browsers are running. Call browser_tabs to choose one.');
+    const dev = target ?? chromium[0];
     if (!dev) throw new Error('Lighthouse needs developer mode. Launch it with browser_session {action:"launch"}.');
     if (dev.browserType === 'firefox') throw new Error('Lighthouse is unsupported in Firefox. The official Lighthouse CLI requires a Chromium browser.');
     if (!existsSync(CLI)) throw new Error(`Lighthouse is not installed at ${CLI}. Run: bun add lighthouse`);

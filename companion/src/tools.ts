@@ -16,64 +16,70 @@ export function registerBrowserTools(ctx: Ctx) {
   tool(ctx, 'browser_status', 'Connection status for both modes, how to get the extension connected, shared tabs across all windows, and open dialogs. Select a listed tabId to target a tab. Call this first if anything fails.', {}, async () => {
     const b = sessions.bridge;
     const lines = [`Companion bridge: ws://127.0.0.1:${b.port}`, `You are agent "${ctx.client.name}"${(await import('./context.ts')).clients.size > 1 ? `; other agents connected: ${[...(await import('./context.ts')).clients.values()].filter((c) => c !== ctx.client).map((c) => c.name).join(', ')}` : ''}.`];
-    if (b.connected) lines.push(`Extension mode: connected to ${b.browser ?? 'an unknown Chromium browser'} (extension v${b.extensionVersion}). Tabs below are that browser's tabs. The user can open DevTools (F12) on a shared tab to watch your console, network, debugger, and emulation work in the standard panels; that does not conflict with you.`);
+    if (b.connected) for (const c of b.connections()) lines.push(`Extension mode: connected to ${c.browser ?? 'an unknown Chromium browser'} (extension v${c.extensionVersion}, browserId ${c.id}). Use browserId to open a tab in this browser; existing tabs use tabId. The user can open DevTools (F12) on shared tabs.`);
     else lines.push('Extension mode: NOT CONNECTED (shared Chromium tabs only)', `  To use shared Chromium tabs, open the Browspark extension dashboard (click its toolbar icon). It connects to port ${b.port} on its own; if the dashboard shows a different port, set it under Settings. Then share tabs.`, `    port:  ${b.port}`);
     const devs = sessions.runningDevs();
     if (!devs.length) lines.push('Developer mode: not running. Only launch it (browser_session) if the user asks for a separate browser or a tool says an operation needs it; otherwise work in the user\'s shared tabs.');
-    for (const d of devs) lines.push(`Developer mode [${d.name}]: ${d.version}, pid ${d.pid}${d.headless ? ', headless' : ''}, profile ${d.profileDir}, downloads ${d.downloadDir}${d.proxy ? `, proxy ${d.proxy}` : ''}\n  ${d.browserType === 'firefox' ? 'WebDriver BiDi endpoint' : 'CDP endpoint for Playwright/Puppeteer connectOverCDP'}: ${d.wsEndpoint}${d.browserType === 'firefox' ? '\n  Firefox: use devtools_capabilities for supported operations; live screencast, raw CDP and Lighthouse are unavailable.' : `\n  Live view: http://127.0.0.1:${b.port}/live/<tabId>`}`);
+    for (const d of devs) lines.push(`Developer mode [${d.name}] (${d.browserName}): ${d.version}, pid ${d.pid}${d.headless ? ', headless' : ''}, profile ${d.profileDir}, downloads ${d.downloadDir}${d.proxy ? `, proxy ${d.proxy}` : ''}\n  ${d.browserType === 'firefox' ? 'WebDriver BiDi endpoint' : 'CDP endpoint for Playwright/Puppeteer connectOverCDP'}: ${d.wsEndpoint}${d.browserType === 'firefox' ? '\n  Firefox/Zen: use devtools_capabilities for supported operations; live screencast, raw CDP and Lighthouse are unavailable.' : `\n  Live view: http://127.0.0.1:${b.port}/live/<tabId>`}`);
     const tabs = (await sessions.tabs(true).catch(() => [])).filter((t) => t.shared);
     lines.push(tabs.length ? `Usable tabs (${tabs.length}) across all windows; select a listed tabId:` : 'Usable tabs: none — ask the user to share a tab from any window, or open one with browser_tabs {action:"new", url}.');
-    for (const t of tabs) lines.push(`  [${t.id}] ${t.mode}${owner(t.id)} ${isNewTab(t.url) ? '(new tab: navigate to a website) ' : t.unsupported ? `(unsupported: ${t.unsupported}) ` : ''}${t.title || '(untitled)'} — ${t.url}${t.windowId !== undefined ? ` (window ${t.windowId})` : ''}${t.attached ? ' (attached)' : ''}${capture.get(t.id)?.active ? ' (inspecting)' : ''}${page.dialogs.has(t.id) ? ` — DIALOG OPEN: ${page.dialogs.get(t.id)!.type} "${page.dialogs.get(t.id)!.message}"` : ''}`);
+    for (const t of tabs) lines.push(`  [${t.id}] ${t.mode}${owner(t.id)} (${t.browserName ?? t.mode}, ${t.browserId ? 'browserId ' + t.browserId : 'context ' + t.context}) ${isNewTab(t.url) ? '(new tab: navigate to a website) ' : t.unsupported ? `(unsupported: ${t.unsupported}) ` : ''}${t.title || '(untitled)'} — ${t.url}${t.windowId !== undefined ? ` (window ${t.windowId})` : ''}${t.attached ? ' (attached)' : ''}${capture.get(t.id)?.active ? ' (inspecting)' : ''}${page.dialogs.has(t.id) ? ` — DIALOG OPEN: ${page.dialogs.get(t.id)!.type} "${page.dialogs.get(t.id)!.message}"` : ''}`);
     return lines.join('\n');
   });
 
-  tool(ctx, 'browser_session', 'Developer-mode browsers: a separate Chromium or Firefox browser the companion launches, without the user\'s logins. Only launch one when the user explicitly asks for it (pass userRequested: true, never on your own initiative), or when a tool reported that an operation needs developer mode (heap snapshots, Lighthouse, raw CDP). For everyday work use the user\'s shared tabs. Each named context has its own persistent profile. Firefox uses WebDriver BiDi and has documented exceptions for advanced tools; shared-tab extension mode remains Chromium-only; several can run in parallel. launch/close/status take a context (default "default"); contexts lists saved profiles; delete removes a stopped context\'s profile.', {
+  tool(ctx, 'browser_session', 'Developer-mode browsers: launch Chrome, Brave, Firefox, or Zen without the user\'s logins. Only launch when the user explicitly asks (pass userRequested: true, never on your own initiative), or a tool reported it needs developer mode. For everyday work use shared tabs. Each named context has its own persistent profile; use different context names to run browsers simultaneously. chromium preserves automatic Chrome/Chromium discovery. Firefox and Zen use WebDriver BiDi with documented exceptions; extension sharing remains Chromium-only. launch/close take a context (default "default"); status lists running browsers; contexts lists saved profiles; delete removes a stopped profile.', {
     action: z.enum(['launch', 'status', 'close', 'contexts', 'delete']),
     context: z.string().optional().describe('Context name, e.g. "work" or "personal" (default "default")'), all: z.boolean().optional().describe('close: close every running context'),
     url: z.string().optional().describe('Initial URL for launch'),
     userRequested: z.boolean().optional().describe('launch: the user explicitly asked for a developer browser in their own words. Satisfies the "Only when needed" dashboard setting. Never set it on your own initiative.'),
     headless: z.boolean().optional().describe('Launch without a window; screenshots work in either browser, live view is Chromium-only'),
-    browser: z.enum(['chromium', 'firefox']).optional().describe('launch/delete: browser engine (default chromium for a new context). Firefox uses a separate profile and WebDriver BiDi.'),
-    chromePath: z.string().optional(), firefoxPath: z.string().optional().describe('Firefox, LibreWolf, or Zen executable; alternatively BROWSPARK_FIREFOX'), args: z.array(z.string()).optional().describe('Extra browser switches'),
+    browser: z.enum(['chromium', 'chrome', 'brave', 'firefox', 'zen']).optional().describe('launch/delete: browser brand (default chromium for a new context).'),
+    browserPath: z.string().optional().describe('Executable for the selected browser; overrides automatic discovery.'),
+    chromePath: z.string().optional().describe('Legacy executable override for Chromium browsers'), firefoxPath: z.string().optional().describe('Legacy executable override for Firefox browsers'), args: z.array(z.string()).optional().describe('Extra browser switches'),
     devtools: z.boolean().optional().describe('Chromium only: open DevTools for every tab (default true unless headless); Firefox rejects true'),
     proxy: z.string().optional().describe('Proxy server for this browser, e.g. "http://proxy:8080" or "socks5://127.0.0.1:1080"'),
     extensions: z.array(z.string()).optional().describe('Chromium only: unpacked extension directories to load'),
-    downloadDir: z.string().optional().describe('Where downloads land (default ~/.browspark/downloads/<context> for Chromium, ~/.browspark/downloads/firefox/<context> for Firefox)'),
-  }, async ({ action, context, all, url, userRequested, headless, browser, chromePath, firefoxPath, args, devtools, proxy, extensions, downloadDir }) => {
+    downloadDir: z.string().optional().describe('Where downloads land (default ~/.browspark/downloads/<browser>/<context>; legacy chromium omits the browser directory)'),
+  }, async ({ action, context, all, url, userRequested, headless, browser, browserPath, chromePath, firefoxPath, args, devtools, proxy, extensions, downloadDir }) => {
     const name = context ?? 'default';
     if (action === 'contexts') return sessions.listContexts();
     if (action === 'delete') { await sessions.deleteContext(name, browser); return `Deleted context "${name}" and its profile.`; }
-    if (action === 'status') { const devs = sessions.runningDevs(); return devs.length ? devs.map((d) => `[${d.name}] ${d.version}, pid ${d.pid}, port ${d.port}, ${d.listTabs().length} tab(s), profile ${d.profileDir}, ${d.browserType === 'firefox' ? 'BiDi' : 'CDP'} ${d.wsEndpoint}`).join('\n') : 'no developer browser running'; }
-    if (action === 'close') { const targets = all ? sessions.runningDevs() : [sessions.devFor(name)].filter((d) => d.running); if (!targets.length) return 'not running'; for (const d of targets) await d.close(); return `Closed ${targets.map((d) => d.name).join(', ')}.`; }
+    if (action === 'status') { const devs = sessions.runningDevs(); return devs.length ? devs.map((d) => `[${d.name}] ${d.browserName}: ${d.version}, pid ${d.pid}, port ${d.port}, ${d.listTabs().length} tab(s), profile ${d.profileDir}, ${d.browserType === 'firefox' ? 'BiDi' : 'CDP'} ${d.wsEndpoint}`).join('\n') : 'no developer browser running'; }
+    if (action === 'close') { const targets = [...sessions.devs.values()].filter(d => d.busy && (all || d.name === name)); if (!targets.length) return 'not running'; for (const d of targets) await d.close(); return `Closed ${targets.map((d) => d.name).join(', ')}.`; }
     if (sessions.bridge.connected) {
       const recent = Date.now() - devGate.lastNeededAt < 10 * 60_000;
       if (devGate.policy === 'never') throw new Error('The developer browser is disabled in the Browspark dashboard (Settings → Developer browser). Work in the user\'s shared tabs, or ask the user to change that setting.');
       if (devGate.policy === 'auto' && !recent && !userRequested) throw new Error('Not launching a developer browser: nothing so far needed one. Work in the user\'s shared tabs (or open a tab with browser_tabs). The developer browser is only for operations Chrome blocks for extensions (heap snapshots, Lighthouse, raw CDP); if such an operation fails with "unsupported", a launch is then allowed. If the user explicitly asked for a developer browser, retry with userRequested: true. The user can also set Settings → Developer browser to "Always".');
     }
-    const d = await sessions.launch(name, { url, headless, browser, chromePath, firefoxPath, args, devtools, proxy, extensions, downloadDir });
+    const d = await sessions.launch(name, { url, headless, browser, browserPath, chromePath, firefoxPath, args, devtools, proxy, extensions, downloadDir });
     const tabs = d.listTabs();
     return `Launched context "${name}": ${d.version} (pid ${d.pid}) on devtools port ${d.port}, profile ${d.profileDir}${d.browserType === 'chromium' && (devtools ?? !headless) ? ', DevTools opens on every tab' : ''}${proxy ? `, proxy ${proxy}` : ''}${d.loadedExtensions.length ? `, extensions: ${d.loadedExtensions.map((e) => e.id).join(', ')}` : ''}. ${d.browserType === 'firefox' ? 'WebDriver BiDi' : 'CDP'} endpoint: ${d.wsEndpoint}. Tabs: ${tabs.map((t) => `[${t.id}] ${t.url}`).join(', ')}`;
   });
 
-  tool(ctx, 'browser_tabs', 'List, open, close, or activate tabs across all windows. Select a listed tabId to target a shared tab. Without tabId, tools use the agent\'s own usable tab or the only usable tab; multiple shared tabs require an explicit choice. Open a new tab only when the task needs a separate page. Never launch a separate browser just to get a tab. Dev-mode tabs are always usable.', {
+  tool(ctx, 'browser_tabs', 'List, open, close, or activate tabs across all connected browsers and windows. tabId is unique across browsers. For new tabs, choose browserId for an extension browser or context for a developer browser when several are connected. Without tabId, page tools use the agent\'s own usable tab or the only usable tab. Open a new tab only when the task needs a separate page. Never launch a separate browser just to get a tab. Dev-mode tabs are always usable.', {
     action: z.enum(['list', 'new', 'close', 'activate']).default('list'),
     tabId: tabArg, url: z.string().optional().describe('URL for new'),
-    mode: z.enum(['extension', 'dev']).optional().describe('Where to open a new tab; default dev if running, else extension'), context: z.string().optional().describe('Developer context for new'),
+    mode: z.enum(['extension', 'dev']).optional().describe('Where to open a new tab; default extension if connected, otherwise dev if running'), context: z.string().min(1).optional().describe('Developer context for new/list'),
+    browserId: z.string().min(1).optional().describe('Extension browser ID from browser_status/browser_tabs for new/list'),
     onlyUsable: z.boolean().optional().describe('Default true. false lists every tab including unshared ones.'),
-  }, async ({ action, tabId, url, mode, context, onlyUsable }) => {
+  }, async ({ action, tabId, url, mode, context, browserId, onlyUsable }) => {
+    if (browserId && context) throw new Error('Choose browserId or context, not both.');
+    if ((browserId || context) && (action === 'close' || action === 'activate')) throw new Error('Use tabId for close/activate.');
     if (action === 'new') {
       // Open blank, arm the default policy, then navigate: the first request must already be intercepted.
-      const id = await sessions.newTab('about:blank', mode ?? (sessions.bridge.connected ? 'extension' : undefined), context);
+      const id = await sessions.newTab('about:blank', mode, context, true, browserId);
       if (defaultPolicy) await setPolicy(sessions, id, defaultPolicy);
       if (url && url !== 'about:blank') await page.navigate(id, 'goto', url);
       return `Opened tab ${id}${url ? ` at ${url}` : ''}${defaultPolicy ? ' (default domain policy applied)' : ''}`;
     }
     if (action === 'close') { const id = await tab(tabId); await sessions.closeTab(id); return `Closed tab ${id}`; }
     if (action === 'activate') { const id = await tab(tabId); await sessions.activate(id); return `Activated tab ${id}`; }
-    const tabs = await sessions.tabs(true);
+    if (browserId && !sessions.bridge.connections().some(c => c.id === browserId)) throw new Error(`Browser ${browserId} is not connected. Call browser_status for available browser IDs.`);
+    if (context && !sessions.devs.get(context)?.running) throw new Error(`Context "${context}" is not running.`);
+    const tabs = (await sessions.tabs(true)).filter(t => (!browserId || t.browserId === browserId) && (!context || t.context === context));
     const list = onlyUsable === false ? tabs : tabs.filter((t) => t.shared);
     if (!list.length) return onlyUsable === false ? 'No tabs.' : 'No usable tabs. Ask the user to share a tab in the extension dashboard, or launch the development browser.';
-    return list.map((t) => `[${t.id}] ${t.mode}${t.browser === 'firefox' ? ':firefox' : ''}${t.context ? ':' + t.context : ''}${owner(t.id)} ${t.shared ? 'shared' : 'not shared'}${isNewTab(t.url) ? ' (new tab: navigate to a website)' : t.unsupported ? ` (unsupported: ${t.unsupported})` : ''}${t.windowId !== undefined ? ` (window ${t.windowId})` : ''}${t.attached ? ' debugging' : ''} — ${t.title} — ${t.url}`).join('\n');
+    return list.map((t) => `[${t.id}] ${t.mode}${t.browser === 'firefox' ? ':firefox' : ''}${t.context ? ':' + t.context : ''}${owner(t.id)} ${t.shared ? 'shared' : 'not shared'} (${t.browserName ?? t.mode}${t.browserId ? ', browserId ' + t.browserId : ''})${isNewTab(t.url) ? ' (new tab: navigate to a website)' : t.unsupported ? ` (unsupported: ${t.unsupported})` : ''}${t.windowId !== undefined ? ` (window ${t.windowId})` : ''}${t.attached ? ' debugging' : ''} — ${t.title} — ${t.url}`).join('\n');
   });
 
   tool(ctx, 'browser_navigate', 'Navigate a tab: goto a URL, reload, back, or forward. Waits for the load event.', {
@@ -92,10 +98,10 @@ export function registerBrowserTools(ctx: Ctx) {
     tabId: tabArg, what: z.enum(['text', 'markdown', 'links', 'tables', 'html']).default('text'), ref: refArg.optional(),
   }, async ({ tabId, what, ref }) => page.read(await tab(tabId), what, ref));
 
-  tool(ctx, 'browser_fetch', 'Fetch a URL and return its main content as markdown (or text/html) without leaving a tab behind: opens a background agent tab, waits for load, reads, closes. Use for reading docs and articles.', {
-    url: z.string(), what: z.enum(['markdown', 'text', 'html']).default('markdown'), context: z.string().optional(), keepTab: z.boolean().optional(), timeoutMs: z.number().int().optional(),
-  }, async ({ url, what, context, keepTab, timeoutMs }) => {
-    const id = await sessions.newTab('about:blank', context ? 'dev' : sessions.bridge.connected ? 'extension' : undefined, context, false);
+  tool(ctx, 'browser_fetch', 'Fetch a URL and return its main content as markdown (or text/html): opens a background agent tab, waits for load, reads, closes. Choose browserId for an extension browser or context for a developer browser when several are connected. Use for reading docs and articles.', {
+    url: z.string(), what: z.enum(['markdown', 'text', 'html']).default('markdown'), context: z.string().min(1).optional(), browserId: z.string().min(1).optional(), keepTab: z.boolean().optional(), timeoutMs: z.number().int().optional(),
+  }, async ({ url, what, context, browserId, keepTab, timeoutMs }) => {
+    const id = await sessions.newTab('about:blank', undefined, context, false, browserId);
     try {
       if (defaultPolicy) await setPolicy(sessions, id, defaultPolicy);
       await page.navigate(id, 'goto', url, timeoutMs ?? 20_000);
@@ -125,7 +131,7 @@ export function registerBrowserTools(ctx: Ctx) {
     const id = await tab(tabId);
     const dev = sessions.devOfTab(id);
     if (dev?.browserType === 'firefox' && !dev.downloadsSupported) throw new Error('Download tracking is unsupported in this Firefox version; update Firefox.');
-    const list = async (): Promise<Download[]> => dev ? [...dev.downloads.values()] : await sessions.bridge.request<Download[]>('downloads.list');
+    const list = async (): Promise<Download[]> => dev ? [...dev.downloads.values()] : await sessions.bridge.request<Download[]>('downloads.list', { tabId: id });
     const fmt = (d: Download) => ({ url: d.url, filename: d.filename, path: d.path, state: d.state, receivedBytes: d.receivedBytes, totalBytes: d.totalBytes, startedAt: new Date(d.startedAt).toISOString() });
     if (action === 'list') return (await list()).filter((d) => !urlContains || d.url.includes(urlContains)).sort((a, b) => b.startedAt - a.startedAt).slice(0, 30).map(fmt);
     const t0 = Date.now(), limit = timeoutMs ?? 60_000;

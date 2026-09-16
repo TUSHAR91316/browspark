@@ -59,7 +59,8 @@ export function registerSessionTools(ctx: Ctx) {
     const mode = sessions.modeOf(id);
     const dev = sessions.devOfTab(id);
     if (dev?.browserType === 'firefox') return { mode, browser: dev.version, protocol: 'webdriver-bidi', tools: [...ctx.registry.keys()], domains: FIREFOX_DOMAINS, downloads: dev.downloadsSupported, unsupportedOperations: FIREFOX_LIMITATIONS };
-    const key = mode === 'dev' ? `dev:${sessions.devOfTab(id)?.version}` : `ext:${sessions.bridge.extensionVersion}`;
+    const connection = sessions.bridge.connectionForTab(id);
+    const key = mode === 'dev' ? `dev:${dev?.browserName}:${dev?.version}` : `ext:${connection?.id}:${connection?.browser}:${connection?.extensionVersion}`;
     if (refresh) capCache.delete(key);
     let caps = capCache.get(key);
     if (!caps) {
@@ -91,7 +92,7 @@ export function registerSessionTools(ctx: Ctx) {
   }, async ({ tabId, target, method, params, timeoutMs, context }) => {
     const running = sessions.runningDevs();
     if (!running.length) throw new Error('devtools_cdp requires developer mode. Launch it with browser_session {action:"launch"}.');
-    if (target === 'browser') { const d = context ? sessions.devs.get(context) : running.length === 1 ? running[0] : sessions.devs.get('default'); if (!d?.running) throw new Error(`Context ${context ?? 'default'} is not running; running: ${running.map((x) => x.name).join(', ')}`); if (d.browserType === 'firefox') throw new Error('Raw CDP is unsupported in Firefox; this browser uses WebDriver BiDi.'); return await d.browser(method, params, timeoutMs); }
+    if (target === 'browser') { if (!context && running.length > 1) throw new Error(`context is required; running: ${running.map(x => x.name).join(', ')}`); const d = context ? sessions.devs.get(context) : running[0]; if (!d?.running) throw new Error(`Context ${context} is not running; running: ${running.map((x) => x.name).join(', ')}`); if (d.browserType === 'firefox') throw new Error('Raw CDP is unsupported in Firefox/Zen; this browser uses WebDriver BiDi.'); return await d.browser(method, params, timeoutMs); }
     const id = await tab(tabId);
     const d = sessions.devOfTab(id);
     if (!d) throw new Error(`Tab ${id} is an extension-mode tab. devtools_cdp only runs against developer-mode tabs.`);
