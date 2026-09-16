@@ -21,9 +21,10 @@ or the compiled `dist/browspark` with the same flags.
 | Variable | Default | Purpose |
 |---|---|---|
 | `BROWSPARK_PORT` | `9223` | Same as `--port`. |
-| `BROWSPARK_CHROME` | auto-detected | Browser executable for developer mode. |
-| `BROWSPARK_PROFILE` | `~/.browspark/profile` | Profile directory of the `default` developer context. |
-| `BROWSPARK_PROFILES` | `~/.browspark/profiles` | Parent directory of named developer contexts. |
+| `BROWSPARK_CHROME` | auto-detected | Chromium executable for developer mode. |
+| `BROWSPARK_FIREFOX` | auto-detected | Firefox executable for `browser_session` with `browser: "firefox"`; `firefoxPath` overrides it. |
+| `BROWSPARK_PROFILE` | `~/.browspark/profile` | Profile directory of the `default` Chrome developer context. |
+| `BROWSPARK_PROFILES` | `~/.browspark/profiles` | Parent directory of named Chrome contexts; Firefox profiles live in its `.firefox/<context>` subdirectory. |
 | `BROWSPARK_ARTIFACTS` | `~/.browspark/artifacts` | Output directory for traces, profiles, snapshots, HAR, PDFs, reports and flows. |
 
 Recorder exports read flow parameters from environment variables named after the parameter in upper case (`{{email}}` → `EMAIL`).

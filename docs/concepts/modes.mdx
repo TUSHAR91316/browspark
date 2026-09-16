@@ -1,11 +1,11 @@
 ---
 title: "Extension mode and developer mode"
-description: "What each mode can do, what Chrome blocks for extensions, and how the companion picks between them."
+description: "Shared Chromium tabs, separate Chrome or Firefox sessions, and how the companion picks between them."
 ---
 
 ## Extension mode
 
-The extension attaches Chrome's debugger to a shared tab and forwards DevTools Protocol commands from the companion. The tab stays in your window with your cookies, logins and extensions. You decide which tabs are reachable from the dashboard's Tabs page.
+The extension works in Chromium-based browsers, including Chrome, Brave and Edge. It attaches Chrome's debugger to a shared tab and forwards DevTools Protocol commands from the companion. The tab stays in your window with your cookies, logins and extensions. You decide which tabs are reachable from the dashboard's Tabs page.
 
 What you get:
 
@@ -29,15 +29,17 @@ Lighthouse also needs developer mode because it drives its own tab through a deb
 
 ## Developer mode
 
-`browser_session {action: "launch"}` starts a separate Chrome with a persistent profile under `~/.browspark/profile` (or `~/.browspark/profiles/<context>` for a named context) and connects to it over the DevTools Protocol directly. Everything is available, DevTools opens on every tab by default so you can watch, and there is no yellow bar. Those tabs are always usable and appear in `browser_tabs` with mode `dev`.
+`browser_session {action: "launch", userRequested: true}` starts a separate Chrome with a persistent profile under `~/.browspark/profile` (or `~/.browspark/profiles/<context>` for a named context) and connects to it over the DevTools Protocol directly. Every Chrome domain is available, DevTools opens on every tab by default so you can watch, and there is no yellow bar. Those tabs are always usable and appear in `browser_tabs` with mode `dev`.
 
 It is a different browser: no logins, no history, and it does not share tabs with your own Chrome.
+
+Pass `browser: "firefox"` to launch a separate Firefox session through WebDriver BiDi. The tool names stay the same, but Chrome-specific operations such as raw CDP and Lighthouse are unavailable. Firefox does not use the shared-tab extension. See [Firefox support](/reference/firefox) for setup and coverage.
 
 ## Which one is used
 
 The agent works in your shared tabs unless a capability needs the developer browser. That rule is enforced in the companion, not just suggested in tool descriptions:
 
-- With the dashboard's Developer browser setting on **Only when needed** (the default), `browser_session launch` succeeds only if a tool reported a "needs developer mode" failure in the last ten minutes. Otherwise the launch is refused with a message telling the agent to use your tabs.
+- With the dashboard's Developer browser setting on **Only when needed** (the default), `browser_session launch` succeeds only if a tool reported a "needs developer mode" failure in the last ten minutes, or if the agent passes `userRequested: true` because you asked for a developer browser in your own words. Otherwise the launch is refused with a message telling the agent to use your tabs.
 - **Always** lets the agent launch whenever it wants.
 - **Never** refuses every launch and tells the agent to ask you to change the setting.
 
@@ -45,4 +47,4 @@ When no tab is usable at all, the correct move is to ask you to share one or to 
 
 ## Capability matrix
 
-The [capability matrix](/reference/capability-matrix) is generated with live, non-mutating CDP probes in both modes. `devtools_capabilities` preserves active emulation, recordings, and request interception. Domains that cannot be checked without changing browser state, such as Media, are marked **unprobed**, not unsupported. Regenerate the matrix with `bun run capabilities` after upgrading Chrome.
+The [capability matrix](/reference/capability-matrix) is generated with live, non-mutating CDP probes in both Chromium modes; it does not describe Firefox. `devtools_capabilities` preserves active emulation, recordings, and request interception. Domains that cannot be checked without changing browser state, such as Media, are marked **unprobed**, not unsupported. Regenerate the matrix with `bun run capabilities` after upgrading Chrome.

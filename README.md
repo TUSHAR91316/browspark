@@ -4,7 +4,7 @@
     <p>
         Give your AI agent a real browser.
         <br>
-        A local MCP server and Chrome extension for operating and debugging websites, with the full developer toolbox built in.
+        A local MCP server for shared Chromium tabs and separate Chrome or Firefox developer sessions.
     </p>
     <a href="https://browspark.krishm.dev/">Website</a>
     ·
@@ -17,7 +17,7 @@ Agent work stays in the background by default. Change **Settings → Work in bac
 > [!NOTE]
 > Browspark is in early release. If something breaks, please [open an issue](https://github.com/uncaughterrs/browspark/issues).
 
-Requires [Bun](https://bun.sh) and a Chromium-based browser (Chrome, Brave, Edge).
+Requires [Bun](https://bun.sh) and a Chromium-based browser (Chrome, Brave, Edge) or Firefox. The shared-tab extension is Chromium-only; Firefox uses a separate developer session.
 
 ### Option 1: one command
 
@@ -41,9 +41,11 @@ Codex, OpenCode, Cursor, Kilo and Antigravity are covered in the [connect guide]
 
 **3. Share tabs.** Open the extension dashboard; it connects to the companion on its own. Share the tabs the agent may use.
 
+**Using Firefox?** Register the companion in step 1, skip the extension, and ask your agent to launch Firefox: `browser_session {action: "launch", browser: "firefox", context: "firefox", userRequested: true}`. Use `firefoxPath` or `BROWSPARK_FIREFOX` for a custom executable. See [Firefox setup and tool coverage](https://docs.browspark.krishm.dev/reference/firefox) for limits and Firefox-based browsers.
+
 ## What it does
 - **Extension mode.** The agent drives tabs in your own browser, keeping your signed-in sessions. Only tabs you share are reachable, a soft cyan halo and a moving cursor show the agent at work, and a Stop button on the tab revokes access instantly.
-- **Developer mode.** The companion launches a separate Chrome with a persistent profile and talks CDP directly: every domain, raw commands, Lighthouse.
+- **Developer mode.** The companion launches a separate Chrome or Firefox with a persistent profile. Chrome provides every CDP domain and Lighthouse; Firefox uses the same tool names for supported BiDi operations and reports unsupported actions explicitly.
 - **Developer tools as first-class tools.** Console, Network, Sources, Debugger, Elements, Performance, CPU and memory profiling, storage, service workers, coverage, emulation, accessibility, security, Lighthouse and a recorder that exports Playwright tests.
 
 The full tool reference is at [docs.browspark.krishm.dev/tools](https://docs.browspark.krishm.dev/tools/overview).
@@ -77,7 +79,7 @@ The tools and the server are built on the [Model Context Protocol](https://model
 
 
 ### Chromium
-Everything Browspark does in the browser goes through the [Chrome DevTools Protocol](https://chromedevtools.github.io/devtools-protocol/) and the extension `debugger` API. The developer tools it exposes are the same ones the DevTools panels use.
+Chromium support uses the [Chrome DevTools Protocol](https://chromedevtools.github.io/devtools-protocol/) and the extension `debugger` API. The developer tools it exposes are the same ones the DevTools panels use. Firefox developer sessions use [WebDriver BiDi](https://firefox-source-docs.mozilla.org/remote/index.html).
 
 
 ### Supabase

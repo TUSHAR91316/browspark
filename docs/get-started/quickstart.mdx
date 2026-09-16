@@ -3,7 +3,7 @@ title: "Quickstart"
 description: "From zero to an agent driving a tab in about five minutes."
 ---
 
-<Info>You need [Bun](https://bun.sh) and a Chromium-based browser (Chrome, Brave, Edge, Chromium). Browspark is developed on macOS; the companion runs anywhere Bun does.</Info>
+<Info>You need [Bun](https://bun.sh) and either a Chromium-based browser for shared tabs or Firefox for a separate developer session. Browspark is developed on macOS; the companion runs anywhere Bun does. For Firefox, follow [Firefox setup](#firefox-setup) below.</Info>
 
 ## Option 1: one command
 
@@ -13,7 +13,7 @@ The setup script downloads the extension to `~/browspark-extension`, registers t
 curl -fsSL https://browspark.krishm.dev/setup.sh | bash
 ```
 
-Then continue from **Load the extension** below.
+For Chromium, continue from **Load the extension** below. Firefox users can skip loading the downloaded extension and continue with [Firefox setup](#firefox-setup).
 
 ## Option 2: by hand
 
@@ -49,7 +49,25 @@ Then continue from **Load the extension** below.
   </Step>
 </Steps>
 
+## Firefox setup
+
+Install Firefox and register the companion with your agent using the command above or [your client's configuration](/connect/agents). No Firefox extension is needed. Ask your agent to launch a Firefox developer session; the tool call is:
+
+```json
+{
+  "action": "launch",
+  "browser": "firefox",
+  "context": "firefox",
+  "userRequested": true,
+  "url": "https://example.com"
+}
+```
+
+Then use the returned tab ID with the usual browser tools. Firefox has a separate persistent profile; your existing Firefox tabs and logins are not shared. Set `firefoxPath` or `BROWSPARK_FIREFOX` for a custom executable. See [Firefox support](/reference/firefox) for Firefox-based browsers and unsupported operations.
+
 ## What you will see
+
+In Chromium extension mode:
 
 - A **"Browspark started debugging this browser"** bar on shared tabs while the agent is attached. It is Chromium's own notice for the debugger API and detaches after 30 seconds of inactivity. [How to hide it](/guides/troubleshooting#the-debugging-bar).
 - Tabs the agent opens are ordinary tabs in your window. They are shared automatically and become that agent's default target.

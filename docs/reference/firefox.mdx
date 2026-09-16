@@ -1,0 +1,61 @@
+---
+title: "Firefox support"
+description: "Launch Firefox developer sessions with the usual tools, and check where Firefox differs from Chromium."
+---
+
+Firefox support uses a separate developer browser controlled through WebDriver BiDi. The MCP tool names and tab IDs work the same way as other developer sessions. The shared-tab extension remains Chromium-only: this does not attach to your everyday Firefox tabs or reuse their logins.
+
+## Launch Firefox
+
+Install Firefox, [register the companion](/connect/agents), and ask your agent to open a Firefox developer session. It calls `browser_session` with:
+
+```json
+{
+  "action": "launch",
+  "browser": "firefox",
+  "context": "firefox",
+  "userRequested": true,
+  "url": "https://example.com"
+}
+```
+
+Use a returned tab ID with `browser_snapshot`, `browser_click`, `browser_read`, or another tool. When opening another tab, specify `mode: "dev"` and `context: "firefox"` to keep it in that browser.
+
+`firefoxPath` selects a Firefox executable, including a Firefox-based browser such as LibreWolf or Zen when its build enables WebDriver BiDi. You can also set `BROWSPARK_FIREFOX` in your MCP server's environment. Custom builds may disable remote automation or omit commands; an executable path does not guarantee the same capabilities in every fork.
+
+Profiles persist under `~/.browspark/profiles/.firefox/<context>` (or the `BROWSPARK_PROFILES` root). They are separate from Chromium profiles, including the `default` context. A context name can belong to only one running browser at a time. Use `browser: "firefox"` when deleting a stopped Firefox context.
+
+## Tool coverage
+
+Unsupported actions return an explicit error. They do not silently run in Chrome or substitute results from another browser.
+
+| Area | Firefox behavior |
+|---|---|
+| Tabs and navigation | Launch, list, open, close, activate, navigate, reload, back and forward. |
+| Page content | Snapshots and refs, text/markdown/HTML reading, extraction, waits, and JavaScript evaluation. |
+| Interaction | Mouse, keyboard, forms, selection, scrolling, file upload, and JavaScript dialogs. |
+| Output | Viewport, full-page and element screenshots; PDF printing. |
+| Downloads | Download tracking and saved file paths when the Firefox build supports BiDi download events. |
+| Console | Console messages and exceptions collected during a devtools session; evaluation and inspection of live objects returned by `devtools_evaluate` with `returnByValue:false`. Logged objects have searchable snapshot previews; Firefox does not provide live handles for those logged snapshots. |
+| Elements | Search, inspect and edit HTML/attributes by ref or selector; inline style edits and computed styles. Matched rules, box models, event listeners, forced pseudo states and DevTools overlays are unavailable. |
+| Network | Request/response logs, headers, status, timing, HAR, cache control, blocking, mocks, resource overrides, and domain policies. Response bodies depend on the browser's BiDi data-collection support. |
+| Storage | Cookies in the Firefox context; local/session storage, IndexedDB and Cache Storage through page APIs. |
+| Sources and workers | Frame/context listing and resource overrides; page-based service-worker list/update/unregister. Script inventories, source maps and worker debugging are unavailable. |
+| Page metrics | `devtools_performance` with `action: "vitals"` reports the metrics exposed by Firefox's page APIs. |
+| Raw CDP and Lighthouse | Unavailable. `devtools_cdp` and `devtools_lighthouse` require Chromium. |
+| Advanced Chrome DevTools | Chrome traces, V8 heap snapshots and CPU profiles, debugger breakpoints/stepping, precise JS/CSS coverage, and Chrome-specific emulation or browser issue reports are unavailable. |
+
+Network capture does not include WebSocket/SSE frames, TLS certificate details, remote IPs, or Chrome initiator stacks. Network throttling and service-worker bypass are unavailable. Replaying a request with a body requires its body to be supplied explicitly when the original was not captured.
+
+Literal multiline text in `browser_fill` or the `text` argument of `browser_key` is unavailable in Firefox; it returns an error before typing. Ordinary text and explicit keyboard actions use native browser input.
+
+The generated [CDP capability matrix](/reference/capability-matrix) describes Chromium only. `devtools_capabilities` reports the selected tab's backend and capabilities; a supported domain does not imply that every Chrome command in it is available.
+
+## Launch options
+
+- `headless: true` runs Firefox without a window. Use screenshots to inspect it; the Chrome live screencast is unavailable.
+- `proxy` accepts an HTTP or SOCKS proxy without embedded credentials.
+- `args` passes additional Firefox command-line switches.
+- `devtools: true` and unpacked `extensions` are unavailable on Firefox and return an error.
+
+Closing a session keeps its profile. The companion closes browsers it launched when it exits, as in [developer mode](/concepts/developer-browser).

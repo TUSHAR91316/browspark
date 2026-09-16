@@ -8,7 +8,7 @@ description: "Every install option in detail: source, packaged extension, compil
 | Requirement | Notes |
 |---|---|
 | Bun 1.x | Runtime, package manager, bundler and test runner. Nothing else is needed; there is no Node or npm step. |
-| Chromium-based browser | Chrome, Brave, Edge or Chromium for extension mode. Developer mode finds Chrome automatically or uses `BROWSPARK_CHROME`. |
+| A supported browser | Chrome, Brave, Edge or Chromium for extension mode. Developer mode launches Chrome or Firefox. Use `BROWSPARK_CHROME` or `BROWSPARK_FIREFOX` to select an executable. |
 | An MCP client | Claude Code, Codex, OpenCode, Cursor, Kilo, Antigravity, or anything that speaks MCP over stdio or Streamable HTTP. |
 
 ## One-command setup
@@ -20,6 +20,8 @@ curl -fsSL https://browspark.krishm.dev/setup.sh | bash
 ```
 
 `bash setup.sh --test` is a dry run: it prints every command and file it would write without touching anything. The script lives at [`setup.sh`](https://github.com/uncaughterrs/browspark/blob/main/setup.sh) in the repo.
+
+The downloaded extension is for Chromium. For Firefox, register the companion and use [a Firefox developer session](/reference/firefox); skip the extension-loading step.
 
 ## The companion
 
@@ -50,14 +52,17 @@ The binary has no dependencies and takes the same flags as the source entry poin
 |---|---|---|
 | `--port <n>` / `BROWSPARK_PORT` | `9223` | Bridge, HTTP and live-view port. Set the same port in the dashboard's Settings. |
 | `--http-only` | off | Do not open the stdio transport. Use when no client launches the companion and you only want the HTTP endpoint. |
-| `BROWSPARK_CHROME` | auto-detected | Browser executable for developer mode. |
-| `BROWSPARK_PROFILE` | `~/.browspark/profile` | Profile directory of the default developer context. |
-| `BROWSPARK_PROFILES` | `~/.browspark/profiles` | Parent directory for named developer contexts. |
+| `BROWSPARK_CHROME` | auto-detected | Chromium executable for developer mode. |
+| `BROWSPARK_FIREFOX` | auto-detected | Firefox executable for developer mode; overridden by `firefoxPath` on launch. |
+| `BROWSPARK_PROFILE` | `~/.browspark/profile` | Profile directory of the default Chrome developer context. |
+| `BROWSPARK_PROFILES` | `~/.browspark/profiles` | Parent directory for named Chrome contexts; Firefox profiles live in its `.firefox/<context>` subdirectory. |
 | `BROWSPARK_ARTIFACTS` | `~/.browspark/artifacts` | Where traces, profiles, snapshots, HAR files, PDFs and reports are written. |
 
 The full list is in the [CLI and environment reference](/reference/cli-and-environment).
 
 ## The extension
+
+The extension supports Chromium-based browsers. Firefox support uses the companion directly through WebDriver BiDi and does not require an extension. See [Firefox setup and coverage](/reference/firefox).
 
 <Tabs>
   <Tab title="Release zip">

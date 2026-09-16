@@ -1,9 +1,9 @@
 ---
 title: "Developer browser"
-description: "Named contexts, persistent profiles, proxies, extensions, headless runs, live view and the CDP endpoint."
+description: "Named Chrome and Firefox contexts, persistent profiles, launch options, and browser-specific features."
 ---
 
-The developer browser is a Chrome the companion launches and controls directly. It exists for capabilities Chrome withholds from extensions; see [Modes](/concepts/modes) for when it is allowed to start.
+The developer browser is a separate Chrome or Firefox the companion launches and controls directly. Chrome exposes capabilities withheld from extensions; Firefox uses WebDriver BiDi. See [Modes](/concepts/modes) for when a launch is allowed and [Firefox support](/reference/firefox) for its coverage and limits.
 
 ## Contexts
 
@@ -11,13 +11,13 @@ Every developer browser is a **context** with a name. `browser_session` actions:
 
 | Action | Effect |
 |---|---|
-| `launch` | Start the context (default name `default`). Options: `url`, `headless`, `devtools`, `proxy`, `extensions`, `args`, `chromePath`, `downloadDir`. |
+| `launch` | Start the context (default name `default`). Choose `browser: "chromium"` (default) or `"firefox"`. Options: `url`, `headless`, `devtools`, `proxy`, `extensions`, `args`, `chromePath`, `firefoxPath`, `downloadDir`; some options are Chrome-only. |
 | `status` | Version, pid, port, tab count, profile and download directories for every running context. |
 | `close` | Stop one context, or all with `all: true`. Profiles are kept. |
 | `contexts` | List saved profiles, running or not. |
 | `delete` | Remove a stopped context's profile directory. |
 
-Contexts run in parallel and are independent browsers: separate cookies, storage, extensions and windows. Use them for "work" versus "personal" logins, for a clean profile next to a populated one, or to run several scrapers behind different proxies at the same time. Tab ids are unique across contexts, so `browser_tabs` shows all of them in one list with their context name.
+Contexts run in parallel and are independent browsers: separate cookies, storage and windows. Use them for "work" versus "personal" logins, for a clean profile next to a populated one, or to run several scrapers behind different proxies at the same time. Tab ids are unique across contexts, so `browser_tabs` shows all of them in one list with their context name. A name can belong to only one running browser at a time.
 
 ## Profiles
 
@@ -25,24 +25,26 @@ Profiles persist between launches:
 
 | Context | Directory |
 |---|---|
-| `default` | `~/.browspark/profile` (override with `BROWSPARK_PROFILE`) |
-| any other name | `~/.browspark/profiles/<name>` (parent overridable with `BROWSPARK_PROFILES`) |
+| Chrome `default` | `~/.browspark/profile` (override with `BROWSPARK_PROFILE`) |
+| Chrome, any other name | `~/.browspark/profiles/<name>` (parent overridable with `BROWSPARK_PROFILES`) |
+| Firefox, any name | `~/.browspark/profiles/.firefox/<name>` (under `BROWSPARK_PROFILES` when set) |
 
-Log in once and the session is there next time. `delete` wipes it.
+Log in once and the session is there next time. `delete` wipes it; pass `browser: "firefox"` to delete a Firefox profile.
 
 ## Launch options
 
-- **`headless: true`** runs without a window. Watch and control it through the [live view](#live-view).
-- **`devtools`** opens Chrome DevTools on every tab (default on unless headless) so you can follow the agent in the standard panels.
+- **`headless: true`** runs without a window. Chrome supports the [live view](#live-view); use screenshots on Firefox.
+- **`devtools`** opens Chrome DevTools on every tab (default on unless headless) so you can follow the agent in the standard panels. Firefox rejects `devtools: true`.
 - **`proxy`** takes `http://host:port` or `socks5://host:port` and applies to the whole context.
-- **`extensions`** loads unpacked extension directories. They are loaded through the protocol after launch, which is what current Chrome versions require.
-- **`args`** appends raw Chrome switches.
+- **`extensions`** loads unpacked extension directories in Chrome. They are loaded through the protocol after launch, which is what current Chrome versions require. Firefox rejects this option.
+- **`args`** appends command-line switches for the selected browser.
 - **`chromePath`** or `BROWSPARK_CHROME` picks the executable when auto-detection finds the wrong browser.
-- **`downloadDir`** overrides `~/.browspark/downloads/<context>`; `browser_download` reports files landing there.
+- **`firefoxPath`** or `BROWSPARK_FIREFOX` picks the Firefox executable.
+- **`downloadDir`** selects the browser's download directory; Chrome defaults to `~/.browspark/downloads/<context>`. See [Firefox coverage](/reference/firefox) for browser differences.
 
 ## Live view
 
-Every running context prints a live-view URL in `browser_status`:
+Running Chrome contexts print a live-view URL in `browser_status`:
 
 ```text
 http://127.0.0.1:9223/live/<tabId>
@@ -52,13 +54,15 @@ Open it in any browser to see a JPEG screencast of that tab with click-through m
 
 ## CDP endpoint
 
-`browser_status` and the `launch` result also print the browser's WebSocket endpoint. Playwright and Puppeteer can attach to it:
+For Chrome, `browser_status` and the `launch` result also print the browser's CDP WebSocket endpoint. Playwright and Puppeteer can attach to it:
 
 ```ts
 const browser = await chromium.connectOverCDP('ws://127.0.0.1:PORT/devtools/browser/…');
 ```
 
 Your script and the agent then share the same browser and tabs.
+
+Firefox's endpoint speaks WebDriver BiDi and cannot be used with `connectOverCDP`.
 
 ## Cleanup
 
