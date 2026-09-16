@@ -142,14 +142,17 @@ for agent in $CHOSEN; do
 done
 
 # 06 ───────────────────────────────────────────────────────────────────────────
-step 06 "Load the extension"
-dim "Chromium browsers only. For Firefox, skip loading the extension and use the instructions below."
-say "  1. Open ${B}chrome://extensions${X}, switch on ${B}Developer mode${X}, click ${B}Load unpacked${X}"
-say "     and pick ${G}$EXT_DIR${X}"
+step 06 "Connect your browsers"
+dim "Chrome and Brave use the extension. Firefox and Zen use separate developer sessions."
+say "  1. Open ${B}chrome://extensions${X} or ${B}brave://extensions${X}, switch on ${B}Developer mode${X},"
+say "     click ${B}Load unpacked${X} and pick ${G}$EXT_DIR${X}. Repeat for each browser profile."
 say "  2. Click the Browspark toolbar icon. The dashboard connects to the companion on its own;"
-say "     share the tabs your agent may use."
-say "  3. Ask your agent to run ${B}browser_status${X} to confirm it sees them."
-say '  Firefox: ask your agent to launch browser_session with browser:"firefox", userRequested:true.'
-dim "No Firefox extension is needed. Setup and tool coverage: https://docs.browspark.krishm.dev/reference/firefox"
+say "     share the tabs your agent may use in each profile. All profiles use the same companion."
+say "  3. Ask your agent to run ${B}browser_status${X}. Use the displayed browserId to choose where"
+say "     new extension tabs open, or tabId to work in an existing tab."
+say '  Firefox / Zen: ask your agent to launch browser_session with browser:"firefox" or "zen",'
+say '  a named context, and userRequested:true. No extension is needed for these sessions.'
+dim "Multiple browsers: https://docs.browspark.krishm.dev/reference/multiple-browsers"
+dim "Firefox / Zen coverage: https://docs.browspark.krishm.dev/reference/firefox"
 if [ "$TEST" = 1 ]; then printf '\n  %s●%s %sTest passed.%s Run without --test to apply.\n\n' "$G" "$X" "$B" "$X"
 else printf '\n  %s●%s %sYou are good to go.%s  %shttps://docs.browspark.krishm.dev%s\n\n' "$G" "$X" "$B" "$X" "$D" "$X"; fi

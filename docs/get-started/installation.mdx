@@ -8,7 +8,7 @@ description: "Every install option in detail: source, packaged extension, compil
 | Requirement | Notes |
 |---|---|
 | Bun 1.x | Runtime, package manager, bundler and test runner. Nothing else is needed; there is no Node or npm step. |
-| A supported browser | Chrome, Brave, Edge or Chromium for extension mode. Developer mode launches Chrome or Firefox. Use `BROWSPARK_CHROME` or `BROWSPARK_FIREFOX` to select an executable. |
+| A supported browser | Chrome, Brave, Edge or Chromium for extension mode. Developer mode supports Chrome, Brave, Firefox and Zen. Use `browserPath` on launch to select an executable. |
 | An MCP client | Claude Code, Codex, OpenCode, Cursor, Kilo, Antigravity, or anything that speaks MCP over stdio or Streamable HTTP. |
 
 ## One-command setup
@@ -21,7 +21,7 @@ curl -fsSL https://browspark.krishm.dev/setup.sh | bash
 
 `bash setup.sh --test` is a dry run: it prints every command and file it would write without touching anything. The script lives at [`setup.sh`](https://github.com/uncaughterrs/browspark/blob/main/setup.sh) in the repo.
 
-The downloaded extension is for Chromium. For Firefox, register the companion and use [a Firefox developer session](/reference/firefox); skip the extension-loading step.
+The downloaded extension is for Chromium and can connect from several browser profiles at once. For Firefox or Zen, register the companion and use [a separate developer session](/reference/firefox); skip the extension-loading step.
 
 ## The companion
 
@@ -33,7 +33,7 @@ bunx browspark-mcp@latest
 
 From a clone of the repo, `bun companion/src/index.ts` runs the same code from source.
 
-Started by an MCP client it speaks MCP over stdio. On every start it also opens `127.0.0.1:9223` for the extension's WebSocket bridge, the [HTTP MCP endpoint](/connect/http-endpoint) and the [live view](/concepts/developer-browser#live-view). If that port is already taken by another companion, the new process becomes a relay to the existing one instead of failing. See [Multiple agents](/connect/multiple-agents).
+Started by an MCP client it speaks MCP over stdio. On every start it also opens `127.0.0.1:9223` for every extension's WebSocket connection, the [HTTP MCP endpoint](/connect/http-endpoint) and the [live view](/concepts/developer-browser#live-view). Chrome and Brave can connect to this same port simultaneously. If another companion already owns the port, the new process becomes a relay to it instead of failing. See [Multiple agents](/connect/multiple-agents) and [using multiple browsers](/reference/multiple-browsers).
 
 ### Single-file build
 
@@ -52,27 +52,29 @@ The binary has no dependencies and takes the same flags as the source entry poin
 |---|---|---|
 | `--port <n>` / `BROWSPARK_PORT` | `9223` | Bridge, HTTP and live-view port. Set the same port in the dashboard's Settings. |
 | `--http-only` | off | Do not open the stdio transport. Use when no client launches the companion and you only want the HTTP endpoint. |
-| `BROWSPARK_CHROME` | auto-detected | Chromium executable for developer mode. |
-| `BROWSPARK_FIREFOX` | auto-detected | Firefox executable for developer mode; overridden by `firefoxPath` on launch. |
+| `BROWSPARK_CHROME` | auto-detected | Executable for `browser: "chrome"` or `"chromium"`. |
+| `BROWSPARK_BRAVE` | auto-detected | Brave executable for `browser: "brave"`. |
+| `BROWSPARK_FIREFOX` | auto-detected | Firefox executable for `browser: "firefox"`. |
+| `BROWSPARK_ZEN` | auto-detected | Zen executable for `browser: "zen"`. |
 | `BROWSPARK_PROFILE` | `~/.browspark/profile` | Profile directory of the default Chrome developer context. |
-| `BROWSPARK_PROFILES` | `~/.browspark/profiles` | Parent directory for named Chrome contexts; Firefox profiles live in its `.firefox/<context>` subdirectory. |
+| `BROWSPARK_PROFILES` | `~/.browspark/profiles` | Parent directory for named Chrome profiles and the `.brave/<context>`, `.firefox/<context>` and `.zen/<context>` profiles. |
 | `BROWSPARK_ARTIFACTS` | `~/.browspark/artifacts` | Where traces, profiles, snapshots, HAR files, PDFs and reports are written. |
 
-The full list is in the [CLI and environment reference](/reference/cli-and-environment).
+`browserPath` overrides executable detection for the selected browser. Existing `chromePath` and `firefoxPath` launch options remain supported. The full list is in the [CLI and environment reference](/reference/cli-and-environment).
 
 ## The extension
 
-The extension supports Chromium-based browsers. Firefox support uses the companion directly through WebDriver BiDi and does not require an extension. See [Firefox setup and coverage](/reference/firefox).
+The extension supports Chromium-based browsers. Firefox and Zen use the companion directly through WebDriver BiDi and do not require an extension. See [Firefox and Zen setup and coverage](/reference/firefox).
 
 <Tabs>
   <Tab title="Release zip">
-    Download `browspark-extension.zip` from the [latest release](https://github.com/uncaughterrs/browspark/releases/latest), unzip it, then `chrome://extensions` → **Developer mode** → **Load unpacked** → the unzipped folder. This is what the setup script does, into `~/browspark-extension`.
+    Download `browspark-extension.zip` from the [latest release](https://github.com/uncaughterrs/browspark/releases/latest), unzip it, then `chrome://extensions` (Chrome) or `brave://extensions` (Brave) → **Developer mode** → **Load unpacked** → the unzipped folder. The setup script downloads and unzips it into `~/browspark-extension`; load it in each browser profile you want to connect.
   </Tab>
   <Tab title="Unpacked from source">
     ```bash
     bun run build
     ```
-    Then `chrome://extensions` → **Developer mode** → **Load unpacked** → the `extension/` folder. Reload the extension after every `bun run build`.
+    Then `chrome://extensions` (Chrome) or `brave://extensions` (Brave) → **Developer mode** → **Load unpacked** → the `extension/` folder. Reload the extension in each profile after every `bun run build`.
   </Tab>
   <Tab title="Packaged zip">
     ```bash
@@ -85,9 +87,7 @@ The extension supports Chromium-based browsers. Firefox support uses the compani
 
 The extension asks for five permissions: `debugger` (drive tabs), `tabs` (list and open them), `storage` (settings and the shared list), `alarms` (idle detach timer) and `downloads` (report downloads). It has no host permissions and injects nothing into pages on its own.
 
-<Warning>
-Only one browser profile should hold the extension at a time. If you move it from Chrome to Brave, remove it from Chrome first. Both would otherwise connect to the same companion and the agent would see tabs from whichever connected last.
-</Warning>
+Load the extension in every Chromium browser profile you want to connect. Chrome, Brave and multiple profiles can stay connected together. Each dashboard controls sharing for its own profile; connecting another browser does not replace an existing connection. `browser_status` and `browser_tabs` show the `browserId` to select when opening tabs. See [using multiple browsers](/reference/multiple-browsers).
 
 ## Connecting the extension
 
@@ -106,4 +106,4 @@ bun install
 bun run build
 ```
 
-Then reload the extension on `chrome://extensions`. The dashboard shows a banner when the extension files on disk are newer than the running service worker, and it shows the companion's version next to the connection status so you can tell when the two are out of step.
+Then reload the extension in every connected browser profile (`chrome://extensions` in Chrome, `brave://extensions` in Brave). The dashboard shows a banner when the extension files on disk are newer than the running service worker, and it shows the companion's version next to the connection status so you can tell when the two are out of step.

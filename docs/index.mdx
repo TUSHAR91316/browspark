@@ -1,9 +1,9 @@
 ---
 title: "Introduction"
-description: "Browspark lets AI agents operate and debug websites in your own Chrome, with the user in control of what is shared."
+description: "One local companion for Chrome, Brave, Firefox and Zen, with control over the tabs you share."
 ---
 
-Browspark is a local [Model Context Protocol](https://modelcontextprotocol.io) server plus a Chrome extension. Any MCP client, such as Claude Code, Codex, OpenCode, Cursor, Kilo or Antigravity, gets a set of `browser_*` and `devtools_*` tools that work on the tabs you share from the extension's dashboard. Nothing leaves your machine: the companion listens on `127.0.0.1` only.
+Browspark is a local [Model Context Protocol](https://modelcontextprotocol.io) server with 43 `browser_*` and `devtools_*` tools. Any MCP client, such as Claude Code, Codex, OpenCode, Cursor, Kilo or Antigravity, can use shared tabs in Chrome and Brave or separate Chrome, Brave, Firefox and Zen developer sessions. Multiple browsers can run together through one companion, which listens on `127.0.0.1` only.
 
 <img src="/images/dashboard-overview-dark.png" alt="The Browspark dashboard, dark theme" />
 
@@ -28,16 +28,16 @@ Browspark is a local [Model Context Protocol](https://modelcontextprotocol.io) s
 
 | Mode | What it is | When it is used |
 |---|---|---|
-| **Extension mode** | Tabs in your own Chrome, driven through the extension's debugger permission. Only tabs you share are reachable. | Everyday work. Keeps your sessions and cookies, stays in your current window. |
-| **Developer mode** | A separate Chrome the companion launches with its own persistent profile, talked to over the DevTools Protocol directly. | Only for things Chrome blocks for extensions: heap snapshots, Lighthouse, raw protocol commands. |
+| **Extension mode** | Shared tabs in your own Chrome, Brave or another supported Chromium browser. Each profile has its own dashboard and sharing controls. | Everyday work with your existing sessions and cookies. Work in background is on by default. |
+| **Developer mode** | Separate Chrome, Brave, Firefox or Zen sessions with persistent profiles and named contexts. | Explicitly requested browser sessions, cross-browser checks, or capabilities Chromium blocks for extensions. |
 
-The dashboard decides whether the agent may open a developer browser at all. See [Modes](/concepts/modes).
+Firefox and Zen keep the same tool names with [documented exceptions](/reference/firefox), including raw CDP, Lighthouse and Chrome profiling. Connected dashboards control whether developer browsers may launch. See [Modes](/concepts/modes) and [Using multiple browsers](/reference/multiple-browsers).
 
 ## Where to go next
 
 <Steps>
   <Step title="Install">
-    [Install the companion and load the extension](/get-started/installation). One command and one Chrome dialog.
+    [Install the companion](/get-started/installation), then load the extension in each Chromium profile or launch a Firefox or Zen developer session.
   </Step>
   <Step title="Connect your agent">
     [Add Browspark to your MCP client](/connect/agents), or use the [HTTP endpoint](/connect/http-endpoint) for clients that take a URL.

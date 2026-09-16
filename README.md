@@ -4,7 +4,7 @@
     <p>
         Give your AI agent a real browser.
         <br>
-        A local MCP server for shared Chromium tabs and separate Chrome or Firefox developer sessions.
+        One local MCP server for Chrome, Brave, Firefox and Zen, running side by side.
     </p>
     <a href="https://browspark.krishm.dev/">Website</a>
     ·
@@ -17,7 +17,7 @@ Agent work stays in the background by default. Change **Settings → Work in bac
 > [!NOTE]
 > Browspark is in early release. If something breaks, please [open an issue](https://github.com/uncaughterrs/browspark/issues).
 
-Requires [Bun](https://bun.sh) and a Chromium-based browser (Chrome, Brave, Edge) or Firefox. The shared-tab extension is Chromium-only; Firefox uses a separate developer session.
+Requires [Bun](https://bun.sh) and a supported browser. Chrome and Brave can share your existing tabs through the extension; Firefox and Zen use separate developer sessions.
 
 ### Option 1: one command
 
@@ -37,15 +37,15 @@ claude mcp add browspark -- bunx browspark-mcp@latest
 
 Codex, OpenCode, Cursor, Kilo and Antigravity are covered in the [connect guide](https://docs.browspark.krishm.dev/connect/agents).
 
-**2. Get the extension.** Download `browspark-extension.zip` from the [latest release](https://github.com/uncaughterrs/browspark/releases/latest) and unzip it, or clone this repo and run `bun install && bun run build` to use the `extension/` folder. Then open `chrome://extensions`, turn on Developer mode, choose **Load unpacked** and select that folder.
+**2. Get the extension.** Download `browspark-extension.zip` from the [latest release](https://github.com/uncaughterrs/browspark/releases/latest) and unzip it, or clone this repo and run `bun install && bun run build` to use the `extension/` folder. Open `chrome://extensions` in Chrome or `brave://extensions` in Brave, turn on Developer mode, choose **Load unpacked** and select that folder. Repeat in each browser profile you want to connect; they can all use the same companion.
 
-**3. Share tabs.** Open the extension dashboard; it connects to the companion on its own. Share the tabs the agent may use.
+**3. Share tabs.** Open each extension dashboard and share the tabs the agent may use. Ask the agent to call `browser_status` to see every connected browser, then select a listed `tabId` or use its `browserId` when opening a new tab. Sharing permissions stay separate in each browser profile.
 
-**Using Firefox?** Register the companion in step 1, skip the extension, and ask your agent to launch Firefox: `browser_session {action: "launch", browser: "firefox", context: "firefox", userRequested: true}`. Use `firefoxPath` or `BROWSPARK_FIREFOX` for a custom executable. See [Firefox setup and tool coverage](https://docs.browspark.krishm.dev/reference/firefox) for limits and Firefox-based browsers.
+**Using Firefox or Zen?** Register the companion in step 1, skip the extension, and ask your agent to launch a developer session: `browser_session {action: "launch", browser: "zen", context: "zen-work", userRequested: true}`. Use `browser: "firefox"` for Firefox. `browserPath` selects a custom executable. See [Firefox and Zen coverage](https://docs.browspark.krishm.dev/reference/firefox) and [using multiple browsers](https://docs.browspark.krishm.dev/reference/multiple-browsers).
 
 ## What it does
-- **Extension mode.** The agent drives tabs in your own browser, keeping your signed-in sessions. Only tabs you share are reachable, a soft cyan halo and a moving cursor show the agent at work, and a Stop button on the tab revokes access instantly.
-- **Developer mode.** The companion launches a separate Chrome or Firefox with a persistent profile. Chrome provides every CDP domain and Lighthouse; Firefox uses the same tool names for supported BiDi operations and reports unsupported actions explicitly.
+- **Extension mode.** The agent drives shared tabs in Chrome, Brave and other Chromium browsers at the same time, keeping your signed-in sessions. Each browser enforces its own sharing permissions; a soft cyan halo, moving cursor and Stop button show and control the agent's work.
+- **Developer mode.** Launch separate Chrome, Brave, Firefox or Zen contexts with persistent profiles. Chromium browsers provide CDP and Lighthouse; Firefox and Zen use the same tool names for supported BiDi operations and report unsupported actions explicitly.
 - **Developer tools as first-class tools.** Console, Network, Sources, Debugger, Elements, Performance, CPU and memory profiling, storage, service workers, coverage, emulation, accessibility, security, Lighthouse and a recorder that exports Playwright tests.
 
 The full tool reference is at [docs.browspark.krishm.dev/tools](https://docs.browspark.krishm.dev/tools/overview).
@@ -57,11 +57,17 @@ The full tool reference is at [docs.browspark.krishm.dev/tools](https://docs.bro
 bun install
 bun run build            # extension bundles → extension/dist/
 bun run typecheck
-bun test                 # bridge unit tests
-bun run test:e2e         # launches throwaway Chromes and runs the acceptance scenarios
+bun run --cwd frontend build # build landing page before its smoke tests
+bun test                 # unit, bridge and landing-page tests; no browsers
+bun run docs:tools       # schema-validated tool reference
+bun run test:e2e         # launches throwaway Chromium browsers
+bun run test:firefox     # Firefox acceptance scenarios
+bun run test:multi-browser # Chrome, Brave, Firefox and Zen together
 bun run package          # dist/browspark-extension.zip
 cd docs && bunx mint dev # preview the docs site
 ```
+
+Install the browsers needed for each acceptance suite; the [development guide](https://docs.browspark.krishm.dev/reference/development) lists executable overrides. Run browser suites one at a time.
 
 Layout: `companion/` (MCP server, transports, devtools modules), `extension/` (MV3 dashboard and worker), `shared/` (wire protocol), `docs/` (Mintlify site), `frontend/` (landing page), `test-apps/` (deterministic pages for tests).
 
@@ -79,7 +85,7 @@ The tools and the server are built on the [Model Context Protocol](https://model
 
 
 ### Chromium
-Chromium support uses the [Chrome DevTools Protocol](https://chromedevtools.github.io/devtools-protocol/) and the extension `debugger` API. The developer tools it exposes are the same ones the DevTools panels use. Firefox developer sessions use [WebDriver BiDi](https://firefox-source-docs.mozilla.org/remote/index.html).
+Chromium support uses the [Chrome DevTools Protocol](https://chromedevtools.github.io/devtools-protocol/) and the extension `debugger` API. The developer tools it exposes are the same ones the DevTools panels use. Firefox and Zen developer sessions use [WebDriver BiDi](https://firefox-source-docs.mozilla.org/remote/index.html).
 
 
 ### Supabase

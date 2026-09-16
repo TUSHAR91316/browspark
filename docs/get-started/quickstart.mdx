@@ -3,7 +3,7 @@ title: "Quickstart"
 description: "From zero to an agent driving a tab in about five minutes."
 ---
 
-<Info>You need [Bun](https://bun.sh) and either a Chromium-based browser for shared tabs or Firefox for a separate developer session. Browspark is developed on macOS; the companion runs anywhere Bun does. For Firefox, follow [Firefox setup](#firefox-setup) below.</Info>
+<Info>You need [Bun](https://bun.sh) and a supported browser. Chrome and Brave can share existing tabs simultaneously; Firefox and Zen use separate developer sessions. Browspark is developed on macOS; the companion runs anywhere Bun does. For Firefox or Zen, follow [Firefox and Zen setup](#firefox-and-zen-setup) below.</Info>
 
 ## Option 1: one command
 
@@ -13,7 +13,7 @@ The setup script downloads the extension to `~/browspark-extension`, registers t
 curl -fsSL https://browspark.krishm.dev/setup.sh | bash
 ```
 
-For Chromium, continue from **Load the extension** below. Firefox users can skip loading the downloaded extension and continue with [Firefox setup](#firefox-setup).
+For Chrome, Brave or another Chromium browser, continue from **Load the extension** below. Firefox and Zen users can skip loading the downloaded extension and continue with [Firefox and Zen setup](#firefox-and-zen-setup).
 
 ## Option 2: by hand
 
@@ -28,7 +28,7 @@ For Chromium, continue from **Load the extension** below. Firefox users can skip
     That bundles the extension into the `extension/` folder. The companion itself comes from npm, so the clone is only for the extension.
   </Step>
   <Step title="Load the extension">
-    Open `chrome://extensions`, switch on **Developer mode**, click **Load unpacked** and pick the unzipped folder (or `extension/` in the clone). Pin the Browspark icon so the dashboard is one click away.
+    Open `chrome://extensions` in Chrome or `brave://extensions` in Brave, switch on **Developer mode**, click **Load unpacked** and pick the unzipped folder (or `extension/` in the clone). Repeat in each browser profile you want to connect. Pin the Browspark icon so each dashboard is one click away.
   </Step>
   <Step title="Register the companion with your agent">
     For Claude Code:
@@ -38,20 +38,20 @@ For Chromium, continue from **Load the extension** below. Firefox users can skip
     Every other client is covered in [Connect an agent](/connect/agents). The dashboard's Overview page shows ready-to-copy snippets for each.
   </Step>
   <Step title="Pair once">
-    Open the dashboard (click the extension icon). It connects to the companion on its own; ask the agent to call `browser_status` to confirm, then share the tabs the agent may use.
+    Open each dashboard (click the extension icon). Every profile connects to the same companion on its own; ask the agent to call `browser_status` to see the connected browsers, then share the tabs the agent may use.
   </Step>
   <Step title="Share a tab">
     In the dashboard's **Tabs** page, share the tab the agent should work on, or switch on **Share everything** to include every current and future tab. Then ask:
 
     > Open example.com in my browser, take a snapshot, and tell me what the headline says.
 
-    The agent opens an ordinary tab in your current window, reads the accessible tree, and answers.
+    The agent opens an ordinary tab in the selected browser, reads the accessible tree, and answers. If several browsers are connected, it uses the displayed `browserId` to choose where the new tab opens. Existing tabs are selected by `tabId`.
   </Step>
 </Steps>
 
-## Firefox setup
+## Firefox and Zen setup
 
-Install Firefox and register the companion with your agent using the command above or [your client's configuration](/connect/agents). No Firefox extension is needed. Ask your agent to launch a Firefox developer session; the tool call is:
+Install Firefox or Zen and register the companion with your agent using the command above or [your client's configuration](/connect/agents). No extension is needed for these browsers. Ask your agent to launch a developer session; for Firefox, the tool call is:
 
 ```json
 {
@@ -63,7 +63,7 @@ Install Firefox and register the companion with your agent using the command abo
 }
 ```
 
-Then use the returned tab ID with the usual browser tools. Firefox has a separate persistent profile; your existing Firefox tabs and logins are not shared. Set `firefoxPath` or `BROWSPARK_FIREFOX` for a custom executable. See [Firefox support](/reference/firefox) for Firefox-based browsers and unsupported operations.
+For Zen, use `browser: "zen"` and a context such as `"zen-work"`. Then use the returned tab ID with the usual browser tools. Each has a separate persistent profile; your everyday tabs and logins are not shared. Set `browserPath` for a custom executable. See [Firefox and Zen coverage](/reference/firefox) and [using multiple browsers](/reference/multiple-browsers).
 
 ## What you will see
 
