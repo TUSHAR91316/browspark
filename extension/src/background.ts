@@ -35,6 +35,8 @@ let lastError: string | undefined;
 let backoff = 1000;
 let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
 let connectionTimer: ReturnType<typeof setTimeout> | undefined;
+let instanceId: string;
+let browserSessionId: string;
 
 const cfg = async () => {
   const s = await chrome.storage.local.get(['port', 'shareAll', 'stopped', 'activityLog', 'toolCatalog', 'disabledTools', 'devMode', 'overlay', 'backgroundMode']);
@@ -222,7 +224,7 @@ async function connect(force = false) {
     if (ws !== sock) return;
     const brands = ((navigator as any).userAgentData?.brands ?? []) as { brand: string; version: string }[];
     const named = brands.find((b) => !/Chromium|not.*brand/i.test(b.brand)) ?? brands.find((b) => /Chromium/.test(b.brand));
-    const hello: HelloParams = { version: PROTOCOL_VERSION, extensionVersion: chrome.runtime.getManifest().version, browser: named ? `${named.brand} ${named.version}` : undefined, userAgent: navigator.userAgent };
+    const hello: HelloParams = { version: PROTOCOL_VERSION, extensionVersion: chrome.runtime.getManifest().version, browser: named ? `${named.brand} ${named.version}` : undefined, userAgent: navigator.userAgent, instanceId, browserSessionId };
     evt('hello', hello);
     pushTabs();
     sendToolPolicy();
@@ -361,4 +363,10 @@ setInterval(() => evt('ping'), 20_000);
 chrome.alarms.create('reconnect', { periodInMinutes: 0.5 });
 chrome.alarms.onAlarm.addListener(() => { if (!ws && !stopped) connect(); });
 
-const ready = cfg().then((c) => { for (const id of c.shared) shared.add(id); for (const id of c.excluded) excluded.add(id); shareAll = c.shareAll; activityLog = c.activityLog; toolCatalog = c.toolCatalog; disabledTools = new Set(c.disabledTools); devMode = c.devMode; stopped = c.stopped; overlay = c.overlay; backgroundMode = c.backgroundMode; if (!stopped) connect(); });
+const ready = cfg().then(async (c) => {
+  const local = await chrome.storage.local.get('instanceId'), session = await chrome.storage.session.get('browserSessionId');
+  instanceId = typeof local.instanceId === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.test(local.instanceId) ? local.instanceId : crypto.randomUUID();
+  browserSessionId = typeof session.browserSessionId === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.test(session.browserSessionId) ? session.browserSessionId : crypto.randomUUID();
+  await chrome.storage.local.set({ instanceId }); await chrome.storage.session.set({ browserSessionId });
+  for (const id of c.shared) shared.add(id); for (const id of c.excluded) excluded.add(id); shareAll = c.shareAll; activityLog = c.activityLog; toolCatalog = c.toolCatalog; disabledTools = new Set(c.disabledTools); devMode = c.devMode; stopped = c.stopped; overlay = c.overlay; backgroundMode = c.backgroundMode; if (!stopped) connect();
+});

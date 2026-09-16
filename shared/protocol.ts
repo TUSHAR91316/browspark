@@ -31,9 +31,18 @@ export interface TabInfo {
   favIconUrl?: string;
   /** Set when chrome.debugger cannot attach (chrome://, web store, etc.). */
   unsupported?: string;
+  /** Companion-assigned identity of the extension connection; absent on the wire from the extension. */
+  browserId?: string;
+  browserName?: string;
 }
 
-export interface HelloParams { version: number; extensionVersion: string; browser?: string; userAgent?: string }
+export interface HelloParams {
+  version: number; extensionVersion: string; browser?: string; userAgent?: string;
+  /** Persistent per-installation identity; browsers and profiles connect independently. */
+  instanceId?: string;
+  /** Per-browser-session identity prevents reused native tab ids reviving stale companion ids after restart. */
+  browserSessionId?: string;
+}
 export interface CdpParams { tabId: number; method: string; params?: unknown; sessionId?: string; /** Name of the agent issuing the command. */ client?: string }
 export interface CdpEventParams { tabId: number; method: string; params: unknown; sessionId?: string }
 export interface DetachedParams { tabId: number; reason: string }
