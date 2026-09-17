@@ -12,3 +12,5 @@ Original assets retrieved on 2026-09-12 for identifying setup clients. Logos bel
 | `antigravity.png` | [Google Antigravity press assets](https://www.antigravity.google/press), [full-color icon](https://www.antigravity.google/assets/image/brand/antigravity-icon__full-color.png) | 540 × 540 transparent PNG; original multicolor mark, preserve in both themes. |
 
 Render with `object-fit: contain` to preserve proportions. Use the supplied dark variants for OpenCode and Cursor instead of applying CSS inversion. No asset needs a color filter.
+
+`other-agent.svg` is original Browspark artwork created on 2026-09-17: a neutral robot mark on a violet tile for unidentified agents. It is not a third-party logo and uses the same asset in both themes.

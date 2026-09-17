@@ -1,6 +1,8 @@
 import { isNewTab, type TabInfo } from '../../shared/protocol.ts';
 import type { PopupMsg, State } from './state.ts';
 import { api, FIREFOX_PERMISSIONS } from './browser.ts';
+import { graphBrand } from './brands.ts';
+import { graphPosition, graphCurve, syncGraphCanvas, zoomGraph, resetGraphLayout } from './graph-canvas.ts';
 
 // ---------- helpers ----------
 const ask = (m: PopupMsg) => api.runtime.sendMessage(m) as Promise<State>;
@@ -33,7 +35,7 @@ function morph(a: Node, b: Node) {
   for (const k in pb) { if (k === 'value' && focused) continue; if ((ea as any)[k] !== pb[k]) (ea as any)[k] = pb[k]; }
   for (const k in pa) if (!(k in pb)) (ea as any)[k] = typeof pa[k] === 'boolean' ? false : typeof pa[k] === 'function' ? null : '';
   (ea as any).__p = pb;
-  if (ea.tagName === 'svg') { if (ea.innerHTML !== eb.innerHTML) ea.innerHTML = eb.innerHTML; return; }
+  if (ea.tagName === 'svg' && !ea.classList.contains('graph-connections')) { if (ea.innerHTML !== eb.innerHTML) ea.innerHTML = eb.innerHTML; return; }
   const next = [...eb.childNodes];
   const keyed = new Map<string, Node>();
   for (const n of ea.childNodes) { const k = (n as HTMLElement).dataset?.key; if (k) keyed.set(k, n); }
@@ -285,6 +287,9 @@ function viewOverview(s: State) {
           : empty('inbox', 'No commands yet', s.connected ? 'Your agent’s commands will appear here.' : 'Connect the companion to start a session.'))));
 }
 
+const graphCompact = matchMedia('(max-width: 680px)');
+graphCompact.addEventListener('change', () => { if (route === 'graph') repaint(); });
+
 function viewGraph(s: State) {
   const header = pageHeader('Graph', 'See the agents and browsers connected through your local companion.',
     h('a', { class: 'btn', href: '#/settings' }, icon('settings'), 'Settings'));
@@ -297,40 +302,69 @@ function viewGraph(s: State) {
     h('div', { class: 'card', id: 'graph-status', role: 'status' }, empty('graph', 'Waiting for connection data', 'Connections will appear here shortly. Restart the companion if this view stays empty.')));
 
   const { agents, browsers, thisBrowserId } = s.graph;
-  const height = Math.max(276, Math.max(agents.length, browsers.length) * 96 - 12);
+  const compact = graphCompact.matches, width = compact ? 380 : 1000;
+  const middle = compact ? 148 + Math.max(1, agents.length) * 108 : Math.max(520, Math.max(agents.length, browsers.length) * 124 + 140) / 2;
+  const height = compact ? middle + 148 + Math.max(1, browsers.length) * 108 : middle * 2;
+  const agentX = compact ? 190 : 170, browserX = compact ? 190 : 830;
   const count = (n: number, label: string) => `${n} ${label}${n === 1 ? '' : 's'}`;
-  const links = (n: number, fromAgents: boolean) => {
-    const centers = Array.from({ length: n }, (_, i) => (height - (n * 96 - 12)) / 2 + 42 + i * 96);
-    const paths = centers.map((y) => `<path d="M0 ${fromAgents ? y : height / 2} C50 ${fromAgents ? y : height / 2} 50 ${fromAgents ? height / 2 : y} 100 ${fromAgents ? height / 2 : y}"/>`).join('');
-    return h('div', { class: `graph-links ${n ? '' : 'empty-links'}`, 'aria-hidden': 'true', html: `<svg viewBox="0 0 100 ${height}" preserveAspectRatio="none">${paths}</svg>` });
+  const row = (i: number, n: number, agent: boolean) => compact ? (agent ? 92 : middle + 164) + i * 108 : middle + (i - (n - 1) / 2) * 124;
+  const layout = compact ? 'mobile' : 'desktop';
+  const scope = `${s.port}:${thisBrowserId}`;
+  const key = (kind: string, id = '') => `${scope}:${layout}:${kind}:${id}`;
+  const hubKey = key('companion'), hub = graphPosition(hubKey, { x: width / 2, y: middle });
+  const agentPoints = agents.map((agent, i) => graphPosition(key('agent', agent.id), { x: agentX, y: row(i, agents.length, true) }));
+  const browserPoints = browsers.map((browser, i) => graphPosition(key('browser', browser.id), { x: browserX, y: row(i, browsers.length, false) }));
+  const nodeAttrs = (id: string, point: { x: number; y: number }, halfWidth: number) => ({ 'data-graph-node': id, 'data-x': point.x, 'data-y': point.y, 'data-half-width': halfWidth, style: `transform:translate3d(${point.x}px,${point.y}px,0) translate(-50%,-50%)` });
+  const svg = (tag: string, attrs: Record<string, string>, ...children: Node[]) => {
+    const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+    for (const [name, value] of Object.entries(attrs)) el.setAttribute(name, value);
+    el.append(...children); return el;
   };
-  const columnTitle = (title: string, n?: number) => h('h2', { class: 'graph-column-title' }, title, n === undefined ? null : h('span', { class: 'pill' }, String(n)));
+  const edges = (fromAgents: boolean) => (fromAgents ? agents : browsers).map((node, i) => {
+    const from = fromAgents ? agentPoints[i] : hub, to = fromAgents ? hub : browserPoints[i];
+    const fromSide = compact && fromAgents ? 'left' : 'right', toSide = compact && !fromAgents ? 'right' : 'left';
+    const id = key(fromAgents ? 'agent' : 'browser', node.id);
+    const d = graphCurve(from, to, fromAgents ? 110 : 80, fromAgents ? 80 : 110, fromSide, toSide);
+    return svg('g', { class: `graph-edge ${fromAgents ? 'agent-edge' : 'browser-edge'}`, 'data-key': id, 'data-from': fromAgents ? id : hubKey, 'data-to': fromAgents ? hubKey : id, 'data-from-side': fromSide, 'data-to-side': toSide },
+      svg('path', { d }), svg('path', { class: 'graph-edge-flow', style: `animation-delay:-${i * .6}s`, d }));
+  });
+  const logo = (brand: ReturnType<typeof graphBrand>) => {
+    return h('span', { class: 'graph-node-icon', 'aria-hidden': 'true' }, h('picture', {},
+      brand.darkSrc ? h('source', { media: ui.theme === 'system' ? '(prefers-color-scheme: dark)' : ui.theme === 'dark' ? 'all' : 'not all', srcset: brand.darkSrc }) : null,
+      h('img', { class: 'graph-brand-logo', src: brand.src, alt: '', draggable: 'false' })));
+  };
   return h('div', { class: 'page graph-page' }, header,
     h('section', { class: 'card connection-graph', id: 'connection-graph', 'aria-label': 'Live connection graph', 'aria-describedby': 'graph-description' },
       h('div', { class: 'graph-toolbar' },
         h('span', { class: 'graph-live', id: 'graph-status', role: 'status' }, h('span', { class: 'dot', 'aria-hidden': 'true' }), 'Live connections'),
         h('span', { class: 'graph-summary' }, count(agents.length, 'agent'), h('span', { 'aria-hidden': 'true' }, ' / '), count(browsers.length, 'browser'))),
-      h('div', { class: 'graph-flow', style: `--graph-height:${height}px` },
-        h('div', { class: 'graph-column' }, columnTitle('Agents', agents.length),
-          h('ul', { class: 'graph-nodes', 'aria-label': 'Connected agents' }, ...agents.map((agent) =>
-            h('li', { class: 'graph-node graph-agent', 'data-key': agent.id, 'data-agent-id': agent.id },
-              h('span', { class: 'graph-node-icon' }, icon('tools')),
-              h('div', { class: 'graph-node-copy' }, h('h3', { title: agent.name }, agent.name), h('p', {}, 'MCP client'), h('code', { title: agent.id }, agent.id)))),
-          agents.length ? null : h('li', { class: 'graph-placeholder' }, icon('monitor'), h('b', {}, 'No agents connected'), h('span', {}, 'Connect an MCP client to get started.')))),
-        links(agents.length, true),
-        h('div', { class: 'graph-column graph-hub-column' }, columnTitle('Companion'),
-          h('div', { class: 'graph-nodes' },
-            h('div', { class: 'graph-hub' }, h('span', { class: 'graph-hub-icon' }, icon('graph')), h('h3', {}, 'Browspark'), h('p', {}, 'One shared connection'), h('code', {}, `127.0.0.1:${s.port}`)))),
-        links(browsers.length, false),
-        h('div', { class: 'graph-column' }, columnTitle('Browsers', browsers.length),
-          h('ul', { class: 'graph-nodes', 'aria-label': 'Connected browsers' }, ...browsers.map((browser) =>
-            h('li', { class: `graph-node graph-browser${browser.id === thisBrowserId ? ' current' : ''}`, 'data-key': browser.id, 'data-browser-id': browser.id, 'data-current-browser': String(browser.id === thisBrowserId) },
-              h('span', { class: 'graph-node-icon' }, icon('globe')),
-              h('div', { class: 'graph-node-copy' }, h('div', { class: 'graph-node-title' }, h('h3', { title: browser.name }, browser.name), browser.id === thisBrowserId ? h('span', { class: 'pill ok' }, 'This browser') : null),
-                h('p', {}, browser.mode === 'dev' ? 'Developer session' : 'Shared profile', ' · ', count(browser.sharedTabs, 'tab'), browser.mode === 'dev' ? '' : ' shared'),
-                h('code', { title: browser.context ?? browser.id }, browser.context ?? browser.id)))),
-          browsers.length ? null : h('li', { class: 'graph-placeholder' }, icon('globe'), h('b', {}, 'No browsers connected'), h('span', {}, 'Connected profiles appear here.'))))),
-      h('p', { class: 'graph-caption', id: 'graph-description' }, icon('shield'), h('span', {}, 'Every agent connects through Browspark. Each browser profile controls which tabs are shared.'))));
+      h('div', { class: 'graph-canvas', id: 'graph-canvas', 'data-layout': layout, 'data-graph-scope': scope, 'data-zoom': $('graph-canvas')?.dataset.zoom, 'data-pan-x': $('graph-canvas')?.dataset.panX, 'data-pan-y': $('graph-canvas')?.dataset.panY, 'data-dragging': $('graph-canvas')?.dataset.dragging, style: $('graph-canvas')?.getAttribute('style'), tabindex: '0', role: 'region', 'aria-label': 'Connection canvas. Drag a node to move it, or drag empty space to pan. Scroll to pan, Control or Command scroll to zoom.' },
+        h('div', { class: 'graph-grid', 'aria-hidden': 'true', style: document.querySelector<HTMLElement>('.graph-grid')?.getAttribute('style') }),
+        h('div', { class: `graph-world${compact ? ' vertical' : ''}`, id: 'graph-world', 'data-width': width, 'data-height': height, style: `width:${width}px;height:${height}px;transform:${$('graph-world')?.style.transform ?? ''}` },
+          h('div', { class: 'graph-edges', 'aria-hidden': 'true' }, svg('svg', { class: 'graph-connections', width: String(width), height: String(height) }, ...edges(true), ...edges(false))),
+          h('ul', { class: 'graph-nodes', 'aria-label': 'Connected agents' }, ...agents.map((agent, i) => {
+            const brand = graphBrand(agent.name, 'agent');
+            return h('li', { class: 'graph-node graph-agent', 'data-key': agent.id, 'data-agent-id': agent.id, tabindex: '0', ...nodeAttrs(key('agent', agent.id), agentPoints[i], 110), title: `${agent.name} · ${agent.id}`, 'aria-label': `${brand.label}, agent ${agent.id}. Drag to move or use arrow keys.` },
+              logo(brand), h('div', { class: 'graph-node-copy' }, h('h3', {}, brand.label), h('p', {}, 'MCP agent')), h('span', { class: 'graph-port', 'aria-hidden': 'true' })); }),
+            agents.length ? null : h('li', { class: 'graph-placeholder', tabindex: '0', ...nodeAttrs(key('placeholder'), graphPosition(key('placeholder'), { x: agentX, y: row(0, 1, true) }), 110) }, icon('tools'), h('b', {}, 'No agents connected'), h('span', {}, 'Connect an MCP client'))),
+          h('div', { class: 'graph-hub', tabindex: '0', ...nodeAttrs(hubKey, hub, 80), 'aria-label': 'Browspark companion. Drag to move or use arrow keys.' },
+            h('span', { class: 'graph-hub-logo' }, h('img', { src: 'assets/logo.png', alt: '', draggable: 'false' })),
+            h('h3', {}, 'Browspark'), h('p', {}, h('span', { class: 'dot' }), 'Local companion'), h('span', { class: 'graph-hub-address' }, `127.0.0.1:${s.port}`)),
+          h('ul', { class: 'graph-nodes', 'aria-label': 'Connected browsers' }, ...browsers.map((browser, i) => {
+            const brand = graphBrand(browser.name, 'browser', browser.browserEngine ?? (browser.id === thisBrowserId ? s.browserEngine : undefined));
+            return h('li', { class: `graph-node graph-browser${browser.id === thisBrowserId ? ' current' : ''}`, 'data-key': browser.id, 'data-browser-id': browser.id, 'data-current-browser': String(browser.id === thisBrowserId), tabindex: '0', ...nodeAttrs(key('browser', browser.id), browserPoints[i], 110), title: `${browser.name} · ${browser.context ?? browser.id}`, 'aria-label': `${brand.label}, ${browser.context ?? browser.id}${browser.id === thisBrowserId ? ', this browser' : ''}. Drag to move or use arrow keys.` },
+              h('span', { class: 'graph-port', 'aria-hidden': 'true' }), logo(brand),
+              h('div', { class: 'graph-node-copy' }, h('h3', {}, brand.label), h('p', {}, browser.mode === 'dev' ? `${browser.context ?? 'Developer'} · ` : 'Profile · ', count(browser.sharedTabs, 'tab'), browser.mode === 'dev' ? '' : ' shared')),
+              browser.id === thisBrowserId ? h('span', { class: 'graph-current' }, h('span', { class: 'dot' }), 'This browser') : null); })))),
+      h('div', { class: 'graph-controls' },
+        h('span', { class: 'graph-pan-hint' }, icon('graph'), 'Drag nodes or canvas'),
+        h('div', { class: 'graph-zoom', role: 'group', 'aria-label': 'Canvas zoom' },
+          h('button', { id: 'graph-zoom-out', title: 'Zoom out', 'aria-label': 'Zoom out', onclick: () => zoomGraph(1 / 1.2) }, '−'),
+          h('output', { id: 'graph-zoom-label', 'aria-label': 'Zoom level', 'aria-live': 'polite' }, '100%'),
+          h('button', { id: 'graph-zoom-in', title: 'Zoom in', 'aria-label': 'Zoom in', onclick: () => zoomGraph(1.2) }, '+'),
+          h('button', { id: 'graph-fit', title: 'Fit all connections', 'aria-label': 'Fit all connections', onclick: () => zoomGraph() }, 'Fit'),
+          h('button', { id: 'graph-reset', title: 'Reset node positions', 'aria-label': 'Reset node positions', onclick: () => resetGraphLayout() }, 'Reset')))),
+    h('p', { class: 'graph-caption', id: 'graph-description' }, icon('shield'), 'Live connections. Each browser controls its shared tabs.'));
 }
 
 function viewTabs(s: State) {
@@ -535,6 +569,7 @@ function paintInner(s: State) {
   if (!sameRoute) view.classList.add('enter');
   const banner = stale ? h('div', { class: 'notice warn', style: 'margin:16px 16px 0' }, icon('alert'), h('span', {}, `The extension was updated on disk (worker v${s.extensionVersion ?? '?'}, files v${onDisk}). Reload it to pick up the new background code, then reopen this page.`), h('button', { class: 'btn sm', onclick: () => api.runtime.reload() }, icon('refresh'), 'Reload extension')) : null;
   if (sameRoute) patch(main, banner, view); else { main.replaceChildren(...[banner, view].filter((x): x is HTMLElement => !!x)); main.scrollTop = 0; }
+  syncGraphCanvas($('graph-canvas'));
   for (const draft of drafts) { const el = $<HTMLInputElement>(draft.id); if (el) el.value = draft.value; }
   if (keep) { const el = $<HTMLInputElement>(keep.id); if (el) { el.value = keep.value; el.focus(); try { el.setSelectionRange(keep.s, keep.e); } catch {} } }
 }
