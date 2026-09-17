@@ -5,7 +5,7 @@ description: "Connection state, setup snippets for every client, and today's num
 
 Click the extension icon to open the dashboard in a full browser tab. The sidebar has Overview, Graph, Tabs, Tools, Activity and Settings. Graph is enabled by default and can be hidden in Settings. The sidebar also shows the connection state, a theme switch (system, light, dark) and the extension and companion versions.
 
-Each browser profile with the extension has its own dashboard, showing that profile's tabs, connection and settings. Open [Graph](/dashboard/graph) to see the agents, browser profiles and developer sessions connected to the same companion. Ask the agent for `browser_status` to get their browser and tab IDs; separate developer sessions have no extension dashboard.
+Each browser profile with the extension has its own dashboard, showing that profile's tabs, connection and settings. Open [Graph](/dashboard/graph) to arrange connected agents, browser profiles and developer sessions on a dotted canvas with logos and animated connection lines. Ask the agent for `browser_status` to get their browser and tab IDs; separate developer sessions have no extension dashboard.
 
 In Firefox or Zen, the dashboard shows **Allow website access** if the all-websites permission is missing, followed by **Enable Firefox automation** to grant user-script permission. Website access also enables Firefox's native tab screenshots; Browspark only automates shared HTTP/HTTPS tabs. Share the tabs you want to use after granting these permissions. See [Firefox extension setup](/reference/firefox#install-the-firefox-extension).
 
@@ -25,4 +25,4 @@ Shared tabs and attached tabs are always shown. **Operations** and **Errors** co
 
 ## Stale worker banner
 
-When you rebuild the extension without reloading it, the files on disk are newer than the running service worker. The dashboard detects a version mismatch and shows a banner asking you to reload the extension. Reload it in every connected profile, using `chrome://extensions` in Chrome, `brave://extensions` in Brave, or `about:debugging` in Firefox and Zen. The same banner appears when the running worker predates a setting the dashboard expects.
+After a dashboard-only rebuild, refresh its tab to load the new UI. After changing the extension background process, reload the extension in every connected profile, using `chrome://extensions` in Chrome, `brave://extensions` in Brave, or `about:debugging` in Firefox and Zen. The dashboard shows a reload banner when it detects a version mismatch or a missing setting; source changes that retain the same version may need a manual reload. Restart the companion separately when its code changes.

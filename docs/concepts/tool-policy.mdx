@@ -17,7 +17,7 @@ Each extension dashboard sends its disabled list to the companion whenever it co
 
 The companion saves the combined list to `~/.browspark/tools.json` so it applies after a restart, before dashboards reconnect. Sharing remains independent in each browser profile. See [Using multiple browsers](/reference/multiple-browsers).
 
-The catalog itself comes from the companion on connect (`tools.catalog` event with name, description and companion version). If the dashboard shows no tools, the companion has not connected yet.
+The catalog comes from the companion on connect (`tools.catalog` request with name, description and companion version), including in HTTP-only mode before any agent connects. If it stays empty while connected, see [troubleshooting](/guides/troubleshooting#tools-missing-or-the-dashboard-looks-stale).
 
 ## Developer browser policy
 

@@ -12,5 +12,5 @@ The Tools page lists the companion's tool catalog grouped into **Browser automat
 Switching a tool off takes effect on the agent's next call, without restarting anything. Calls targeting this profile's tabs use this dashboard's switches. Calls spanning browsers and calls in developer sessions use the combined disabled list from all connected dashboards. The agent receives a message telling it the tool is off and to ask you to enable it. Details and the persistence rules are in [Tool policy](/concepts/tool-policy).
 
 <Note>
-The list is empty until the companion has connected once and sent its catalog. If it stays empty while connected, the running service worker is older than the companion; reload the extension.
+The list is empty until the companion has connected once and sent its catalog. HTTP-only companions send it before any agent connects. If it stays empty while connected, update and restart the companion, reload the matching extension and reconnect. See [troubleshooting](/guides/troubleshooting#tools-missing-or-the-dashboard-looks-stale).
 </Note>

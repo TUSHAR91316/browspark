@@ -28,6 +28,8 @@ bunx browspark-mcp@latest --http-only
 
 `--http-only` skips the stdio transport so the process does not exit when stdin closes. Stop it with Ctrl-C; it closes any developer browsers it launched.
 
+Connected extensions receive the full Tools catalog immediately, even before an HTTP client initializes. [Graph](/dashboard/graph) can show the companion and browser profiles with zero agents; each agent appears after its MCP session initializes.
+
 ## Connecting a client
 
 Paste the URL from the dashboard's Settings page into whichever option of your client asks for an MCP server URL. Start the companion with `--http-only` first, or have a stdio client running. Nothing else is needed: the client only makes HTTP requests to localhost.

@@ -55,7 +55,15 @@ Open Browspark's dashboard and choose **Allow website access** if shown, then **
 
 ## Tools missing or the dashboard looks stale
 
-The extension was rebuilt but not reloaded. Reload it in every connected profile (`chrome://extensions` in Chrome, `brave://extensions` in Brave); the dashboard shows a banner when it detects this. Restart the companion after updating it. If the Tools page is empty, the companion has not connected since the extension started; connect once and the catalog arrives.
+After a dashboard-only rebuild, refresh its tab. After extension background-process changes, reload the extension in every connected profile: `chrome://extensions` in Chrome, `brave://extensions` in Brave, or `about:debugging` in Firefox and Zen. The dashboard shows a banner for a detected version or setting mismatch, but source changes can retain the same version number.
+
+Restart the companion after updating its source, and reconnect each dashboard. The Tools catalog should arrive as soon as the extension connects, including with `--http-only` before any agent initializes. If it stays empty, ensure the process owning the configured port is the updated companion from the same release or checkout; launching another copy while an old one owns the port just relays to it.
+
+## Graph waits for connection data while connected
+
+**Waiting for connection data** means the extension is connected but has not received a graph snapshot. Check **Settings → Connection graph**, then update the extension and the companion that owns the configured port from the same release or checkout. For a source checkout, run `bun run build`, reload the extension and restart the source companion. Refresh the dashboard tab after rebuilding its UI.
+
+The graph can show the companion and browsers with **No agents connected**; this is expected until an MCP client initializes. Agent nodes appear after that handshake, and lines indicate connections rather than live command traffic. See [Graph](/dashboard/graph) for canvas controls and [connection troubleshooting](#browsers-alternate-between-connected-and-disconnected) for replacing an older companion.
 
 ## A tool says it is switched off
 

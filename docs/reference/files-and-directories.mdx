@@ -38,19 +38,19 @@ Tools that accept `path` write there as well as, or instead of, the artifacts di
 
 | Storage | Keys | Lifetime |
 |---|---|---|
-| `chrome.storage.local` | `port`, `instanceId`, `shareAll`, `stopped`, `activityLog`, `devMode`, `disabledTools`, `toolCatalog`, `idleDetachMs`, `overlay`, `backgroundMode` | Persistent per browser profile |
+| `chrome.storage.local` | `port`, `instanceId`, `shareAll`, `stopped`, `activityLog`, `devMode`, `disabledTools`, `toolCatalog`, `idleDetachMs`, `overlay`, `backgroundMode`, `graphEnabled` | Persistent per browser profile |
 | `chrome.storage.session` | `browserSessionId`, `shared` (tab ids shared individually), `excluded` | Until the browser restarts |
 | `localStorage` of the dashboard page | theme, last selected setup client, expanded rows | Persistent, UI conveniences only |
 
-Each profile has its own extension storage. `instanceId` identifies that extension installation and `browserSessionId` distinguishes browser runs, so recycled native tab IDs do not select stale tabs. The activity log itself is held in the service worker's memory only.
+Each profile has its own extension storage. Firefox uses the equivalent `browser.storage` APIs. `instanceId` identifies that extension installation and `browserSessionId` distinguishes browser runs, so recycled native tab IDs do not select stale tabs. The activity log and current graph snapshot are held in the extension background process's memory. Graph node positions and canvas pan/zoom are held in the dashboard tab's memory; reloading the tab resets its arrangement.
 
 ## Repository layout
 
 | Folder | Contents |
 |---|---|
-| `companion/src/` | MCP server: `index.ts` (transports, relay, HTTP), `bridge.ts` (WebSocket and HTTP routes), `session.ts` (tab routing, contexts), `cdp.ts` (Chromium developer browsers), `firefox.ts` (Firefox/Zen developer browsers), `browsers.ts` (executable discovery), `page.ts` (snapshots, input, reading), `tools.ts` (browser tools), `live.ts`, `artifacts.ts`, `context.ts` (tool wrapper, policy, per-agent state), `devtools/` (one module per DevTools panel) |
+| `companion/src/` | MCP server: `index.ts` (transports, relay, HTTP), `bridge.ts` (WebSocket and HTTP routes), `graph.ts` (connection snapshots), `session.ts` (tab routing, contexts), `cdp.ts` (Chromium developer browsers), `firefox.ts` (Firefox/Zen developer browsers), `browsers.ts` (executable discovery), `page.ts` (snapshots, input, reading), `tools.ts` (browser tools), `live.ts`, `artifacts.ts`, `context.ts` (tool wrapper, policy, per-agent state), `devtools/` (one module per DevTools panel) |
 | `companion/test/` | Unit tests, e2e scenarios, the harness, the capability and docs generators |
-| `extension/` | `manifest.json` (Chromium), `manifest.firefox.json`, `app.html`, `app.css`, `assets/`, `src/background.ts` (background process), `src/app.ts` (dashboard), `src/state.ts` |
+| `extension/` | `manifest.json` (Chromium), `manifest.firefox.json`, `app.html`, `app.css`, `assets/` (bundled logos), `src/background.ts` (background process), `src/app.ts` (dashboard), `src/graph-canvas.ts` (drag, pan and zoom), `src/brands.ts` (graph names and logos), `src/state.ts` |
 | `shared/` | `protocol.ts`, the wire protocol |
 | `test-apps/` | Deterministic pages, API, service worker and source-mapped script used by the tests |
 | `docs/` | This site |

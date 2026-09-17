@@ -15,8 +15,10 @@ bun run --cwd frontend build # landing page + setup.sh; run before root tests
 bun run --cwd frontend test  # landing-page smoke tests
 bun test                 # unit + bridge tests, no browser
 bun run test:e2e          # Chromium acceptance scenarios, including two extension instances
+E2E=1 bun test companion/test/graph.e2e.test.ts --timeout 120000 # graph canvas in two profiles
 E2E_LIGHTHOUSE=1 bun run test:e2e   # also a real Lighthouse audit
 bun run test:firefox      # real Firefox through BiDi; install Firefox first
+FIREFOX_EXTENSION_E2E=1 bun test companion/test/firefox-extension.e2e.test.ts --timeout 120000
 bun run test:multi-browser # Chrome, Brave, Firefox and Zen developer sessions together
 bun run capabilities     # probe both Chromium modes, rewrite the capability matrix
 bun run docs:tools       # rewrite docs/tools/** and the Tools navigation
@@ -27,6 +29,10 @@ bun run compile          # dist/browspark
 Browser tests use extended timeouts because they launch real browsers. Build the extension first and run only one E2E invocation at a time. The harness closes the browsers it launched in `finally` blocks; if a run is interrupted, close its leftover test browsers before starting another.
 
 The Chromium harness defaults to Chrome on macOS; set `CHROME` to use another executable. To exercise simultaneous Chrome and Brave extensions, set `BROWSPARK_TEST_SECOND_BROWSER` to the Brave executable and run `E2E=1 bun test companion/test/multi-browser.e2e.test.ts --timeout 120000`. Without this override the test launches two isolated Chrome profiles. The developer-browser test requires all four browsers; `BROWSPARK_CHROME`, `BROWSPARK_BRAVE`, `BROWSPARK_FIREFOX` and `BROWSPARK_ZEN` override executable discovery.
+
+The graph suite uses the same second-browser override and verifies dragging nodes and the canvas, zoom, live updates, logos and fallback names, reduced motion, keyboard access and the per-profile setting. The Firefox extension suite separately loads the built add-on into an isolated Firefox profile and checks sharing, automation and graph dragging; set `FIREFOX` to override its executable.
+
+After UI-only changes, rebuild and refresh the open dashboard tab. Reload the extension after background-process changes, and restart the companion after changing its source. Use the same checkout for both sides; a new companion process relays to an older owner if it still holds the port.
 
 ## Test fixtures
 

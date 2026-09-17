@@ -3,7 +3,7 @@ title: "Wire protocol"
 description: "The JSON messages between the companion and the extension over the local WebSocket."
 ---
 
-Defined in `shared/protocol.ts` (protocol version 2). Transport: a WebSocket from the extension's service worker to `ws://127.0.0.1:<port>`. The first message must be `hello`; anything else, or a frame that is not a JSON object, closes the socket. Connections and requests that carry a web page's `Origin` header are refused, so pages in the browser cannot reach the companion.
+Defined in `shared/protocol.ts` (protocol version 2). Transport: a WebSocket from the extension's background process to `ws://127.0.0.1:<port>`. Chromium uses a service worker; Firefox uses background scripts. The first message must be `hello`; anything else, or a frame that is not a JSON object, closes the socket. Connections and requests that carry a web page's `Origin` header are refused, so pages in the browser cannot reach the companion.
 
 Multiple extension profiles can connect to that port simultaneously. The companion assigns each connection a `browserId` and translates browser-native tab IDs into public IDs unique across all extension and developer browsers. The extension wire messages below use native tab IDs; MCP tools use public tab IDs. Sharing is checked by the extension that owns the tab.
 
@@ -28,20 +28,41 @@ interface Evt { event: EvtName; params?: unknown }                   // either d
 | `window.size` | `{tabId, width?, height?}` | Read or set the window size |
 | `downloads.list` | | The browser's download items |
 | `tools.catalog` | `{tools: ToolInfo[], version}` | Stores the catalog for the Tools page |
-| `cdp` | `{tabId, method, params?, sessionId?, client?}` | Result of the DevTools Protocol command. `client` names the agent for the activity log |
+| `graph.state` | `ConnectionGraph` | `{received: true}` when accepted; `{received: false}` when this profile disabled Graph |
+| `cdp` | `{tabId, method, params?, sessionId?, client?}` | Result of the DevTools Protocol command on Chromium, or a supported Firefox adapter command. `client` names the agent for the activity log |
 
 ## Events
 
 | Event | Direction | Params |
 |---|---|---|
-| `hello` | extension → companion | `{version, extensionVersion, browser?, userAgent?, instanceId?, browserSessionId?}` |
+| `hello` | extension → companion | `{version, extensionVersion, browser?, browserEngine?, userAgent?, instanceId?, browserSessionId?}` |
 | `tabs` | extension → companion | `TabInfo[]` whenever tabs or sharing change |
 | `cdp.event` | extension → companion | `{tabId, method, params, sessionId?}` for every protocol event on an attached tab |
 | `detached` | extension → companion | `{tabId, reason}` when Chrome or the idle timer detaches |
-| `tools.policy` | extension → companion | `{disabled: string[], haveCatalog?: boolean, devMode?: 'auto' \| 'always' \| 'never', overlay?: boolean}` |
+| `tools.policy` | extension → companion | `{disabled: string[], haveCatalog?: boolean, devMode?: 'auto' \| 'always' \| 'never', overlay?: boolean, graph?: boolean}` |
 | `ping` | extension → companion | Keep-alive every 20 seconds |
 
 `instanceId` is persistent per extension installation; `browserSessionId` changes when the browser restarts. Together they keep reconnects associated with the right profile without reusing a previous browser run's public tab IDs.
+
+`hello.browserEngine` is optionally `'chromium'` or `'firefox'`; an omitted value uses the legacy Chromium default. The Firefox extension declares its engine explicitly.
+
+## `ConnectionGraph`
+
+```ts
+interface ConnectionGraph {
+  thisBrowserId: string;
+  agents: { id: string; name: string }[];
+  browsers: {
+    id: string; name: string; mode: 'extension' | 'dev';
+    sharedTabs: number; context?: string;
+    browserEngine?: 'chromium' | 'firefox';
+  }[];
+}
+```
+
+The companion sends changed snapshots only to profiles with `tools.policy.graph: true`. `thisBrowserId` identifies the receiving extension profile. Agents appear only after MCP initialization. `sharedTabs` counts shared tabs for an extension profile and open tabs for a developer context. Snapshots contain connection names, IDs and counts, without page URLs, titles, contents or sharing grants.
+
+The extension validates unique agent and browser IDs, nonnegative safe-integer tab counts, valid modes and a receiving browser with `mode: 'extension'`. When present, `browserEngine` must be `'chromium'` or `'firefox'`; it is optional so older graph snapshots remain valid without a protocol-version change. The dashboard uses it to choose the Chromium or Firefox logo for an unidentified browser. Node positions and canvas pan/zoom are local dashboard state and do not travel over the wire.
 
 ## `TabInfo`
 
@@ -51,13 +72,13 @@ interface TabInfo {
   shared: boolean; attached: boolean; windowId: number;
   agent?: boolean;        // opened by an agent, shared automatically
   favIconUrl?: string;
-  unsupported?: string;   // 'browser-internal page' | 'Chrome Web Store'
+  unsupported?: string;   // reason this backend cannot automate the tab
 }
 ```
 
-The companion adds `browserId` and `browserName` to the public tab records it exposes to MCP clients. They are not required in extension `TabInfo` messages.
+The companion adds `browserId`, `browserName` and `browserEngine` to its public tab records. They are not required in extension `TabInfo` messages.
 
-`unsupportedReason(url)` marks `chrome:`, `chrome-extension:`, `devtools:`, `edge:`, `brave:`, `about:` (except `about:blank`) and `view-source:` URLs and the Chrome Web Store. `isNewTab(url)` recognises the New Tab page, which may be shared and navigated but not inspected.
+`unsupportedReason(url, engine)` marks browser-internal schemes, extension pages and the Chrome Web Store. For Firefox it also rejects protected Mozilla sites and non-HTTP(S) pages; `about:blank` remains available for preparing a tab. `isNewTab(url)` recognizes supported Chromium New Tab pages and Firefox `about:newtab` / `about:home`, which may be shared and navigated but not inspected.
 
 ## HTTP routes on the same port
 
