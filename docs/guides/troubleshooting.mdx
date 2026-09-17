@@ -17,13 +17,17 @@ Another companion owns the port and the new one relays to it; that is normal and
 
 ## The agent is looking at the wrong browser
 
-Chrome and Brave can stay connected together. Ask the agent to call `browser_status` or `browser_tabs`, then use the target tab's returned `tabId`. To open a new tab, pass the intended extension profile's `browserId` or the developer browser's `context`. Dashboard tab numbers are browser-native IDs and are different from the IDs MCP tools accept.
+Chrome, Brave, Firefox and Zen can stay connected together. Ask the agent to call `browser_status` or `browser_tabs`, then use the target tab's returned `tabId`. To open a new tab, pass the intended extension profile's `browserId` or the developer browser's `context`. Dashboard tab numbers are browser-native IDs and are different from the IDs MCP tools accept.
 
 Browser and tab IDs can change after a companion or browser restart. Refresh the list instead of reusing a saved ID. See [Using multiple browsers](/reference/multiple-browsers).
 
-## Two copied profiles keep reconnecting
+## Browsers alternate between connected and disconnected
 
-Profiles copied with Browspark's extension storage can have the same saved installation ID. They currently replace each other's connection. Use independently created profiles and load Browspark in each, rather than copying its extension storage between profiles.
+An older companion can cause this: releases before 0.5.0 accept only one extension, so Chrome and Brave repeatedly replace each other. The current Chromium extension requires companion 0.5.0 or later; the Firefox extension requires 0.6.0 or later. An incompatible companion now produces an update message and stops automatic retries without clearing your sharing choices.
+
+For a source-built extension, register the companion from the same checkout: command `bun`, argument the absolute path to `companion/src/index.ts`. Stop the old companion and its relays, then restart your MCP connection. Starting a new version while the old one still owns the port only creates a relay to the old server. After updating, click **Reconnect** in each dashboard and check the displayed companion version.
+
+Copied profiles can share a saved installation ID. The current companion also uses each browser's session ID, so those profiles stay connected independently. Reload older extensions after updating them.
 
 ## A healthy browser waits while another is unresponsive
 
@@ -43,6 +47,12 @@ open -a "Brave Browser" --args --silent-debugger-extension-api
 
 Quit the browser first. Developer mode has no bar.
 
+## Firefox extension will not load or automate
+
+Use Firefox 153+ or a Zen build based on Firefox 153+. Build the current source and load `dist/firefox-extension/manifest.json` through **Load Temporary Add-on** in `about:debugging`. The Chromium manifest will not load in Firefox. The temporary add-on must be loaded again after restarting the browser.
+
+Open Browspark's dashboard and choose **Allow website access** if shown, then **Enable Firefox automation**. Share an HTTP or HTTPS tab afterwards. Browser-internal pages, protected add-on sites and local files cannot be automated. If the companion reports a protocol mismatch, register it from the same source checkout as the extension. See [Firefox setup and capabilities](/reference/firefox).
+
 ## Tools missing or the dashboard looks stale
 
 The extension was rebuilt but not reloaded. Reload it in every connected profile (`chrome://extensions` in Chrome, `brave://extensions` in Brave); the dashboard shows a banner when it detects this. Restart the companion after updating it. If the Tools page is empty, the companion has not connected since the extension started; connect once and the catalog arrives.
@@ -55,7 +65,7 @@ Someone disabled it on a dashboard's Tools page. For a call targeting an extensi
 
 The operation uses a protocol domain Chrome hides from extensions (heap profiler, target, browser, raw CDP, Lighthouse). The agent may now launch `browser_session` for ten minutes under the default policy. Everything else continues in your tabs.
 
-For Firefox or Zen, an **unsupported in Firefox** message describes a BiDi limitation, not a missing extension permission. The same 43 tools are registered, but Chrome-specific actions are unavailable. Check [Firefox and Zen coverage](/reference/firefox); use a Chromium developer session when you need raw CDP, Lighthouse or Chrome profiling.
+For Firefox or Zen, an **unsupported in Firefox** message describes a limitation of the selected extension or BiDi backend. If the extension requests user-script access, enable that permission in its dashboard first. The same 43 tools are registered, but Chrome-specific actions are unavailable. Check [Firefox and Zen coverage](/reference/firefox); use a Chromium developer session when you need raw CDP, Lighthouse or Chrome profiling.
 
 ## Stale ref
 

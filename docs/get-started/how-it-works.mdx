@@ -8,17 +8,17 @@ description: "The three pieces, how they talk, and what happens on a single tool
 ```mermaid
 flowchart LR
   A["MCP clients"] -->|"stdio or HTTP"| C["One local companion"]
-  C -->|"WebSocket"| E["Chrome and Brave extensions"]
+  C -->|"WebSocket"| E["Chromium and Firefox extensions"]
   E -->|"Sharing enforced per profile"| T["Shared tabs"]
   C -->|"CDP"| D["Chrome and Brave developer contexts"]
   C -->|"WebDriver BiDi"| F["Firefox and Zen developer contexts"]
 ```
 
 - **Companion** (`companion/`): the MCP server. Registers 43 tools, keeps per-tab capture state (console, network, scripts, paused frames, issues), holds artifacts, and routes each command to the selected extension or developer browser. Connected browsers share one local port and have unique public tab IDs.
-- **Extension** (`extension/`): a Manifest V3 service worker that connects each Chrome or Brave profile to the companion and attaches the browser's debugger to shared tabs, plus the full-page dashboard where you share tabs, switch tools on and off, and read the activity log. Several profiles can connect simultaneously.
+- **Extension** (`extension/`): a Manifest V3 background process that connects each browser profile to the companion. Chromium uses the debugger API; Firefox uses WebExtension APIs and sandboxed user scripts. Its full-page dashboard controls sharing, tool switches and the activity log. Several profiles can connect simultaneously.
 - **Shared protocol** (`shared/protocol.ts`): the typed request, response and event messages between the two. Summarised in [Wire protocol](/reference/wire-protocol).
 
-## One tool call, end to end
+## One Chromium tool call, end to end
 
 1. The agent calls `browser_click {tabId: 1234, ref: "e12"}`.
 2. The companion checks the tool is not [disabled in the dashboard](/concepts/tool-policy), resolves the tab (the caller's own tab, the only usable tab, or the explicit `tabId`) and looks up ref `e12` in the snapshot registry the page keeps in `window.__bmcp`.

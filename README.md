@@ -17,7 +17,7 @@ Agent work stays in the background by default. Change **Settings → Work in bac
 > [!NOTE]
 > Browspark is in early release. If something breaks, please [open an issue](https://github.com/uncaughterrs/browspark/issues).
 
-Requires [Bun](https://bun.sh) and a supported browser. Chrome and Brave can share your existing tabs through the extension; Firefox and Zen use separate developer sessions.
+Requires [Bun](https://bun.sh) and a supported browser. Chrome, Brave, Firefox and Zen can share existing tabs through their matching extension; all four also support separate developer sessions.
 
 ### Option 1: one command
 
@@ -39,12 +39,12 @@ Codex, OpenCode, Cursor, Kilo and Antigravity are covered in the [connect guide]
 
 **2. Get the extension.** Download `browspark-extension.zip` from the [latest release](https://github.com/uncaughterrs/browspark/releases/latest) and unzip it, or clone this repo and run `bun install && bun run build` to use the `extension/` folder. Open `chrome://extensions` in Chrome or `brave://extensions` in Brave, turn on Developer mode, choose **Load unpacked** and select that folder. Repeat in each browser profile you want to connect; they can all use the same companion.
 
-**3. Share tabs.** Open each extension dashboard and share the tabs the agent may use. Ask the agent to call `browser_status` to see every connected browser, then select a listed `tabId` or use its `browserId` when opening a new tab. Sharing permissions stay separate in each browser profile.
+**3. Share tabs.** Open each extension dashboard and share the tabs the agent may use. The [Graph page](https://docs.browspark.krishm.dev/dashboard/graph) shows connected agents and browser profiles; toggle it in Settings. Ask the agent to call `browser_status` to select a listed `tabId` or use its `browserId` when opening a new tab. Sharing permissions stay separate in each browser profile.
 
-**Using Firefox or Zen?** Register the companion in step 1, skip the extension, and ask your agent to launch a developer session: `browser_session {action: "launch", browser: "zen", context: "zen-work", userRequested: true}`. Use `browser: "firefox"` for Firefox. `browserPath` selects a custom executable. See [Firefox and Zen coverage](https://docs.browspark.krishm.dev/reference/firefox) and [using multiple browsers](https://docs.browspark.krishm.dev/reference/multiple-browsers).
+**Using Firefox or Zen?** With Firefox 153+ or a Zen build based on Firefox 153+, run `bun install && bun run package` in this checkout. Open `about:debugging#/runtime/this-firefox` → **Load Temporary Add-on** → `dist/firefox-extension/manifest.json` (or `dist/browspark-firefox-extension.zip`). Register the matching source companion with command `bun` and the absolute path to `companion/src/index.ts`. Open Browspark, enable user scripts when prompted and share your existing tabs. This unsigned build needs loading again after a browser restart. See [Firefox extension setup and exceptions](https://docs.browspark.krishm.dev/reference/firefox).
 
 ## What it does
-- **Extension mode.** The agent drives shared tabs in Chrome, Brave and other Chromium browsers at the same time, keeping your signed-in sessions. Each browser enforces its own sharing permissions; a soft cyan halo, moving cursor and Stop button show and control the agent's work.
+- **Extension mode.** The agent drives shared tabs in Chrome, Brave, Firefox and Zen at the same time, keeping your signed-in sessions. Each browser enforces its own sharing permissions. Firefox and Zen use a separate extension build with documented automation and debugging limits.
 - **Developer mode.** Launch separate Chrome, Brave, Firefox or Zen contexts with persistent profiles. Chromium browsers provide CDP and Lighthouse; Firefox and Zen use the same tool names for supported BiDi operations and report unsupported actions explicitly.
 - **Developer tools as first-class tools.** Console, Network, Sources, Debugger, Elements, Performance, CPU and memory profiling, storage, service workers, coverage, emulation, accessibility, security, Lighthouse and a recorder that exports Playwright tests.
 
@@ -55,7 +55,7 @@ The full tool reference is at [docs.browspark.krishm.dev/tools](https://docs.bro
 ## Development
 ```bash
 bun install
-bun run build            # extension bundles → extension/dist/
+bun run build            # Chromium extension/ + dist/firefox-extension/
 bun run typecheck
 bun run --cwd frontend build # build landing page before its smoke tests
 bun test                 # unit, bridge and landing-page tests; no browsers
@@ -63,7 +63,7 @@ bun run docs:tools       # schema-validated tool reference
 bun run test:e2e         # launches throwaway Chromium browsers
 bun run test:firefox     # Firefox acceptance scenarios
 bun run test:multi-browser # Chrome, Brave, Firefox and Zen together
-bun run package          # dist/browspark-extension.zip
+bun run package          # Chromium and Firefox extension ZIPs in dist/
 cd docs && bunx mint dev # preview the docs site
 ```
 

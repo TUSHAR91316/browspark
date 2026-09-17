@@ -9,7 +9,7 @@ Bun is the only toolchain: install, run, bundle and test. There is no Node, npm 
 
 ```bash
 bun install
-bun run build            # extension bundles → extension/dist/
+bun run build            # Chromium extension/ + dist/firefox-extension/
 bun run typecheck        # tsc for companion, extension and shared
 bun run --cwd frontend build # landing page + setup.sh; run before root tests
 bun run --cwd frontend test  # landing-page smoke tests
@@ -20,7 +20,7 @@ bun run test:firefox      # real Firefox through BiDi; install Firefox first
 bun run test:multi-browser # Chrome, Brave, Firefox and Zen developer sessions together
 bun run capabilities     # probe both Chromium modes, rewrite the capability matrix
 bun run docs:tools       # rewrite docs/tools/** and the Tools navigation
-bun run package          # dist/browspark-extension.zip
+bun run package          # Chromium and Firefox extension ZIPs in dist/
 bun run compile          # dist/browspark
 ```
 

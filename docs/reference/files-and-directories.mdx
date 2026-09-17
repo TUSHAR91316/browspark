@@ -50,7 +50,7 @@ Each profile has its own extension storage. `instanceId` identifies that extensi
 |---|---|
 | `companion/src/` | MCP server: `index.ts` (transports, relay, HTTP), `bridge.ts` (WebSocket and HTTP routes), `session.ts` (tab routing, contexts), `cdp.ts` (Chromium developer browsers), `firefox.ts` (Firefox/Zen developer browsers), `browsers.ts` (executable discovery), `page.ts` (snapshots, input, reading), `tools.ts` (browser tools), `live.ts`, `artifacts.ts`, `context.ts` (tool wrapper, policy, per-agent state), `devtools/` (one module per DevTools panel) |
 | `companion/test/` | Unit tests, e2e scenarios, the harness, the capability and docs generators |
-| `extension/` | `manifest.json`, `app.html`, `app.css`, `assets/`, `src/background.ts` (service worker), `src/app.ts` (dashboard), `src/state.ts` |
+| `extension/` | `manifest.json` (Chromium), `manifest.firefox.json`, `app.html`, `app.css`, `assets/`, `src/background.ts` (background process), `src/app.ts` (dashboard), `src/state.ts` |
 | `shared/` | `protocol.ts`, the wire protocol |
 | `test-apps/` | Deterministic pages, API, service worker and source-mapped script used by the tests |
 | `docs/` | This site |

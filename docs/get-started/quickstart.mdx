@@ -3,7 +3,7 @@ title: "Quickstart"
 description: "From zero to an agent driving a tab in about five minutes."
 ---
 
-<Info>You need [Bun](https://bun.sh) and a supported browser. Chrome and Brave can share existing tabs simultaneously; Firefox and Zen use separate developer sessions. Browspark is developed on macOS; the companion runs anywhere Bun does. For Firefox or Zen, follow [Firefox and Zen setup](#firefox-and-zen-setup) below.</Info>
+<Info>You need [Bun](https://bun.sh) and a supported browser. Chrome, Brave, Firefox and Zen can share existing tabs simultaneously. Firefox and Zen extension mode requires Firefox 153 or later; follow [Firefox and Zen setup](#firefox-and-zen-setup) below. Browspark is developed on macOS; the companion runs anywhere Bun does.</Info>
 
 ## Option 1: one command
 
@@ -13,7 +13,7 @@ The setup script downloads the extension to `~/browspark-extension`, registers t
 curl -fsSL https://browspark.krishm.dev/setup.sh | bash
 ```
 
-For Chrome, Brave or another Chromium browser, continue from **Load the extension** below. Firefox and Zen users can skip loading the downloaded extension and continue with [Firefox and Zen setup](#firefox-and-zen-setup).
+For Chrome, Brave or another Chromium browser, continue from **Load the extension** below. The setup script downloads the Chromium package; use the separate source-built Firefox package for [Firefox and Zen setup](#firefox-and-zen-setup).
 
 ## Option 2: by hand
 
@@ -51,7 +51,9 @@ For Chrome, Brave or another Chromium browser, continue from **Load the extensio
 
 ## Firefox and Zen setup
 
-Install Firefox or Zen and register the companion with your agent using the command above or [your client's configuration](/connect/agents). No extension is needed for these browsers. Ask your agent to launch a developer session; for Firefox, the tool call is:
+For existing tabs, build the current source with `bun install && bun run package`, open `about:debugging#/runtime/this-firefox`, choose **Load Temporary Add-on**, and select `dist/firefox-extension/manifest.json`. Register the companion from the same checkout: command `bun`, argument the absolute path to `companion/src/index.ts`. Open the dashboard, enable user scripts when prompted and share your tabs. The unsigned extension must be loaded again after restarting Firefox or Zen. See [Firefox extension setup and limits](/reference/firefox#install-the-firefox-extension).
+
+For a separate persistent profile, no extension is needed. Ask your agent to launch a developer session; for Firefox, the tool call is:
 
 ```json
 {
@@ -63,7 +65,7 @@ Install Firefox or Zen and register the companion with your agent using the comm
 }
 ```
 
-For Zen, use `browser: "zen"` and a context such as `"zen-work"`. Then use the returned tab ID with the usual browser tools. Each has a separate persistent profile; your everyday tabs and logins are not shared. Set `browserPath` for a custom executable. See [Firefox and Zen coverage](/reference/firefox) and [using multiple browsers](/reference/multiple-browsers).
+For Zen, use `browser: "zen"` and a context such as `"zen-work"`. Then use the returned tab ID with the usual browser tools. Developer sessions have separate profiles; use the extension above to share your everyday tabs and logins. Set `browserPath` for a custom developer executable. See [Firefox and Zen coverage](/reference/firefox) and [using multiple browsers](/reference/multiple-browsers).
 
 ## What you will see
 

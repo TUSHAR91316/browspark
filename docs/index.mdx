@@ -3,7 +3,7 @@ title: "Introduction"
 description: "One local companion for Chrome, Brave, Firefox and Zen, with control over the tabs you share."
 ---
 
-Browspark is a local [Model Context Protocol](https://modelcontextprotocol.io) server with 43 `browser_*` and `devtools_*` tools. Any MCP client, such as Claude Code, Codex, OpenCode, Cursor, Kilo or Antigravity, can use shared tabs in Chrome and Brave or separate Chrome, Brave, Firefox and Zen developer sessions. Multiple browsers can run together through one companion, which listens on `127.0.0.1` only.
+Browspark is a local [Model Context Protocol](https://modelcontextprotocol.io) server with 43 `browser_*` and `devtools_*` tools. Any MCP client, such as Claude Code, Codex, OpenCode, Cursor, Kilo or Antigravity, can use shared tabs in Chrome, Brave, Firefox and Zen or separate Chrome, Brave, Firefox and Zen developer sessions. Multiple browsers can run together through one companion, which listens on `127.0.0.1` only.
 
 <img src="/images/dashboard-overview-dark.png" alt="The Browspark dashboard, dark theme" />
 
@@ -28,7 +28,7 @@ Browspark is a local [Model Context Protocol](https://modelcontextprotocol.io) s
 
 | Mode | What it is | When it is used |
 |---|---|---|
-| **Extension mode** | Shared tabs in your own Chrome, Brave or another supported Chromium browser. Each profile has its own dashboard and sharing controls. | Everyday work with your existing sessions and cookies. Work in background is on by default. |
+| **Extension mode** | Shared tabs in your own Chrome, Brave, Firefox or Zen browser using its matching extension. Each profile has its own dashboard and sharing controls. | Everyday work with your existing sessions and cookies. Work in background is on by default. |
 | **Developer mode** | Separate Chrome, Brave, Firefox or Zen sessions with persistent profiles and named contexts. | Explicitly requested browser sessions, cross-browser checks, or capabilities Chromium blocks for extensions. |
 
 Firefox and Zen keep the same tool names with [documented exceptions](/reference/firefox), including raw CDP, Lighthouse and Chrome profiling. Connected dashboards control whether developer browsers may launch. See [Modes](/concepts/modes) and [Using multiple browsers](/reference/multiple-browsers).
@@ -37,7 +37,7 @@ Firefox and Zen keep the same tool names with [documented exceptions](/reference
 
 <Steps>
   <Step title="Install">
-    [Install the companion](/get-started/installation), then load the extension in each Chromium profile or launch a Firefox or Zen developer session.
+    [Install the companion](/get-started/installation), then load the matching extension in each browser profile or launch a separate developer session.
   </Step>
   <Step title="Connect your agent">
     [Add Browspark to your MCP client](/connect/agents), or use the [HTTP endpoint](/connect/http-endpoint) for clients that take a URL.

@@ -1,6 +1,6 @@
 ---
 title: "Settings page"
-description: "Port, HTTP endpoint, developer-browser policy, agent overlay, activity log, appearance and the emergency stop."
+description: "Connection graph, port, developer-browser policy, agent overlay, activity log and the emergency stop."
 ---
 
 ## Companion
@@ -22,6 +22,10 @@ http://127.0.0.1:9223/mcp
 
 Whether the agent may launch separate Chrome, Brave, Firefox or Zen sessions. **Only when needed** (default), **Always**, or **Never**. When several dashboards are connected, the most restrictive setting applies. See [Tool policy](/concepts/tool-policy#developer-browser-policy).
 
+## Connection graph
+
+On by default. Shows [Graph](/dashboard/graph) in the sidebar with the agents and browsers connected to the companion. Turning it off hides the page and stops graph updates for this profile. It does not disconnect agents or change tab sharing. The setting is saved independently in each browser profile.
+
 ## Browser behavior
 
 **Work in background — Do not switch away from my active tab** is on by default and saved per browser profile. Agent-created tabs open in the background; input and screenshots target the assigned tab without activating it. Explicit agent activation and window resizing are blocked while enabled. Opening the dashboard or selecting a tab yourself still works.
@@ -32,13 +36,15 @@ If a page needs foreground interaction, select the agent tab yourself or tempora
 
 **Show the agent at work** switch, on by default. Draws the soft cyan halo, moving cursor and Stop button on this profile's tabs while the agent drives them. See [The agent overlay](/concepts/tabs-and-sharing#the-agent-overlay).
 
+The overlay is available in Chromium. Firefox extension tabs use the dashboard's sharing and Stop controls instead.
+
 ## Privacy
 
 **Activity log** switch. Off by default; see [Activity](/dashboard/activity).
 
 ## Emergency stop
 
-Detaches the debugger from this profile's tabs, clears its shared list, switches Share everything off and disconnects this extension. Other connected profiles and developer sessions remain available. **Resume** reconnects this profile; share tabs again afterwards. To close developer sessions, ask the agent to use `browser_session` with `action: "close"` and the context name, or `all: true`.
+Stops access to this profile's tabs, clears its shared list, switches Share everything off and disconnects this extension. Other connected profiles and developer sessions remain available. **Resume** reconnects this profile; share tabs again afterwards. To close developer sessions, ask the agent to use `browser_session` with `action: "close"` and the context name, or `all: true`.
 
 ## Appearance
 

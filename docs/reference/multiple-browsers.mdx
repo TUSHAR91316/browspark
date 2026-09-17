@@ -1,6 +1,6 @@
 ---
 title: "Using multiple browsers"
-description: "Connect Chrome and Brave profiles and run Firefox or Zen developer sessions through one companion."
+description: "Connect Chrome, Brave, Firefox and Zen profiles and developer sessions through one companion."
 ---
 
 Browspark can use Chrome, Brave, Firefox and Zen at the same time. All browsers share one companion and the same 43 MCP tools. Each tab has a unique `tabId`, so a command always goes to the selected browser and tab.
@@ -9,22 +9,27 @@ Browspark can use Chrome, Brave, Firefox and Zen at the same time. All browsers 
 |---|---|---|
 | Chrome | Install the extension and share tabs | `browser: "chrome"` |
 | Brave | Install the extension and share tabs | `browser: "brave"` |
-| Firefox | Unavailable | `browser: "firefox"` |
-| Zen | Unavailable | `browser: "zen"` |
+| Firefox | Firefox 153+ with the Firefox extension | `browser: "firefox"` |
+| Zen | Firefox extension on a build based on Firefox 153+ | `browser: "zen"` |
 | Other Chromium browsers | Install the extension where supported | `browser: "chromium"` with `browserPath` |
 
-Firefox and Zen use WebDriver BiDi and have [documented tool exceptions](/reference/firefox). Their developer sessions have separate profiles and do not attach to your everyday Firefox or Zen tabs.
+Firefox and Zen have [documented tool exceptions](/reference/firefox). Their extension shares everyday tabs; their developer sessions use WebDriver BiDi with separate profiles and broader automation support.
 
-## Connect Chrome and Brave
+## Connect existing browser profiles
 
 1. [Register the companion](/get-started/quickstart) once with your MCP client.
 2. Load the Browspark extension in Chrome at `chrome://extensions` and Brave at `brave://extensions`. You can use the same unpacked extension folder in both.
+   For Firefox and Zen, build and load the separate Firefox package through `about:debugging`, then enable user scripts in its dashboard. See [Firefox extension setup](/reference/firefox#install-the-firefox-extension).
 3. Open each dashboard and share the tabs you want the agent to access. Every browser profile connects to `127.0.0.1:9223`, or the port you configured.
 4. Ask the agent to call `browser_status` or `browser_tabs`. Connected extension instances have a `browserId`; their tabs have unique `tabId` values.
 
 Connecting Brave keeps Chrome connected. Multiple profiles of the same browser can also connect independently. Sharing a tab in one profile grants no access to tabs in another, and its Stop controls affect that profile's tabs.
 
-Create profiles independently: copying a profile's Browspark storage duplicates its installation identity and currently makes the copies replace each other's connection. See [troubleshooting](/guides/troubleshooting#two-copied-profiles-keep-reconnecting).
+Open [Graph](/dashboard/graph) in any connected dashboard to see the agents, companion, browser profiles and developer sessions together. Extension nodes include shared-tab counts; developer nodes show open-tab counts. **Settings → Connection graph** controls this view for that profile.
+
+Use companion 0.5.0 or later for Chromium extensions, or 0.6.0 or later for Firefox extensions. When testing extensions built from source, run the companion from the same checkout and restart any older companion already using the port. See [connection troubleshooting](/guides/troubleshooting#browsers-alternate-between-connected-and-disconnected).
+
+Profiles with copied extension storage remain independent: connections are identified by both installation and browser session, so a copied installation ID cannot disconnect another running browser session.
 
 ## Choose where a new tab opens
 

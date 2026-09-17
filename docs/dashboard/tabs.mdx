@@ -5,15 +5,15 @@ description: "Share and unshare tabs across this browser profile's windows, or s
 
 <img src="/images/dashboard-tabs-light.png" alt="Tabs page, light theme" />
 
-Every open tab from every window in this browser profile is listed with its favicon, title, URL and window. To share tabs in another Chrome or Brave profile, open that profile's dashboard. Each row shows badges for its state:
+Every open tab from every window in this browser profile is listed with its favicon, title, URL and window. To share tabs in another browser profile, open that profile's dashboard. Each row shows badges for its state:
 
 | Badge | Meaning |
 |---|---|
 | Shared | The agent may use this tab. |
-| Attached | The debugger is currently attached; Chrome shows its bar on this tab. |
+| Attached | Browspark is active on the tab; Chromium also shows its debugger bar. |
 | Agent | Opened by an agent and shared automatically. Hover for the agent's name. |
 | Inspecting | A `devtools_session` is collecting data on this tab. |
-| Unsupported | A browser-internal, extension or Web Store page. The browser refuses to attach to these. |
+| Unsupported | A browser-internal, extension or protected add-on page. Firefox extension mode also excludes local files. |
 
 ## Sharing
 

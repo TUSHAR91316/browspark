@@ -3,7 +3,9 @@ title: "Multiple agents"
 description: "Run several MCP clients through one companion, sharing access to connected browser profiles and developer contexts."
 ---
 
-You can connect as many agents as you like. They share one companion and access to its connected browser profiles and developer contexts, while each keeps its own tab ownership and recordings. Chrome and Brave extensions can connect together; Firefox and Zen use separate developer contexts. See [Using multiple browsers](/reference/multiple-browsers).
+You can connect as many agents as you like. They share one companion and access to its connected browser profiles and developer contexts, while each keeps its own tab ownership and recordings. Chrome, Brave, Firefox and Zen extensions and separate developer contexts can connect together. See [Using multiple browsers](/reference/multiple-browsers).
+
+The dashboard's [Graph page](/dashboard/graph) shows established agent sessions, connected browser profiles and developer contexts linked through that companion. It updates as connections change and can be hidden with **Settings → Connection graph**.
 
 ## One companion, many clients
 
@@ -15,7 +17,7 @@ flowchart LR
   B["Other stdio clients"] --> R["Relays"]
   R -->|"HTTP"| C
   H["HTTP clients"] --> C
-  C -->|"WebSocket"| E["Chrome and Brave profiles"]
+  C -->|"WebSocket"| E["Chromium and Firefox profiles"]
   C -->|"CDP"| D["Chromium developer contexts"]
   C -->|"WebDriver BiDi"| F["Firefox and Zen contexts"]
 ```

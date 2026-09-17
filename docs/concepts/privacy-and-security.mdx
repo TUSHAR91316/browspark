@@ -1,6 +1,6 @@
 ---
 title: "Privacy and security"
-description: "What leaves your machine (nothing), what the agent can reach, and how access is bounded."
+description: "Local browser communication, what the agent can reach, and how access is bounded."
 ---
 
 ## Local only
@@ -9,9 +9,11 @@ description: "What leaves your machine (nothing), what the agent can reach, and 
 - The extension talks only to that port. The companion refuses any connection or request that carries a web page's `Origin` header, so sites you visit cannot reach it.
 - Messages from the extension to the companion are validated; malformed frames are rejected and the socket closed.
 
+Your MCP client may send returned page content to its AI provider. Sharing a tab authorizes that client to read it; local extension communication does not keep the client's conversation on your machine.
+
 ## Access is opt-in per tab
 
-In extension mode, the agent reaches exactly the tabs you share, plus tabs it opened itself in the selected browser. `chrome://` pages, extension pages and the Web Store are never automatable. Each Chrome or Brave profile enforces its own sharing. Sharing a tab in one browser grants no access in another.
+In extension mode, the agent reaches exactly the tabs you share, plus tabs it opened itself in the selected browser. Browser-internal pages, extension pages and protected add-on stores are unavailable. Each Chrome, Brave, Firefox or Zen profile enforces its own sharing. Sharing a tab in one browser grants no access in another.
 
 Emergency stop revokes access to that extension profile's tabs. Other connected profiles and separately launched developer browsers remain available; close a developer context with `browser_session` when you are finished with it.
 
@@ -19,12 +21,15 @@ Emergency stop revokes access to that extension profile's tabs. Other connected 
 
 Everything the page can: DOM, cookies for the page origin, local and session storage, network requests and their bodies while a `devtools_session` is running, and JavaScript evaluation in the page. Treat a shared tab as fully visible to the agent. Do not share tabs you would not paste into the chat.
 
+Firefox extension mode has narrower [capabilities](/reference/firefox#extension-tool-coverage): evaluation runs in an isolated world, and network capture and browser cookie APIs are unavailable. Page content is still visible to the agent.
+
 ## Restricting what the agent does
 
 - [Disable tools](/concepts/tool-policy) you do not want used.
 - [Domain policies](/tools/browser/browser_policy) limit where a tab, or every tab the agent opens, may navigate and load resources from.
 - Set the developer browser to **Never** if the agent should not get a second browser.
 - The activity log is off by default and keeps nothing; on, it holds the last 200 commands in memory only, never on disk. See [Activity](/dashboard/activity).
+- The [connection graph](/dashboard/graph) shows agent and browser connection metadata and shared-tab counts, without tab URLs or page contents. It is on by default; turn it off in Settings to hide the page and stop graph updates for that profile.
 
 ## Secrets
 
@@ -34,3 +39,7 @@ Everything the page can: DOM, cookies for the page origin, local and session sto
 ## The debugger permission
 
 Chrome grants the extension the `debugger` permission at install time. The extension attaches only to shared tabs, only when a command arrives, and detaches after 30 seconds of inactivity. The yellow bar Chrome shows is the honest signal that a tab is attached.
+
+## Firefox permissions
+
+The Firefox extension requests access to all websites (`<all_urls>`), which Firefox requires for its native tab screenshot API, and asks you to enable `userScripts` in the dashboard. Browspark only automates shared HTTP/HTTPS tabs. Page scripts execute in a separate sandbox without extension APIs, and the background process checks sharing before each command. Firefox does not show Chromium's debugger bar; use the dashboard to stop or unshare a tab. The manifest declares the browsing activity, website content and website activity sent to your local companion, as described by [Mozilla's data permission guidance](https://extensionworkshop.com/documentation/develop/firefox-builtin-data-consent/).

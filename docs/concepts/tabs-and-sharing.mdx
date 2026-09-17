@@ -7,7 +7,7 @@ description: "Which tabs an agent can see, how a target tab is chosen, and what 
 
 An agent can only reach tabs you share. Sharing happens in the dashboard's [Tabs page](/dashboard/tabs): share individual tabs, or switch on **Share everything** to include current and future tabs. **Stop** or **Unshare** revokes that tab even with Share everything enabled; explicitly share it again to resume. Per-tab grants and revocations live in `chrome.storage.session`, so they reset when the browser restarts; Share everything is persistent.
 
-Tabs from every connected Chrome or Brave profile count. `browser_tabs` and `browser_status` list each tab with its owning `browserId` and `windowId`. Public `tabId` values are unique across all browsers, even if two browsers assign the same native tab number. Sharing and Stop controls remain independent in each profile.
+Tabs from every connected Chrome, Brave, Firefox or Zen profile count. `browser_tabs` and `browser_status` list each tab with its owning `browserId` and `windowId`. Public `tabId` values are unique across all browsers, even if two browsers assign the same native tab number. Sharing and Stop controls remain independent in each profile.
 
 ## Tabs the agent opens
 
@@ -27,6 +27,8 @@ Page tools take an optional `tabId`. When it is omitted the companion resolves i
 
 ## Attaching and the yellow bar
 
+This section applies to Chromium. The Firefox extension uses sandboxed user scripts and does not attach a debugger or show the yellow bar.
+
 The extension attaches Chrome's debugger to a tab the first time a command targets it. Chrome then shows its own "Browspark started debugging this browser" bar; the extension cannot hide it. After **30 seconds without a command** the extension detaches and the bar disappears. Exceptions:
 
 - A running `devtools_session` keeps the tab attached so console and network collection is not interrupted.
@@ -41,6 +43,8 @@ open -a "Google Chrome" --args --silent-debugger-extension-api
 ```
 
 ## The agent overlay
+
+The overlay is available in Chromium. For Firefox or Zen extension tabs, use **Stop** or **Unshare** in the dashboard.
 
 While the agent drives a shared tab, the tab shows a soft cyan halo around the page, a compact charcoal pill naming the agent, and a small dark cursor with a gray outline that travels to each element before it is clicked. Travel eases in and out over roughly 0.3–1.2 seconds depending on distance; reduced-motion preferences make it instant. The pill uses the dashboard's dark palette with a mint status dot. Clicks produce a subtle ring, and fields being typed into get a thin cyan outline. The frame fades a few seconds after the last command and returns on the next one.
 

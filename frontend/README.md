@@ -2,7 +2,7 @@
 
 A standalone static site using HTML, CSS, and a small JavaScript module. It shares the extension's neutral dark palette and green accent. There is no frontend framework, hydration, runtime dependency, or external font request. Bun is used only for local serving and minifying the production JavaScript and CSS.
 
-The page describes simultaneous Chrome and Brave extension profiles plus named Chrome, Brave, Firefox and Zen developer sessions. All browsers expose the same 43 tool names (22 browser, 21 developer); Firefox and Zen have documented capability exceptions. Their developer profiles are separate from the user's existing sessions. Keep this distinction in visible copy, metadata, and the illustrative preview.
+The page describes simultaneous Chrome, Brave, Firefox and Zen extension profiles plus named developer sessions. The Firefox extension needs Firefox 153+ (or a compatible Zen build), uses unsigned temporary installation from source and must run with the matching source companion. All browsers expose the same 43 tool names (22 browser, 21 developer); Firefox extension mode has narrower capabilities than Firefox/Zen BiDi developer mode. Their developer profiles are separate from the user's existing sessions. Keep this distinction in visible copy, metadata, and the illustrative preview.
 
 ## Develop
 
@@ -30,7 +30,7 @@ Run `bun run test` to rebuild and smoke-test the production server, static asset
 
 Upload the contents of `frontend/dist/` to any static host. When configuring a host from the repository, set its working directory to `frontend`, its build command to `bun run build`, and its publish directory to `dist`. The deployed site does not need Bun or a server-side application. Enable compression on the host for HTML, CSS, JavaScript, and SVG files.
 
-Edit `index.html` for content and links, `styles.css` for styling, and `main.js` for interactions. The preview is illustrative: shared-tab switches show Chrome and Brave, while the tool ticker also shows Firefox and Zen developer contexts. Its page commands use explicit companion tab IDs; keep sample arguments aligned with the live tool schemas. Keep the logos in `assets/`; their source credits are included alongside the assets.
+Edit `index.html` for content and links, `styles.css` for styling, and `main.js` for interactions. The preview is illustrative: shared-tab switches show Chrome, Brave and Firefox, while the tool ticker also shows Firefox and Zen developer contexts. Its page commands use explicit companion tab IDs; keep sample arguments aligned with the live tool schemas. Keep the logos in `assets/`; their source credits are included alongside the assets.
 
 ## Search discovery
 

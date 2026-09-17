@@ -48,3 +48,5 @@ Pages that implement [WebMCP](https://github.com/webmachinelearning/webmcp) regi
 
 - `browser_pdf` prints the page to a PDF file (`A4`, `Letter` or `Legal`, landscape, background graphics, scale) and returns the path, `~/.browspark/artifacts/…` by default.
 - `browser_screenshot {fullPage: true}` for an image.
+
+Firefox extension mode captures screenshots but cannot print PDFs. Its JavaScript world is isolated from the page, so page-exposed JavaScript tools may be unavailable. See [Firefox extension limits](/reference/firefox#extension-tool-coverage).

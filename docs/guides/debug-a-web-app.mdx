@@ -5,6 +5,8 @@ description: "Inspection sessions, console and network search, source maps, brea
 
 The developer tools mirror Chrome DevTools panel by panel. They work on shared Chrome and Brave tabs, with operations such as heap snapshots, Lighthouse and raw protocol commands requiring a Chromium [developer browser](/concepts/developer-browser). Firefox and Zen keep the same tool names but support a subset of these operations; check [their coverage](/reference/firefox) or `devtools_capabilities` for the selected tab.
 
+Firefox extension tabs support DOM inspection and isolated JavaScript evaluation. Native console/network collection, breakpoints and other native debugger operations need a different backend; supported Firefox BiDi workflows use a separate developer profile.
+
 Use `browser_tabs` to find the tab in the intended browser and pass its `tabId` to inspection tools. Capture state is per tab, so inspecting Chrome and Brave together keeps their console and network logs separate.
 
 ## Start an inspection session

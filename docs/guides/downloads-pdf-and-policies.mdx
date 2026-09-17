@@ -5,9 +5,11 @@ description: "Collect files the browser downloads, print pages to PDF, and fence
 
 ## Downloads
 
+This guide describes Chromium extension mode and developer sessions. Firefox extension mode does not provide download tracking, PDF printing or network-backed domain policies. See [Firefox extension limits](/reference/firefox#extension-tool-coverage).
+
 `browser_download {action: "list", tabId}` reports downloads observed while the debugger is attached to the selected shared tab. Extension mode uses tab-specific browser events, so another tab's downloads stay private even on the same website. It reports the suggested filename and progress; the local file path is unavailable in this mode. Developer mode reports files in the context's download directory, including their paths. `browser_status` shows the directory; the default is `~/.browspark/downloads/<browser>/<context>`, while the compatibility choice `"chromium"` retains `~/.browspark/downloads/<context>`.
 
-Firefox and Zen download tracking requires a build with BiDi download events. See [Firefox and Zen coverage](/reference/firefox).
+Firefox and Zen developer-mode download tracking requires a build with BiDi download events. See [Firefox and Zen coverage](/reference/firefox).
 
 `{action: "wait", urlContains, timeoutMs}` returns a matching completed download immediately, or waits for one to complete. Use it right after clicking an "Export CSV" button; a file path is included when available.
 
@@ -29,4 +31,4 @@ With `default: true` the policy applies to every tab the agent opens from now on
 { "action": "set", "default": true, "block": ["doubleclick.net", "google-analytics.com"] }
 ```
 
-`status` shows the active policy; `clear` removes it. Policies use CDP Fetch interception on Chromium and BiDi network interception on Firefox and Zen, covering subresources as well as top-level navigation. A default policy applies to future agent-created tabs across browsers; a tab policy applies only to its selected `tabId`.
+`status` shows the active policy; `clear` removes it. Policies use CDP Fetch interception on Chromium and BiDi network interception in Firefox and Zen developer sessions, covering subresources as well as top-level navigation. Firefox extension tabs report an unsupported error for these policies. A default policy applies to future agent-created tabs across browsers; a tab policy applies only to its selected `tabId`.

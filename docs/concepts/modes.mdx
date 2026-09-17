@@ -1,15 +1,17 @@
 ---
 title: "Extension mode and developer mode"
-description: "Shared Chromium tabs, separate developer sessions, and explicit browser selection."
+description: "Shared browser tabs, separate developer sessions, and explicit browser selection."
 ---
 
 ## Extension mode
 
-The extension works in Chromium-based browsers, including Chrome, Brave and Edge. It attaches Chrome's debugger to a shared tab and forwards DevTools Protocol commands from the companion. The tab stays in your window with your cookies, logins and extensions. You decide which tabs are reachable from the dashboard's Tabs page.
+The extension works in Chromium-based browsers, including Chrome, Brave and Edge, and in Firefox or Zen using a separate Firefox build. Tabs stay in your window with your cookies and logins. You decide which tabs are reachable from the dashboard's Tabs page.
+
+Chromium uses its debugger API. Firefox 153+ uses WebExtension APIs and sandboxed user scripts, with [extension-specific limits](/reference/firefox#extension-tool-coverage). It needs no remote debugging port to share existing tabs.
 
 Several browser profiles can connect to the same companion at once. Each keeps its own sharing permissions. `browser_status` lists each `browserId`; use that ID when opening a new extension tab. Existing tabs have globally unique `tabId` values. See [using multiple browsers](/reference/multiple-browsers).
 
-What you get:
+What Chromium extension mode provides:
 
 - All `browser_*` automation tools.
 - Console, network (including mocks, throttling, HAR), sources with source maps and overrides, the full debugger, elements and styles, tracing and CPU profiles, coverage, emulation, accessibility, security, storage, and most service-worker operations.
@@ -35,7 +37,7 @@ Lighthouse also needs developer mode because it drives its own tab through a deb
 
 It is a different browser profile: it starts without your everyday browser's logins or history, and then persists its own sessions. Choose `browser: "chrome"` or `"brave"` explicitly; `"chromium"` remains the compatibility default.
 
-Pass `browser: "firefox"` or `"zen"` to launch a separate session through WebDriver BiDi. The tool names stay the same, but Chrome-specific operations such as raw CDP and Lighthouse are unavailable. These browsers do not use the shared-tab extension. See [Firefox and Zen coverage](/reference/firefox).
+Pass `browser: "firefox"` or `"zen"` to launch a separate session through WebDriver BiDi. The tool names stay the same, but Chrome-specific operations such as raw CDP and Lighthouse are unavailable. These developer sessions work without the shared-tab extension and have broader automation support than Firefox extension mode. See [Firefox and Zen coverage](/reference/firefox).
 
 Use separate context names to run Chrome, Brave, Firefox and Zen together. When opening a developer tab, select `mode: "dev"` and its `context`. When several browsers are available, choose the displayed browser or context explicitly instead of relying on connection order.
 

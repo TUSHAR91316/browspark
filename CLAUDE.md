@@ -10,7 +10,7 @@ Bun for everything (no node/npm/npx). Run from the repo root.
 
 ```bash
 bun install
-bun run build                # bundle extension worker + dashboard → extension/dist/ (reload extension after)
+bun run build                # Chromium extension/ + Firefox dist/firefox-extension/ (reload after)
 bun run typecheck            # tsc for companion, extension and shared
 bun test                     # unit + bridge tests only (no Chrome)
 bun run test:e2e             # E2E=1: launches throwaway Chromes; build the extension first
@@ -18,7 +18,7 @@ bun test companion/test/unit.test.ts            # one file
 E2E=1 bun test companion/test/devtools.e2e.test.ts -t "breakpoint"   # one e2e scenario by name
 bun run docs:tools           # regenerate docs/tools/** and docs/docs.json groups from live tool registrations
 bun run capabilities         # regenerate docs/reference/capability-matrix.mdx (launches two Chromes)
-bun run package              # dist/browspark-extension.zip (the release asset)
+bun run package              # Chromium + unsigned Firefox extension ZIPs in dist/
 bun run --cwd frontend build # landing page → frontend/dist (also copies root setup.sh); run before root tests
 bun run --cwd frontend test  # landing page smoke tests
 cd docs && bunx mint dev     # preview docs; bunx mint broken-links to validate
@@ -32,12 +32,12 @@ E2E needs Chrome at `/Applications/Google Chrome.app/...` or `CHROME=<path>`. E2
 Two processes, one wire protocol:
 
 - **Companion** (`companion/src`, `bunx browspark-mcp@latest`): the MCP server. Speaks MCP over stdio to the launching client and, always, Streamable HTTP at `http://127.0.0.1:9223/mcp`. Owns the WebSocket bridge the extension connects to on the same port.
-- **Extension** (`extension/`, MV3, no host permissions): a service worker that attaches `chrome.debugger` to tabs the user shared, plus a framework-free dashboard.
+- **Extension** (`extension/`, MV3): Chromium uses a service worker and `chrome.debugger` without host permissions. Firefox 153+ and compatible Zen builds use `background.scripts`, `<all_urls>` host permission for native tab screenshots (automation remains HTTP/HTTPS-only) and optional `userScripts` permission granted from the shared dashboard. `firefox-debugger.ts` adapts supported commands to WebExtension APIs and a sandboxed user-script world with messaging disabled; page code must never run with extension APIs. Firefox extension mode has documented exceptions, including native debugging, network capture, trusted input and the in-page overlay.
 - `shared/protocol.ts` is the contract: `Req/Res/Evt` over one socket, `PROTOCOL_VERSION`, `ReqMethod` names, and the two predicates both sides use (`isNewTab`, `unsupportedReason`).
 
 Two ways to reach a page, hidden behind one layer:
 
-- **Extension mode**: companion → bridge `cdp` request → worker → `chrome.debugger.sendCommand` on a shared tab.
+- **Extension mode**: companion → bridge `cdp` request → background process → `chrome.debugger.sendCommand` on Chromium, or the Firefox adapter on a shared tab. Both enforce sharing before commands.
 - **Developer mode**: companion launches named Chrome/Chromium or Brave contexts (`cdp.ts`, `DirectChrome`) over CDP, or Firefox/Zen contexts (`firefox.ts`, `DirectFirefox`) over WebDriver BiDi with documented tool exceptions. Profiles persist under `~/.browspark`. `browsers.ts` handles brand-specific executable discovery.
 
 The bridge accepts multiple extension profiles, gives each a `browserId`, and translates native tab IDs at the boundary. Extension and developer tabs use one companion-wide public ID counter. Choose `browserId` for a new extension tab or `context` for a developer tab when several are available; existing tabs use `tabId`.
@@ -81,8 +81,8 @@ Any feature, tool, or installation change must be reflected everywhere users see
 2. **README.md**: keep it to the quick start; detail lives on the docs site. Installation is Option 1 (`setup.sh`) and Option 2 (manual).
 3. **Landing page** (`frontend/`): install steps, setup one-liner, tool counts, meta. Run `bun run --cwd frontend test`.
 4. **`setup.sh`**: any change to how the companion is run or where the extension comes from. Verify with `bash setup.sh --test`.
-5. **Versions**, kept identical: `package.json`, `aliases/browspark/package.json`, `extension/manifest.json`. Then `bun run package` for the zip.
-6. **Publish**: `bun run release` publishes `browspark-mcp` and the `browspark` alias to npm. Create a GitHub release tagged with the version and attach `dist/browspark-extension.zip`; `setup.sh` and the docs download from `releases/latest`.
+5. **Versions**, kept identical: `package.json`, `aliases/browspark/package.json`, `extension/manifest.json`, `extension/manifest.firefox.json`. Then `bun run package` for both ZIPs.
+6. **Publish**: `bun run release` publishes `browspark-mcp` and the `browspark` alias to npm. Create a GitHub release tagged with the version and attach `dist/browspark-extension.zip` and `dist/browspark-firefox-extension.zip`. The Firefox ZIP is unsigned and loads temporarily through `about:debugging`; permanent standard Firefox installation requires Mozilla signing. `setup.sh` downloads the Chromium archive from `releases/latest`.
 7. **Deploys are automatic on push to `main`**: Mintlify (docs, `docs/` subdirectory), Cloudflare Workers (landing page from `frontend/`, config in `frontend/wrangler.jsonc`).
 
 Data dir and env vars are `~/.browspark` and `BROWSPARK_*`.

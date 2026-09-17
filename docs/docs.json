@@ -53,6 +53,7 @@
             "group": "Dashboard",
             "pages": [
               "dashboard/overview",
+              "dashboard/graph",
               "dashboard/tabs",
               "dashboard/tools",
               "dashboard/activity",

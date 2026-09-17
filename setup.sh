@@ -143,15 +143,18 @@ done
 
 # 06 ───────────────────────────────────────────────────────────────────────────
 step 06 "Connect your browsers"
-dim "Chrome and Brave use the extension. Firefox and Zen use separate developer sessions."
+dim "This download is for Chrome and Brave. Firefox and Zen use a separate extension build."
 say "  1. Open ${B}chrome://extensions${X} or ${B}brave://extensions${X}, switch on ${B}Developer mode${X},"
 say "     click ${B}Load unpacked${X} and pick ${G}$EXT_DIR${X}. Repeat for each browser profile."
 say "  2. Click the Browspark toolbar icon. The dashboard connects to the companion on its own;"
 say "     share the tabs your agent may use in each profile. All profiles use the same companion."
 say "  3. Ask your agent to run ${B}browser_status${X}. Use the displayed browserId to choose where"
 say "     new extension tabs open, or tabId to work in an existing tab."
-say '  Firefox / Zen: ask your agent to launch browser_session with browser:"firefox" or "zen",'
-say '  a named context, and userRequested:true. No extension is needed for these sessions.'
+say '  Firefox 153+ / compatible Zen: clone the repo and run bun install && bun run package.'
+say '  In about:debugging, choose Load Temporary Add-on → dist/firefox-extension/manifest.json.'
+say '  Register the source companion: command bun, argument the full path to companion/src/index.ts.'
+say '  Open Browspark, enable user scripts, then share tabs. Reload after a browser restart.'
+say '  Separate Firefox / Zen developer sessions still work without an extension.'
 dim "Multiple browsers: https://docs.browspark.krishm.dev/reference/multiple-browsers"
 dim "Firefox / Zen coverage: https://docs.browspark.krishm.dev/reference/firefox"
 if [ "$TEST" = 1 ]; then printf '\n  %s●%s %sTest passed.%s Run without --test to apply.\n\n' "$G" "$X" "$B" "$X"

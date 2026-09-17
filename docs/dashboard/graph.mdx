@@ -1,0 +1,22 @@
+---
+title: "Graph page"
+description: "See the agents, browser profiles and developer sessions connected through your local companion."
+---
+
+Open **Graph** in the dashboard sidebar to see connected agents, the local companion, browser profiles and running developer sessions together. Chrome, Brave, Firefox and Zen can appear side by side, with multiple agents using the same companion.
+
+## Read the graph
+
+Connections run from each agent to the companion, then from the companion to each browser. These lines show how the clients and browsers are connected. An agent appears after its MCP client establishes a session with the companion.
+
+Browser names, connection identifiers and context names help distinguish profiles and developer sessions of the same browser. Extension nodes show shared-tab counts; developer nodes show their open-tab counts. The graph updates as agents and browsers connect or disconnect. Each extension profile still controls sharing from its own [Tabs page](/dashboard/tabs).
+
+The graph displays connection metadata, not tab URLs, page contents or activity history. To inspect commands, enable the separate [Activity log](/dashboard/activity).
+
+## Enable or disable
+
+**Settings → Connection graph** is on by default and saved per browser profile. Turning it off hides Graph from that dashboard's sidebar and stops graph updates for that profile. Turn it back on to restore the view.
+
+This setting controls the view. Agents stay connected and tab-sharing permissions remain in effect. Use [Stop](/dashboard/settings#emergency-stop) or unshare tabs when you want to revoke access.
+
+If the companion is disconnected, reconnect from Overview or Settings. Run the companion and extension from the same current release or checkout so both support graph updates.

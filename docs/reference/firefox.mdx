@@ -1,11 +1,52 @@
 ---
 title: "Firefox and Zen support"
-description: "Launch Firefox and Zen developer sessions with the usual tools, and check their differences from Chromium."
+description: "Share existing Firefox and Zen tabs with the extension, or launch separate developer sessions with WebDriver BiDi."
 ---
 
-Firefox and Zen use separate developer browsers controlled through WebDriver BiDi. The MCP tool names and tab IDs work the same way as other developer sessions. The shared-tab extension remains Chromium-only: this does not attach to your everyday Firefox or Zen tabs or reuse their logins.
+Firefox and Zen have two connection options. The Firefox extension shares existing tabs and signed-in sessions through the same dashboard as Chromium. Developer mode launches a separate profile through WebDriver BiDi. Both keep the same MCP tool names, with different capability limits.
 
-## Launch Firefox or Zen
+## Install the Firefox extension
+
+Use Firefox 153 or later, or a Zen build based on Firefox 153 or later. Build the current source:
+
+```bash
+git clone https://github.com/uncaughterrs/browspark.git
+cd browspark
+bun install
+bun run package
+```
+
+This creates `dist/firefox-extension/` and `dist/browspark-firefox-extension.zip`. The separate `dist/browspark-extension.zip` is for Chromium.
+
+1. Open `about:debugging#/runtime/this-firefox` in Firefox or Zen.
+2. Choose **Load Temporary Add-on** and select `dist/firefox-extension/manifest.json` or the Firefox ZIP.
+3. Register the companion from the same source revision with your MCP client: use command `bun` and the absolute path to `companion/src/index.ts` as its argument. This keeps the extension and companion protocol versions aligned before a release is published.
+4. Open the Browspark toolbar icon. If shown, choose **Allow website access**, then **Enable Firefox automation** to grant user-script permission. Share the HTTP or HTTPS tabs the agent may access.
+5. Ask the agent to call `browser_status`, then use the listed `tabId` or choose the Firefox profile's `browserId` when opening a new tab.
+
+The package is unsigned. Temporary installation lasts until the browser restarts; reload it through `about:debugging` afterwards. Permanent installation in standard Firefox needs Mozilla signing. See [Mozilla's temporary installation instructions](https://extensionworkshop.com/documentation/develop/temporary-installation-in-firefox/).
+
+The extension requests access to all websites (`<all_urls>`) because Firefox requires this permission for native tab screenshots, plus user-script execution for page automation. Browspark still limits automation to shared HTTP/HTTPS tabs and checks sharing before each command. It connects to your local companion; content returned to your MCP client may be processed by your chosen AI provider. Firefox browser pages, add-on pages, protected Mozilla sites and local files are unavailable.
+
+## Extension tool coverage
+
+The extension provides shared-tab automation through Firefox WebExtension APIs and a sandboxed user-script world. It does not expose a native debugger. See the coverage notes below before choosing between an existing shared tab and a separate developer profile.
+
+| Area | Firefox and Zen extension behavior |
+|---|---|
+| Tabs | List, open, close and activate shared tabs; navigation, reload, back and forward. |
+| Page content | Snapshots and refs, reading, extraction, waits and DOM inspection/editing. Same-origin frame DOM is accessible; cross-origin frames are not. |
+| JavaScript | Evaluation in an isolated user-script world, with DOM access but without the page's JavaScript globals or extension APIs. |
+| Interaction | Ordinary left clicks, simulated keyboard events, filling, selection and scrolling. Hover, drag, non-left clicks, multiple clicks and click modifiers are unavailable. Events are untrusted (`isTrusted: false`); websites that require native input can reject them. |
+| Screenshots | Capture the selected tab through Firefox's tab-capture API. |
+| Stop controls | Unshare or stop access in the dashboard. The in-page agent overlay is unavailable. |
+| Network, cookies and console | Network capture/interception, network-backed policies, browser cookie APIs and console collection are unavailable. Page DOM APIs remain available through evaluation. |
+| Files and dialogs | Download tracking, PDF printing, native file upload and JavaScript dialog handling are unavailable. |
+| Developer tools | Raw CDP, Lighthouse, debugger control, early-document scripts, Chrome tracing/profiling and other native DevTools operations are unavailable. |
+
+All 43 tool names remain registered. Unsupported actions return explicit errors for the selected Firefox extension tab. Use a separate Firefox or Zen developer session when you need supported BiDi capabilities such as native input or network inspection; that session has its own profile and logins. Use Chromium developer mode for CDP or Lighthouse.
+
+## Launch a separate Firefox or Zen developer browser
 
 Install the browser, [register the companion](/connect/agents), and ask your agent to open a Firefox or Zen developer session. For Firefox it calls `browser_session` with:
 
@@ -25,7 +66,7 @@ For Zen, change `browser` to `"zen"` and use its own context, such as `"zen"`. Y
 
 Profiles persist under `~/.browspark/profiles/.firefox/<context>` for Firefox and `~/.browspark/profiles/.zen/<context>` for Zen (under `BROWSPARK_PROFILES` when set). They are separate from each other and from Chromium profiles, including the `default` context. A context name can belong to only one running browser at a time. Pass the matching `browser` when deleting a stopped context.
 
-## Tool coverage
+## Developer-mode tool coverage
 
 Unsupported actions return an explicit error. They do not silently run in Chrome or substitute results from another browser.
 
@@ -50,7 +91,7 @@ Network capture does not include WebSocket/SSE frames, TLS certificate details, 
 
 Literal multiline text in `browser_fill` or the `text` argument of `browser_key` is unavailable in Firefox and Zen; it returns an error before typing. Ordinary text and explicit keyboard actions use native browser input.
 
-These limits apply to both Firefox and Zen. The generated [CDP capability matrix](/reference/capability-matrix) describes Chromium only. `devtools_capabilities` reports the selected tab's backend and capabilities; a supported domain does not imply that every Chrome command in it is available.
+These developer-mode limits apply to both Firefox and Zen. The generated [CDP capability matrix](/reference/capability-matrix) describes Chromium only. `devtools_capabilities` reports the selected tab's backend and capabilities; a supported domain does not imply that every Chrome command in it is available.
 
 ## Launch options
 

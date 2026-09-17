@@ -8,7 +8,7 @@ description: "Every install option in detail: source, packaged extension, compil
 | Requirement | Notes |
 |---|---|
 | Bun 1.x | Runtime, package manager, bundler and test runner. Nothing else is needed; there is no Node or npm step. |
-| A supported browser | Chrome, Brave, Edge or Chromium for extension mode. Developer mode supports Chrome, Brave, Firefox and Zen. Use `browserPath` on launch to select an executable. |
+| A supported browser | Chrome, Brave, Edge or Chromium; Firefox 153+ or a Zen build based on Firefox 153+ for the Firefox extension. Developer mode supports Chrome, Brave, Firefox and Zen. |
 | An MCP client | Claude Code, Codex, OpenCode, Cursor, Kilo, Antigravity, or anything that speaks MCP over stdio or Streamable HTTP. |
 
 ## One-command setup
@@ -21,7 +21,7 @@ curl -fsSL https://browspark.krishm.dev/setup.sh | bash
 
 `bash setup.sh --test` is a dry run: it prints every command and file it would write without touching anything. The script lives at [`setup.sh`](https://github.com/uncaughterrs/browspark/blob/main/setup.sh) in the repo.
 
-The downloaded extension is for Chromium and can connect from several browser profiles at once. For Firefox or Zen, register the companion and use [a separate developer session](/reference/firefox); skip the extension-loading step.
+The setup script downloads the Chromium extension. Firefox and Zen use the separate source-built package below; both extension builds can connect to one companion at the same time.
 
 ## The companion
 
@@ -32,6 +32,8 @@ bunx browspark-mcp@latest
 ```
 
 From a clone of the repo, `bun companion/src/index.ts` runs the same code from source.
+
+Use this source entry point when testing an extension built from the checkout: set the MCP command to `bun` and its argument to the absolute path to `companion/src/index.ts`. A published `bunx` package may be older than your local extension. Restart the old companion and its relays after changing the command; otherwise new clients still connect to the old process on the shared port. See [connection troubleshooting](/guides/troubleshooting#browsers-alternate-between-connected-and-disconnected).
 
 Started by an MCP client it speaks MCP over stdio. On every start it also opens `127.0.0.1:9223` for every extension's WebSocket connection, the [HTTP MCP endpoint](/connect/http-endpoint) and the [live view](/concepts/developer-browser#live-view). Chrome and Brave can connect to this same port simultaneously. If another companion already owns the port, the new process becomes a relay to it instead of failing. See [Multiple agents](/connect/multiple-agents) and [using multiple browsers](/reference/multiple-browsers).
 
@@ -64,7 +66,7 @@ The binary has no dependencies and takes the same flags as the source entry poin
 
 ## The extension
 
-The extension supports Chromium-based browsers. Firefox and Zen use the companion directly through WebDriver BiDi and do not require an extension. See [Firefox and Zen setup and coverage](/reference/firefox).
+Use the Chromium package for Chrome and Brave, or the Firefox package for Firefox and Zen. The Firefox extension shares existing tabs with [documented limits](/reference/firefox#extension-tool-coverage); separate developer sessions use WebDriver BiDi for broader browser automation.
 
 <Tabs>
   <Tab title="Release zip">
@@ -79,15 +81,21 @@ The extension supports Chromium-based browsers. Firefox and Zen use the companio
   <Tab title="Packaged zip">
     ```bash
     bun run package
-    # → dist/browspark-extension.zip
+    # → dist/browspark-extension.zip (Chromium)
+    # → dist/browspark-firefox-extension.zip (Firefox / Zen)
     ```
-    Unzip it anywhere and load that folder unpacked. Useful for installing on another machine or in a second browser.
+    Unzip the Chromium archive anywhere and load that folder unpacked. Use the Firefox instructions in the next tab for its archive.
+  </Tab>
+  <Tab title="Firefox or Zen">
+    Build the current source with `bun install && bun run package`. Open `about:debugging#/runtime/this-firefox`, choose **Load Temporary Add-on**, and select `dist/firefox-extension/manifest.json` or `dist/browspark-firefox-extension.zip`.
+
+    Use Firefox 153+ or a Zen build based on Firefox 153+. Register the companion from the same checkout with command `bun` and the absolute path to `companion/src/index.ts`. Open the dashboard, enable user scripts when prompted and share your tabs. This unsigned build must be loaded again after restarting the browser; permanent installation in standard Firefox needs Mozilla signing. See [Firefox extension setup](/reference/firefox#install-the-firefox-extension).
   </Tab>
 </Tabs>
 
-The extension asks for five permissions: `debugger` (drive tabs), `tabs` (list and open them), `storage` (settings and the shared list), `alarms` (idle detach timer) and `downloads` (report downloads). It has no host permissions and injects nothing into pages on its own.
+The Chromium extension asks for five permissions: `debugger` (drive tabs), `tabs` (list and open them), `storage` (settings and the shared list), `alarms` (idle detach timer) and `downloads` (report downloads). It has no host permissions. The Firefox extension uses `tabs`, `storage`, `alarms`, `downloads`, access to all websites (`<all_urls>`) for Firefox's native screenshot API, and an optional `userScripts` permission that you enable in the dashboard. Firefox automation remains limited to HTTP/HTTPS tabs. Both extensions enforce sharing before page commands.
 
-Load the extension in every Chromium browser profile you want to connect. Chrome, Brave and multiple profiles can stay connected together. Each dashboard controls sharing for its own profile; connecting another browser does not replace an existing connection. `browser_status` and `browser_tabs` show the `browserId` to select when opening tabs. See [using multiple browsers](/reference/multiple-browsers).
+Load the matching extension in each browser profile you want to connect. Chrome, Brave, Firefox and Zen profiles can stay connected together. Each dashboard controls sharing for its own profile; connecting another browser does not replace an existing connection. `browser_status` and `browser_tabs` show the `browserId` to select when opening tabs. See [using multiple browsers](/reference/multiple-browsers).
 
 ## Connecting the extension
 
@@ -106,4 +114,4 @@ bun install
 bun run build
 ```
 
-Then reload the extension in every connected browser profile (`chrome://extensions` in Chrome, `brave://extensions` in Brave). The dashboard shows a banner when the extension files on disk are newer than the running service worker, and it shows the companion's version next to the connection status so you can tell when the two are out of step.
+Then reload the extension in every connected browser profile (`chrome://extensions` in Chrome, `brave://extensions` in Brave, `about:debugging` in Firefox or Zen). The dashboard shows a banner when the extension files on disk are newer than the running background process, and it shows the companion's version next to the connection status so you can tell when the two are out of step.
