@@ -164,7 +164,7 @@ test('setup client selection shows valid configuration and survives navigation a
   const previousClient = await evaluate('localStorage.getItem("setupClient")');
   const port = await evaluate('chrome.runtime.sendMessage({type:"getState"}).then(state => state.port)');
   const args = ['browspark-mcp@latest', ...(port === 9223 ? [] : ['--port', String(port)])];
-  const clients = [['claude', 'Claude'], ['codex', 'Codex'], ['opencode', 'OpenCode'], ['cursor', 'Cursor'], ['kilo', 'Kilo'], ['antigravity', 'Antigravity']] as const;
+  const clients = [['claude', 'Claude'], ['codex', 'Codex'], ['opencode', 'OpenCode'], ['cursor', 'Cursor'], ['antigravity', 'Antigravity'], ['muse', 'Muse Code']] as const;
   const selected = (id: string) => `document.querySelector('.setup-clients button[data-client="${id}"]')?.getAttribute('aria-pressed') === 'true'`;
   try {
     await evaluate('location.hash = "#/overview"');
@@ -183,7 +183,7 @@ test('setup client selection shows valid configuration and survives navigation a
       }
       else {
         const config = JSON.parse(snippet);
-        if (id === 'opencode' || id === 'kilo') {
+        if (id === 'opencode') {
           assert.equal(config.mcp.browspark.type, 'local');
           assert.deepEqual(config.mcp.browspark.command, ['bunx', ...args]);
         } else {

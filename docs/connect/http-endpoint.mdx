@@ -45,7 +45,7 @@ await client.connect(new StreamableHTTPClientTransport(new URL('http://127.0.0.1
 const { tools } = await client.listTools();
 ```
 
-Each HTTP session gets its own MCP server instance and its own agent identity, exactly like a stdio client. The session id travels in the `mcp-session-id` header; the first request must be a `POST` that initialises the session.
+Each HTTP session gets its own MCP server instance and its own agent identity, exactly like a stdio client. The session id travels in the `mcp-session-id` header; the first request must be a `POST` that initialises the session. End a session with a `DELETE`; a client that disappears without one is dropped about a minute after its event stream closes (`BROWSPARK_HTTP_GRACE_MS` tunes the delay), so it does not linger in the graph.
 
 ## Sandboxed clients
 

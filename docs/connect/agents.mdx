@@ -1,6 +1,6 @@
 ---
 title: "Connect an agent"
-description: "Register the companion with Claude Code, Codex, OpenCode, Cursor, Kilo or Antigravity over stdio."
+description: "Register the companion with Claude Code, Codex, OpenCode, Cursor, Antigravity or Muse Code over stdio."
 ---
 
 Every stdio client runs the same command. It fetches the `browspark-mcp` package from npm on first run and caches it; `@latest` keeps it current. If the client cannot find `bunx`, use the full path to the executable (`~/.bun/bin/bunx` by default).
@@ -54,21 +54,6 @@ Add `--port 9224` (or any port) if `9223` is taken by something that is not anot
     ```
     Restart Cursor and check **Customize → MCP**. [Cursor MCP docs](https://cursor.com/docs/mcp).
   </Tab>
-  <Tab title="Kilo">
-    Add to `~/.config/kilo/kilo.jsonc`:
-    ```json
-    {
-      "mcp": {
-        "browspark": {
-          "type": "local",
-          "command": ["bunx", "browspark-mcp@latest"],
-          "enabled": true
-        }
-      }
-    }
-    ```
-    In the Kilo extension open **Settings → MCP** and check that Browspark is enabled. [Kilo MCP docs](https://kilo.ai/docs/automate/mcp/using-in-kilo-code).
-  </Tab>
   <Tab title="Antigravity">
     In the Agent panel open **… → MCP Servers → Manage MCP Servers → View raw config** and add:
     ```json
@@ -82,6 +67,23 @@ Add `--port 9224` (or any port) if `9223` is taken by something that is not anot
     }
     ```
     Save, then confirm Browspark is enabled in MCP management. [Antigravity MCP docs](https://antigravity.google/docs/mcp).
+  </Tab>
+  <Tab title="Muse Code">
+    Add to `~/.config/muse/settings.json` (or `$XDG_CONFIG_HOME/muse/settings.json`), keeping any existing servers:
+    ```json
+    {
+      "schema_version": 1,
+      "mcpServers": {
+        "browspark": {
+          "mode": "optional",
+          "transport": "stdio",
+          "command": "bunx",
+          "args": ["browspark-mcp@latest"]
+        }
+      }
+    }
+    ```
+    Restart Muse Code and check that Browspark is listed among its MCP servers. `mode: "optional"` means a companion failure does not stop Muse Code from launching. The setup script writes this entry for you.
   </Tab>
 </Tabs>
 

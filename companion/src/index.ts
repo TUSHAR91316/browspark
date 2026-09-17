@@ -75,6 +75,10 @@ const stopGraph = installConnectionGraph(bridge, sessions);
 // MCP over Streamable HTTP for clients that take a URL (web agents, hosted assistants). Localhost only; the bridge
 // refuses requests that carry a web page's Origin.
 const httpSessions = new Map<string, StreamableHTTPServerTransport>();
+// A client that dies without DELETE would stay in the graph forever: SDK clients hold a GET event stream open, so
+// treat that stream dropping (and not returning within the grace period) as the client having gone away.
+const httpStreams = new Map<string, { open: number; gone?: ReturnType<typeof setTimeout> }>();
+const HTTP_STREAM_GRACE_MS = Number(process.env.BROWSPARK_HTTP_GRACE_MS ?? 60_000);
 // Populate the extension's catalog before any agent connects; reuse this server for the first HTTP client.
 let firstHttpServer = owner && httpOnly ? buildServer('http') : undefined;
 bridge.mcpHandler = async (req, res) => {
@@ -83,11 +87,15 @@ bridge.mcpHandler = async (req, res) => {
   if (!transport) {
     if (req.method !== 'POST') { res.statusCode = 400; res.end('no MCP session; initialize with a POST first'); return; }
     const t = new StreamableHTTPServerTransport({ sessionIdGenerator: () => randomUUID(), onsessioninitialized: (id) => { httpSessions.set(id, t); console.error(`browspark: http client session ${id.slice(0, 8)}`); } });
-    t.onclose = () => { if (t.sessionId) httpSessions.delete(t.sessionId); };
+    t.onclose = () => { if (t.sessionId) { httpSessions.delete(t.sessionId); clearTimeout(httpStreams.get(t.sessionId)?.gone); httpStreams.delete(t.sessionId); } };
     const server = firstHttpServer ?? buildServer('http');
     firstHttpServer = undefined;
     await server.connect(t);
     transport = t;
+  }
+  if (req.method === 'GET' && typeof sid === 'string') {
+    const s = httpStreams.get(sid) ?? { open: 0 }; httpStreams.set(sid, s); s.open++; clearTimeout(s.gone);
+    const t = transport; res.once('close', () => { if (--s.open === 0) s.gone = setTimeout(() => { console.error(`browspark: http client session ${sid.slice(0, 8)} went away`); void t.close(); }, HTTP_STREAM_GRACE_MS); });
   }
   await transport.handleRequest(req, res);
 };

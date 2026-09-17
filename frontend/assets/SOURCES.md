@@ -10,8 +10,8 @@ Client marks were copied from the extension's officially sourced assets, retriev
 | `clients/codex.svg` | [OpenAI Agents SDK favicon](https://raw.githubusercontent.com/openai/openai-agents-js/main/docs/public/favicon.svg) | Original OpenAI Blossom on a white circular tile, used to identify Codex. This is the OpenAI mark, not a dedicated Codex app icon. |
 | `clients/opencode.svg` | [OpenCode brand page](https://opencode.ai/brand/), original `logoDarkSquareSvg` download | Original 300 × 300 SVG variant intended for dark backgrounds. |
 | `clients/cursor.svg` | [Cursor brand page](https://cursor.com/brand), [official asset archive](https://ptht05hbb1ssoooe.public.blob.vercel-storage.com/assets/brand/cursor-brand-assets.zip), member `General Logos/Cube/SVG/CUBE_2D_DARK.svg` | Original SVG variant intended for dark backgrounds. |
-| `clients/kilo.svg` | [Kilo website favicon](https://kilo.ai/favicon/favicon.svg?v=2) | Original black mark on a yellow tile. |
 | `clients/antigravity.png` | [Google Antigravity press assets](https://www.antigravity.google/press), [full-color icon](https://www.antigravity.google/assets/image/brand/antigravity-icon__full-color.png) | Proportional 64 × 64 transparent PNG export using macOS `sips`. |
+| `clients/muse.svg` | [Simple Icons `meta` mark](https://cdn.simpleicons.org/meta), reproducing Meta's loop mark | 24 × 24 single-color `#0467DF` SVG as supplied, used to identify Muse Code. This is the Meta mark, not a dedicated Muse Code app icon. |
 
 All assets are local. Render client marks with `object-fit: contain`; no color filters are needed.
 

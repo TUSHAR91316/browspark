@@ -29,6 +29,19 @@ Load `extension/` unpacked in Chrome or Brave, or load `dist/firefox-extension/m
 - Tool changes must keep the tool descriptions accurate, since agents read them. Run `bun run docs:tools` to regenerate the tool docs.
 - Use conventional commit messages: `feat(extension): …`, `fix(companion): …`, `docs: …`.
 
+## Publishing
+
+`bun run release` checks npm authentication before publishing `browspark-mcp` and its `browspark` alias. If `bun pm whoami` returns **401 Unauthorized**, refresh the registry credentials before retrying. Bun's [documented login helper](https://bun.com/docs/pm/cli/pm#whoami) can run under Bun with `bunx --bun npm login`. If using a granular access token, verify that it is valid and grants publishing access to both packages; never commit the token.
+
+A publish-time **404 Not Found** can mask rejected credentials even when the package exists. A new version being absent from npm is expected before publication. Check authentication first rather than changing the version to work around this error.
+
+To check package contents without publishing, run these commands separately; `--dry-run` is not forwarded safely through the compound release command:
+
+```bash
+bun publish --access public --dry-run
+(cd aliases/browspark && bun publish --access public --dry-run)
+```
+
 ## Reporting security issues
 Do not open a public issue for security problems. Email the maintainer instead and allow time for a fix before disclosure.
 

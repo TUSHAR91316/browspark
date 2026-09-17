@@ -205,15 +205,16 @@ function clientSetup(port: number) {
       code: JSON.stringify({ mcpServers: { browspark: { type: 'stdio', ...STDIO_CONFIG } } }, null, 2),
       next: 'Restart Cursor, then check that Browspark is enabled under Customize → MCP.',
       docs: 'https://cursor.com/docs/mcp' },
-    { id: 'kilo', name: 'Kilo', file: '~/.config/kilo/kilo.jsonc',
-      instruction: 'Add this entry to your global Kilo config, keeping any existing servers.',
-      code: LOCAL_CONFIG, next: 'In the Kilo extension, open Settings → MCP and check that Browspark is enabled.',
-      docs: 'https://kilo.ai/docs/automate/mcp/using-in-kilo-code' },
     { id: 'antigravity', name: 'Antigravity', file: 'mcp_config.json',
       instruction: 'In the Agent panel, open … → MCP Servers → Manage MCP Servers → View raw config. Add this entry, keeping any existing servers.',
       code: JSON.stringify({ mcpServers: { browspark: STDIO_CONFIG } }, null, 2),
       next: 'Save the config, then check that Browspark is enabled in MCP management.',
       docs: 'https://antigravity.google/docs/mcp' },
+    { id: 'muse', name: 'Muse Code', file: '~/.config/muse/settings.json',
+      instruction: 'Add this entry under mcpServers in ~/.config/muse/settings.json, keeping any existing servers.',
+      code: JSON.stringify({ mcpServers: { browspark: { mode: 'optional', transport: 'stdio', command: 'bunx', args } } }, null, 2),
+      next: 'Restart Muse Code, then check that Browspark is listed among its MCP servers.',
+      docs: 'https://dev.meta.ai/docs/muse-code/extending#mcp' },
   ];
 
   const selected = SETUP_CLIENTS.find((client) => client.id === ui.setupClient) ?? SETUP_CLIENTS[0]!;

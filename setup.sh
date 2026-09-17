@@ -76,7 +76,7 @@ ok "$RUN"
 
 # 04 ───────────────────────────────────────────────────────────────────────────
 step 04 "Choose your agents"
-AGENTS="claude codex opencode cursor kilo antigravity"
+AGENTS="claude codex opencode cursor antigravity muse"
 i=0; for n in $AGENTS; do i=$((i+1)); dim "$i) $n"; done
 a=$(ask "Numbers separated by spaces, or 'all' [1]:")
 a=${a:-1}
@@ -104,6 +104,7 @@ args_json=$(printf '%s\n' $ARGS | bun -e 'console.log(JSON.stringify((await Bun.
 cmd_json=$(printf '%s\n' $CMD $ARGS | bun -e 'console.log(JSON.stringify((await Bun.stdin.text()).trim().split("\n")))')
 local_cfg="{\"type\":\"local\",\"command\":$cmd_json,\"enabled\":true}"
 stdio_cfg="{\"type\":\"stdio\",\"command\":\"$CMD\",\"args\":$args_json}"
+muse_cfg="{\"mode\":\"optional\",\"transport\":\"stdio\",\"command\":\"$CMD\",\"args\":$args_json}"
 
 # 05 ───────────────────────────────────────────────────────────────────────────
 step 05 "Registering the companion"
@@ -131,13 +132,17 @@ for agent in $CHOSEN; do
     cursor)
       f="$HOME/.cursor/mcp.json"
       run merge_json "$f" mcpServers.browspark "$stdio_cfg" && ok "Cursor ($f)";;
-    kilo)
-      f="$HOME/.config/kilo/kilo.jsonc"
-      if run merge_json "$f" mcp.browspark "$local_cfg" 2>/dev/null; then ok "Kilo ($f)"
-      else warn "Kilo: $f has comments, so add this under \"mcp\" yourself:"; dim "\"browspark\": $local_cfg"; fi;;
     antigravity)
       warn "Antigravity: open Agent panel → … → MCP Servers → Manage → View raw config and add under \"mcpServers\":"
       dim "\"browspark\": {\"command\":\"$CMD\",\"args\":$args_json}";;
+    muse)
+      f="${XDG_CONFIG_HOME:-$HOME/.config}/muse/settings.json"
+      if run merge_json "$f" mcpServers.browspark "$muse_cfg" && run bun -e '
+        const [file] = process.argv.slice(1);
+        let root = {};
+        try { root = JSON.parse(await Bun.file(file).text()); } catch {}
+        if (root.schema_version == null) { root = { schema_version: 1, ...root }; await Bun.write(file, JSON.stringify(root, null, 2) + "\n"); }
+      ' "$f"; then ok "Muse Code ($f)"; fi;;
   esac
 done
 

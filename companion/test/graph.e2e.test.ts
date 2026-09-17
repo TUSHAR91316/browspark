@@ -239,7 +239,7 @@ test('graph follows multiple browsers and agents, with a persistent per-browser 
     await waitFor(async () => (await state()).graph?.agents.length === 1 && await first.eval!(`document.querySelectorAll('.graph-agent').length === 1`), 'disconnected MCP agent disappears from the graph');
     assert.deepEqual((await state()).graph.agents.map((agent: any) => agent.name), ['Codex']);
 
-    otherClient = new Client({ name: 'tbh', version: '0' });
+    otherClient = new Client({ name: 'mystery-agent-7', version: '0' });
     otherTransport = new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}/mcp`));
     await otherClient.connect(otherTransport);
     for (const [browserEngine, browser] of [['chromium', 'Mystery Browser 1.0'], ['firefox', 'Private Browser 2.0']] as const) {
@@ -255,7 +255,7 @@ test('graph follows multiple browsers and agents, with a persistent per-browser 
     await waitFor(() => first.eval!(`document.querySelectorAll('.graph-agent').length === 2 && document.querySelectorAll('.graph-browser').length === 3`), 'unrecognized clients and browser profiles appear alongside known connections');
     const fallbackGraph = (await state()).graph;
     for (const [selector, reported, label, asset] of [
-      [`[data-agent-id="${fallbackGraph.agents.find((agent: any) => agent.name === 'tbh').id}"]`, 'tbh', 'Other agent', 'other-agent.svg'],
+      [`[data-agent-id="${fallbackGraph.agents.find((agent: any) => agent.name === 'mystery-agent-7').id}"]`, 'mystery-agent-7', 'Other agent', 'other-agent.svg'],
       [`[data-browser-id="${fallbackGraph.browsers.find((browser: any) => browser.name === 'Mystery Browser 1.0').id}"]`, 'Mystery Browser 1.0', 'Unknown Chromium', 'chromium.png'],
       [`[data-browser-id="${fallbackGraph.browsers.find((browser: any) => browser.name === 'Private Browser 2.0').id}"]`, 'Private Browser 2.0', 'Unknown Firefox', 'firefox.png'],
     ]) {

@@ -9,7 +9,7 @@ import { disabledTools } from '../src/context.ts';
 import { isConnectionGraph, PROTOCOL_VERSION, type ConnectionGraph, type Req, type ToolInfo } from '../../shared/protocol.ts';
 
 test('HTTP-only startup serves the full catalog and graph before an agent connects', async () => {
-  const companion = spawn(process.execPath, [new URL('../src/index.ts', import.meta.url).pathname, '--http-only', '--port', '0'], { stdio: ['ignore', 'ignore', 'pipe'] });
+  const companion = spawn(process.execPath, [new URL('../src/index.ts', import.meta.url).pathname, '--http-only', '--port', '0'], { stdio: ['ignore', 'ignore', 'pipe'], env: { ...process.env, BROWSPARK_HTTP_GRACE_MS: '500' } });
   let ws: WebSocket | undefined;
   const client = new Client({ name: 'HTTP startup test', version: '0' });
   let transport: StreamableHTTPClientTransport | undefined;
@@ -53,6 +53,10 @@ test('HTTP-only startup serves the full catalog and graph before an agent connec
     assert.equal((await client.listTools()).tools.length, 43);
     await new Promise(resolve => setTimeout(resolve, 1200));
     assert.deepEqual(graph.agents.map(agent => agent.name), ['HTTP startup test']);
+    // A client that vanishes without DELETE (crash, killed test run) must leave the graph once its event stream is gone.
+    await transport.close(); transport = undefined;
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    assert.equal(graph.agents.length, 0, 'a vanished HTTP client is removed after the grace period');
   } finally {
     await transport?.terminateSession().catch(() => {});
     await client.close();

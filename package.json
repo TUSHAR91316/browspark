@@ -22,7 +22,7 @@
     "test:firefox": "FIREFOX_E2E=1 bun test companion/test/firefox.e2e.test.ts --timeout 120000",
     "test:multi-browser": "MULTI_BROWSER_E2E=1 bun test companion/test/multi-developer.e2e.test.ts --timeout 240000",
     "compile": "bun build --compile companion/src/index.ts --outfile dist/browspark",
-    "release": "bun publish --access public && for a in aliases/*; do (cd $a && ([ \"$(bun -p 'require(\"./package.json\").version')\" = \"$npm_package_version\" ] || bun pm version $npm_package_version --no-git-tag-version) && bun publish --access public); done"
+    "release": "bun pm whoami && bun publish --access public && for a in aliases/*; do (cd $a && ([ \"$(bun -p 'require(\"./package.json\").version')\" = \"$npm_package_version\" ] || bun pm version $npm_package_version --no-git-tag-version) && bun publish --access public); done"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.20.0",
