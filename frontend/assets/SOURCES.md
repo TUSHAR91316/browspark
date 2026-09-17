@@ -17,4 +17,6 @@ All assets are local. Render client marks with `object-fit: contain`; no color f
 
 ## Product screenshot
 
-`dashboard-graph.png` is an unchanged 1200 × 900 screenshot of Browspark's Graph page, captured on 2026-09-17 by `companion/test/graph.e2e.test.ts` using disposable Chrome and Brave profiles with local test agents. It shows the verified draggable canvas with Codex, Claude Code, Chrome and Brave. No real user browsing data is included. Dark and light copies are also stored in `docs/images/dashboard-graph-dark.png` and `docs/images/dashboard-graph-light.png`.
+`dashboard-graph.png` is a 2242 × 1338 screenshot of Browspark's actual Graph card, captured on 2026-09-17 in a disposable Chrome profile using `companion/test/harness.ts`. Four local MCP test sessions identify as Codex, Claude Code, Cursor and OpenCode. Chrome runs the real extension; Brave, Firefox and Zen are simulated extension connections using the normal bridge protocol. This is an illustrative topology, not a browser compatibility test, and contains no real user browsing data.
+
+The capture uses a 1440 × 880 CSS-pixel viewport at 2× resolution. After all connections and logos load, **Reset** restores the default node positions and **Fit** brings every node into view. Chrome captures the `#connection-graph` element directly, including the dotted canvas, connection lines, logos and Fit/Reset controls; the screenshot is not retouched. Dark and light captures of the same layout are also stored in `docs/images/dashboard-graph-dark.png` and `docs/images/dashboard-graph-light.png`.
