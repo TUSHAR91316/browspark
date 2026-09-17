@@ -603,6 +603,45 @@ test('an unanswered companion handshake stays reconnecting and shows rejection',
   }
 }, 30_000);
 
+test('an outdated companion stops reconnecting without clearing sharing', async () => {
+  const previousHash = await evaluate('location.hash');
+  const before = await evaluate('chrome.runtime.sendMessage({type:"getState"})');
+  const companion = new WebSocketServer({ host: '127.0.0.1', port: 0 });
+  await new Promise<void>((resolve) => companion.once('listening', resolve));
+  let attempts = 0;
+  companion.on('connection', (socket) => {
+    attempts++;
+    socket.once('message', (data) => {
+      if (JSON.parse(data.toString()).event === 'hello') socket.send(JSON.stringify({ id: 1, method: 'tools.catalog', params: { version: '0.3.4', tools: [] } }));
+    });
+  });
+  try {
+    await evaluate('chrome.runtime.sendMessage({type:"setShareAll",on:true})');
+    const sharedBefore = await evaluate('chrome.runtime.sendMessage({type:"getState"}).then(state => state.tabs.filter(tab => tab.shared).map(tab => tab.id).sort())');
+    const grantsBefore = await evaluate('chrome.storage.session.get(["shared","excluded"])');
+    await evaluate(`location.hash = '#/settings'; chrome.runtime.sendMessage({type:'setConfig',port:${(companion.address() as { port: number }).port}})`);
+    await waitFor(`chrome.runtime.sendMessage({type:'getState'}).then(state => !state.connecting && !state.connected && state.stopped && state.lastError?.includes('companion 0.5.0 or later'))`);
+    await waitFor(`document.querySelector('#main').textContent.includes('Run the companion from the same source build, then reconnect.') && !document.querySelector('#reconnect').disabled`);
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    assert.equal(attempts, 1, 'an incompatible companion must not trigger repeated connection attempts');
+    const rejected = await evaluate('chrome.runtime.sendMessage({type:"getState"})');
+    assert.equal(rejected.shareAll, true);
+    assert.deepEqual(rejected.tabs.filter((tab: any) => tab.shared).map((tab: any) => tab.id).sort(), sharedBefore);
+    assert.deepEqual(rejected.toolCatalog, before.toolCatalog, 'the incompatible catalog must not replace the cached tools');
+    assert.deepEqual(await evaluate('chrome.storage.session.get(["shared","excluded"])'), grantsBefore);
+    assert.equal(await evaluate('chrome.storage.local.get("stopped").then(settings => settings.stopped)'), false, 'version rejection must not persist a user stop');
+  } finally {
+    for (const socket of companion.clients) socket.terminate();
+    await new Promise<void>((resolve) => companion.close(() => resolve()));
+    await evaluate(`chrome.runtime.sendMessage({type:'setShareAll',on:${before.shareAll}})`);
+    await evaluate(`chrome.runtime.sendMessage(${JSON.stringify({ type: 'setConfig', port: before.port })}).finally(() => { location.hash = ${JSON.stringify(previousHash)}; })`);
+    await waitFor(`chrome.runtime.sendMessage({type:'getState'}).then(state => state.connected && !state.connecting && !state.lastError)`);
+    assert.deepEqual(await evaluate('chrome.runtime.sendMessage({type:"getState"}).then(state => state.tabs.filter(tab => tab.shared).map(tab => tab.id).sort())'), before.tabs.filter((tab: any) => tab.shared).map((tab: any) => tab.id).sort());
+    tabId = (await companionTab(ok, appUrl)).id;
+    assert.match(await ok('browser_snapshot', { tabId }), /heading "Test App"/);
+  }
+}, 30_000);
+
 test('automatic retries stay visibly disconnected until the companion responds', async () => {
   const previousHash = await evaluate('location.hash');
   const before = await evaluate('chrome.runtime.sendMessage({type:"getState"})');

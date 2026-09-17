@@ -1,9 +1,15 @@
 // Messages between the dashboard page and the service worker.
-import type { TabInfo, ToolInfo } from '../../shared/protocol.ts';
+import type { ConnectionGraph, TabInfo, ToolInfo } from '../../shared/protocol.ts';
 
 export interface OpLog { id: number; at: number; ms: number; tabId: number; tabLabel: string; method: string; ok: boolean; error?: string; client?: string }
 export interface WindowInfo { id: number; incognito: boolean }
 export interface State {
+  graphEnabled: boolean;
+  graph?: ConnectionGraph;
+  browserEngine?: 'chromium' | 'firefox';
+  /** Firefox requires the user to grant script execution and website access in its dashboard. */
+  automationReady?: boolean;
+  firefoxHostAccess?: boolean;
   connected: boolean;
   /** Pending connection UI; background retries retain their disconnected error state. */
   connecting: boolean;
@@ -37,6 +43,7 @@ export type PopupMsg =
   | { type: 'setShared'; tabIds: number[]; shared: boolean }
   | { type: 'setShareAll'; on: boolean }
   | { type: 'setActivityLog'; on: boolean }
+  | { type: 'setGraphEnabled'; on: boolean }
   | { type: 'setToolEnabled'; name: string; enabled: boolean }
   | { type: 'setDevMode'; mode: 'auto' | 'always' | 'never' }
   | { type: 'setBackgroundMode'; on: boolean }
