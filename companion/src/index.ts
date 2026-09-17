@@ -75,6 +75,8 @@ const stopGraph = installConnectionGraph(bridge, sessions);
 // MCP over Streamable HTTP for clients that take a URL (web agents, hosted assistants). Localhost only; the bridge
 // refuses requests that carry a web page's Origin.
 const httpSessions = new Map<string, StreamableHTTPServerTransport>();
+// Populate the extension's catalog before any agent connects; reuse this server for the first HTTP client.
+let firstHttpServer = owner && httpOnly ? buildServer('http') : undefined;
 bridge.mcpHandler = async (req, res) => {
   const sid = req.headers['mcp-session-id'];
   let transport = typeof sid === 'string' ? httpSessions.get(sid) : undefined;
@@ -82,7 +84,9 @@ bridge.mcpHandler = async (req, res) => {
     if (req.method !== 'POST') { res.statusCode = 400; res.end('no MCP session; initialize with a POST first'); return; }
     const t = new StreamableHTTPServerTransport({ sessionIdGenerator: () => randomUUID(), onsessioninitialized: (id) => { httpSessions.set(id, t); console.error(`browspark: http client session ${id.slice(0, 8)}`); } });
     t.onclose = () => { if (t.sessionId) httpSessions.delete(t.sessionId); };
-    await buildServer('http').connect(t);
+    const server = firstHttpServer ?? buildServer('http');
+    firstHttpServer = undefined;
+    await server.connect(t);
     transport = t;
   }
   await transport.handleRequest(req, res);

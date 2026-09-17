@@ -17,13 +17,13 @@ export interface ToolInfo { name: string; description: string }
 export interface ConnectionGraph {
   thisBrowserId: string;
   agents: { id: string; name: string }[];
-  browsers: { id: string; name: string; mode: 'extension' | 'dev'; sharedTabs: number; context?: string }[];
+  browsers: { id: string; name: string; mode: 'extension' | 'dev'; sharedTabs: number; context?: string; browserEngine?: 'chromium' | 'firefox' }[];
 }
 export function isConnectionGraph(value: unknown): value is ConnectionGraph {
   const x = value as ConnectionGraph | null;
   const named = (n: any) => n && typeof n.id === 'string' && typeof n.name === 'string';
   return !!x && typeof x.thisBrowserId === 'string' && Array.isArray(x.agents) && x.agents.every(named)
-    && Array.isArray(x.browsers) && x.browsers.every(b => named(b) && ['extension', 'dev'].includes(b.mode) && Number.isSafeInteger(b.sharedTabs) && b.sharedTabs >= 0 && (b.context === undefined || typeof b.context === 'string'))
+    && Array.isArray(x.browsers) && x.browsers.every(b => named(b) && ['extension', 'dev'].includes(b.mode) && Number.isSafeInteger(b.sharedTabs) && b.sharedTabs >= 0 && (b.context === undefined || typeof b.context === 'string') && (b.browserEngine === undefined || b.browserEngine === 'chromium' || b.browserEngine === 'firefox'))
     && new Set(x.agents.map(a => a.id)).size === x.agents.length && new Set(x.browsers.map(b => b.id)).size === x.browsers.length
     && x.browsers.some(b => b.id === x.thisBrowserId && b.mode === 'extension');
 }

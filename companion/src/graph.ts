@@ -12,16 +12,18 @@ export function installConnectionGraph(bridge: Bridge, sessions: Sessions) {
     if (!connections.some(c => c.policy?.graph)) return;
     const agents = [...clients.values()].filter(c => c.initialized).map(c => ({ id: c.id, name: c.name }));
     const browsers: ConnectionGraph['browsers'] = [
-      ...connections.map(c => ({ id: c.id, name: c.browser ?? 'Browser profile', mode: 'extension' as const, sharedTabs: c.tabs.filter(t => t.shared).length })),
-      ...sessions.runningDevs().map(d => ({ id: `dev:${d.name}`, name: d.version || d.browserName, mode: 'dev' as const, context: d.name, sharedTabs: d.listTabs().length })),
+      ...connections.map(c => ({ id: c.id, name: c.browser ?? 'Browser profile', browserEngine: c.browserEngine, mode: 'extension' as const, sharedTabs: c.tabs.filter(t => t.shared).length })),
+      ...sessions.runningDevs().map(d => ({ id: `dev:${d.name}`, name: d.version || d.browserName, browserEngine: d.browserType, mode: 'dev' as const, context: d.name, sharedTabs: d.listTabs().length })),
     ];
     for (const c of connections) {
       if (!c.policy?.graph || pending.has(c)) continue;
       const graph: ConnectionGraph = { thisBrowserId: c.id, agents, browsers };
       const serialized = JSON.stringify(graph);
       if (sent.get(c) === serialized) continue;
+      // Disabling the graph must invalidate even an acknowledgement still in flight.
+      sent.set(c, serialized);
       pending.add(c);
-      void bridge.request('graph.state', graph, 5000, c.id).then(() => sent.set(c, serialized), () => sent.delete(c)).finally(() => pending.delete(c));
+      void bridge.request<{ received: boolean }>('graph.state', graph, 5000, c.id).then(result => { if (result?.received !== true) sent.delete(c); }, () => sent.delete(c)).finally(() => pending.delete(c));
     }
   };
   bridge.on('tools.policy', publish);
