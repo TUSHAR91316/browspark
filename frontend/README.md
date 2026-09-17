@@ -4,6 +4,8 @@ A standalone static site using HTML, CSS, and a small JavaScript module. It shar
 
 The page describes simultaneous Chrome, Brave, Firefox and Zen extension profiles plus named developer sessions. The Firefox extension needs Firefox 153+ (or a compatible Zen build), uses unsigned temporary installation from source and must run with the matching source companion. All browsers expose the same 43 tool names (22 browser, 21 developer); Firefox extension mode has narrower capabilities than Firefox/Zen BiDi developer mode. Their developer profiles are separate from the user's existing sessions. Keep this distinction in visible copy, metadata, and the illustrative preview.
 
+The connection graph section uses an actual dashboard screenshot from a disposable test session. Its copy covers free node dragging, pan and zoom, Fit and Reset, logos and fallback names, and the per-profile Graph setting. Keep the screenshot aligned with `docs/dashboard/graph.mdx` and the extension. The screenshot opens at full size; the landing page does not connect to a companion or expose browser access. Logo recognition does not imply automation support for additional browsers.
+
 ## Develop
 
 With Bun installed, from the repository root:
@@ -46,6 +48,8 @@ Metadata and crawl access help discovery; they cannot guarantee indexing, citati
 
 ## Verification
 
-Local production build, Lighthouse simulated mobile, September 12, 2026: 100 performance, 100 accessibility, 100 best practices, and 100 SEO. LCP was 1.51 seconds, total blocking time 0 ms, and transfer size 78.2 KiB across 11 local requests. These are local lab results; production hosting and network conditions affect performance. Reports are in the ignored `.reports/` folder.
+Historical production build, Lighthouse simulated mobile, September 12, 2026, before the connection graph showcase: 100 performance, 100 accessibility, 100 best practices, and 100 SEO. LCP was 1.51 seconds, total blocking time 0 ms, and transfer size 78.2 KiB across 11 local requests. These are local lab results for that build; the current page includes an additional lazy-loaded dashboard screenshot. Reports are in the ignored `.reports/` folder.
 
 Browser checks covered desktop, 390 px and 320 px layouts, preview switches and views, all six client configurations, copying, remembered selection, mobile navigation, and FAQ expansion.
+
+September 17, 2026 graph update: production build and all four frontend tests pass. The graph showcase and logo FAQ were checked at desktop, 390 px and 320 px widths with no page overflow or browser console errors. The dashboard image loads locally and links to its full-size version.

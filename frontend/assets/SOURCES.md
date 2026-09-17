@@ -14,3 +14,7 @@ Client marks were copied from the extension's officially sourced assets, retriev
 | `clients/antigravity.png` | [Google Antigravity press assets](https://www.antigravity.google/press), [full-color icon](https://www.antigravity.google/assets/image/brand/antigravity-icon__full-color.png) | Proportional 64 × 64 transparent PNG export using macOS `sips`. |
 
 All assets are local. Render client marks with `object-fit: contain`; no color filters are needed.
+
+## Product screenshot
+
+`dashboard-graph.png` is an unchanged 1200 × 900 screenshot of Browspark's Graph page, captured on 2026-09-17 by `companion/test/graph.e2e.test.ts` using disposable Chrome and Brave profiles with local test agents. It shows the verified draggable canvas with Codex, Claude Code, Chrome and Brave. No real user browsing data is included. Dark and light copies are also stored in `docs/images/dashboard-graph-dark.png` and `docs/images/dashboard-graph-light.png`.
