@@ -16,7 +16,7 @@ import { z } from 'zod';
 import { PROTOCOL_VERSION } from '../../shared/protocol.ts';
 
 // Exercise the real bridge router without opening a port or starting a browser.
-function extension(bridge: Bridge, brand: string) {
+function extension(bridge: Bridge, brand: string, browserEngine: 'chromium' | 'firefox' = 'chromium') {
   const requests: any[] = [];
   const peer = Object.assign(new EventEmitter(), {
     readyState: 1,
@@ -27,7 +27,7 @@ function extension(bridge: Bridge, brand: string) {
     close() { peer.readyState = 3; peer.emit('close'); },
   });
   (bridge as any).accept(peer);
-  peer.emit('message', JSON.stringify({ event: 'hello', params: { version: PROTOCOL_VERSION, extensionVersion: 'test', instanceId: brand, browserSessionId: 'session', browser: brand } }));
+  peer.emit('message', JSON.stringify({ event: 'hello', params: { version: PROTOCOL_VERSION, extensionVersion: 'test', instanceId: brand, browserSessionId: 'session', browser: brand, browserEngine } }));
   const info = bridge.connections().find(connection => connection.browser === brand)!;
   const publishTabs = () => {
     peer.emit('message', JSON.stringify({ event: 'tabs', params: [{ id: 1, url: `https://${brand}.test`, title: brand, windowId: 1, shared: true, attached: false }] }));
@@ -35,6 +35,30 @@ function extension(bridge: Bridge, brand: string) {
   };
   return { info, requests, peer, publishTabs };
 }
+
+test('Firefox extension capabilities reject unavailable collections without affecting Chromium tabs', async () => {
+  const bridge = new Bridge(0), sessions = new Sessions(bridge), page = new Page(sessions);
+  const firefox = extension(bridge, 'firefox', 'firefox'), chrome = extension(bridge, 'chrome');
+  const firefoxId = firefox.publishTabs(), chromeId = chrome.publishTabs();
+  const previousCatalog = [...toolCatalog];
+  const ctx = { sessions, page, server: { registerTool() {} }, client: { id: 'firefox-support', name: 'test', ownedTabs: new Set() }, registry: new Map() } as unknown as Ctx;
+  const called: number[] = [];
+  try {
+    assert.equal((await sessions.tabs()).find(t => t.id === firefoxId)?.browser, 'firefox');
+    assert.equal(bridge.connectionForTab(firefoxId)?.browserEngine, 'firefox');
+    assert.equal((page.overlay as any).enabledFor(firefoxId), false);
+    for (const name of ['devtools_console', 'devtools_network', 'browser_upload', 'browser_click']) {
+      tool(ctx, name, 'extension capability regression', { tabId: tabArg, hover: z.boolean().optional() }, async ({ tabId }) => { called.push(tabId!); return 'supported'; });
+      const args = { tabId: firefoxId, ...(name === 'browser_click' && { hover: true }) };
+      const result = await ctx.registry.get(name)!(args);
+      assert.equal(result.isError, true);
+      assert.match((result.content[0] as { text: string }).text, /unsupported in the Firefox extension/);
+      assert.ok(!(await ctx.registry.get(name)!({ tabId: chromeId })).isError);
+    }
+    assert.deepEqual(called, [chromeId, chromeId, chromeId, chromeId]);
+    assert.ok(!(await ctx.registry.get('browser_click')!({ tabId: firefoxId })).isError);
+  } finally { bridge.close(); toolCatalog.splice(0, toolCatalog.length, ...previousCatalog); }
+});
 
 test('browser profiles isolate four brands while Chrome retains the Chromium profile alias', async () => {
   const root = mkdtempSync(join(tmpdir(), 'browspark-multi-profiles-'));

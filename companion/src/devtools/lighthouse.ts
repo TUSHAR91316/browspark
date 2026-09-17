@@ -28,6 +28,7 @@ export function registerLighthouseTools(ctx: Ctx) {
     categories: z.array(z.enum(['performance', 'accessibility', 'best-practices', 'seo', 'pwa'])).optional(), timeoutMs: z.number().int().max(600_000).optional(), extraArgs: z.array(z.string()).optional(),
   }, async (a) => {
     const id = await sessions.resolve(a.tabId);
+    if (sessions.bridge.connectionForTab(id)?.browserEngine === 'firefox') throw new Error('Lighthouse is unsupported in the Firefox extension. Select a Chromium developer tab explicitly.');
     const chromium = sessions.runningDevs().filter(d => d.browserType === 'chromium');
     const target = sessions.devOfTab(id);
     if (!target && chromium.length > 1) throw new Error('Lighthouse needs a developer tabId when several Chromium browsers are running. Call browser_tabs to choose one.');

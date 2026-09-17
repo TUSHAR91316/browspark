@@ -107,7 +107,7 @@ export class Sessions extends EventEmitter {
     const out: TabRecord[] = [];
     if (this.bridge.connected) {
       const ext = await this.bridge.listTabs(refresh);
-      for (const t of ext) out.push({ ...t, mode: 'extension', browser: 'chromium' });
+      for (const t of ext) out.push({ ...t, mode: 'extension', browser: t.browserEngine ?? 'chromium' });
     }
     for (const d of this.runningDevs()) for (const t of d.listTabs()) out.push({ id: t.id, mode: 'dev', browser: d.browserType, browserName: d.browserName, url: t.url, title: t.title, shared: true, attached: !!t.sessionId, agent: true, context: d.name });
     return out;

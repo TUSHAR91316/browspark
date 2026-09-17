@@ -1,7 +1,7 @@
 // devtools_session, devtools_events, devtools_capabilities, devtools_cdp
 import { z } from 'zod';
 import { type Ctx, clients, tool, tabArg, matcher, paginate } from '../context.ts';
-import { FIREFOX_DOMAINS, FIREFOX_LIMITATIONS } from '../firefox-support.ts';
+import { FIREFOX_DOMAINS, FIREFOX_LIMITATIONS, FIREFOX_EXTENSION_DOMAINS, FIREFOX_EXTENSION_LIMITATIONS } from '../firefox-support.ts';
 
 /** Read-only probes; commands without a query deliberately omit required arguments, so validation rejects them before mutation. */
 const PROBES: [string, string, unknown?][] = [
@@ -26,7 +26,7 @@ export function registerSessionTools(ctx: Ctx) {
     what: z.enum(['all', 'console', 'network', 'events', 'issues']).optional().describe('For clear'),
   }, async ({ action, tabId, bodies, maxBodyBytes, what }) => {
     const id = await tab(tabId);
-    if (action === 'start') { const st = await capture.start(id, { ...(bodies !== undefined && { bodies }), ...(maxBodyBytes && { maxBodyBytes }) }, ctx.client.id); return `Inspecting tab ${id} (${sessions.modeOf(id)} mode). bodies=${st.opts.bodies}. ${st.frames.size} frame(s), ${st.contexts.size} context(s).${st.users.size > 1 ? ` Shared with: ${[...st.users].filter((u) => u !== ctx.client.id).map(userName).join(', ')}.` : ''}`; }
+    if (action === 'start') { const st = await capture.start(id, { ...(bodies !== undefined && { bodies }), ...(maxBodyBytes && { maxBodyBytes }) }, ctx.client.id); return `Inspecting tab ${id} (${sessions.modeOf(id)} mode). bodies=${st.opts.bodies}. ${st.frames.size} frame(s), ${st.contexts.size} context(s).${st.users.size > 1 ? ` Shared with: ${[...st.users].filter((u) => u !== ctx.client.id).map(userName).join(', ')}.` : ''}${sessions.bridge.connectionForTab(id)?.browserEngine === 'firefox' ? ' Firefox extension: navigation and DOM inspection only; console and network capture are unavailable.' : ''}`; }
     if (action === 'stop') { const notes = await capture.stop(id, ctx.client.id); return notes.some((n) => n.includes('session kept')) ? `Left the inspection session on tab ${id}; still in use by ${[...capture.require(id).users].map(userName).join(', ')}; session kept.` : `Stopped inspecting tab ${id}. Cleanup done.${notes.length ? ' Notes: ' + notes.join('; ') : ''}`; }
     if (action === 'clear') { capture.clear(id, what); return `Cleared ${what ?? 'all'} for tab ${id}`; }
     const st = capture.get(id);
@@ -60,6 +60,7 @@ export function registerSessionTools(ctx: Ctx) {
     const dev = sessions.devOfTab(id);
     if (dev?.browserType === 'firefox') return { mode, browser: dev.version, protocol: 'webdriver-bidi', tools: [...ctx.registry.keys()], domains: FIREFOX_DOMAINS, downloads: dev.downloadsSupported, unsupportedOperations: FIREFOX_LIMITATIONS };
     const connection = sessions.bridge.connectionForTab(id);
+    if (connection?.browserEngine === 'firefox') return { mode, browser: connection.browser, protocol: 'firefox-webextension', tools: [...ctx.registry.keys()], domains: FIREFOX_EXTENSION_DOMAINS, unsupportedOperations: FIREFOX_EXTENSION_LIMITATIONS };
     const key = mode === 'dev' ? `dev:${dev?.browserName}:${dev?.version}` : `ext:${connection?.id}:${connection?.browser}:${connection?.extensionVersion}`;
     if (refresh) capCache.delete(key);
     let caps = capCache.get(key);

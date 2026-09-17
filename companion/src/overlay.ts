@@ -133,7 +133,7 @@ export class Overlay {
   }
 
   private agent() { return currentClient()?.name ?? 'agent'; }
-  private enabledFor(tabId: number) { const connection = this.s.bridge?.connectionForTab(tabId); return connection ? connection.policy?.overlay !== false : this.enabled; }
+  private enabledFor(tabId: number) { const connection = this.s.bridge?.connectionForTab(tabId); return connection ? connection.browserEngine !== 'firefox' && connection.policy?.overlay !== false : this.enabled; }
 
   /** Install the world, the on-new-document script and (extension mode) the Stop binding once per attachment. */
   private async ensure(tabId: number): Promise<number | undefined> {

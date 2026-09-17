@@ -426,7 +426,7 @@ export class Page {
       if (r.errorText) throw new Error(`Navigation failed: ${r.errorText}`);
     } else if (action === 'reload') {
       await this.cdp(tabId, 'Page.reload');
-    } else if (this.s.devOfTab(tabId)?.browserType === 'firefox') {
+    } else if (this.s.devOfTab(tabId)?.browserType === 'firefox' || this.s.bridge.connectionForTab(tabId)?.browserEngine === 'firefox') {
       await this.cdp(tabId, 'Page.traverseHistory', { delta: action === 'back' ? -1 : 1 });
     } else {
       const h = await this.cdp(tabId, 'Page.getNavigationHistory');

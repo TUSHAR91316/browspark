@@ -1,6 +1,5 @@
 // The Firefox adapter covers these operations; a tool name alone is not a parity claim.
 export const FIREFOX_LIMITATIONS = [
-  'Shared-tab extension mode (Firefox has no extension debugger API)',
   'Raw CDP, Lighthouse, live screencast',
   'Debugger breakpoints/stepping, Chrome traces, CPU profiles, V8 heap snapshots, precise coverage',
   'Matched CSS rules, box model, event listeners, forced pseudo states and DevTools overlays',
@@ -38,5 +37,35 @@ export function firefoxUnsupportedTool(name: string, args: Record<string, any>):
   if (name === 'devtools_sources') return !(['override', 'overrides', 'revert'].includes(args.action) || args.action === 'list' && ['frames', 'contexts'].includes(args.kind));
   if (name === 'devtools_workers') return !['list', 'update', 'unregister'].includes(args.action);
   if (name === 'devtools_network') return ['frames', 'throttle'].includes(args.action);
+  return false;
+}
+
+export const FIREFOX_EXTENSION_LIMITATIONS = [
+  'Firefox 153+ and dashboard permission grants are required; only shared HTTP(S) tabs are automated',
+  'Mouse and keyboard events are simulated, not trusted native input',
+  'JavaScript runs in an isolated user-script world; page globals and extension APIs are unavailable',
+  'Network and console capture, request interception, cookies, PDF, file upload and JavaScript dialog handling',
+  'Cross-origin frame inspection, early-document scripts, page overlay and live screencast',
+  'Raw CDP, Lighthouse, debugger, profiling, coverage and Chrome-specific DevTools features',
+];
+export const FIREFOX_EXTENSION_DOMAINS = {
+  Runtime: 'partial: isolated evaluation, object handles and DOM access; no console capture or page globals',
+  Page: 'partial: tabs, navigation, history, screenshots and top-frame metadata',
+  Input: 'partial: simulated mouse, text and keyboard events; native shortcuts are unavailable',
+  DOM: 'partial: node lookup, search, HTML and attributes; same-origin frames only',
+  CSS: 'partial: computed styles and inline edits',
+  Network: 'unsupported: Firefox extension has no debugger network transport',
+  Fetch: 'unsupported: request interception',
+  Log: 'unsupported: console collection',
+};
+
+/** Reject unavailable collections before their Chromium handlers can return misleading empty results. */
+export function firefoxExtensionUnsupportedTool(name: string, args: Record<string, any>): boolean {
+  if (firefoxUnsupportedTool(name, args)) return true;
+  if (['browser_download', 'browser_pdf', 'browser_upload', 'browser_dialog', 'devtools_network', 'devtools_console', 'devtools_lighthouse', 'devtools_cdp'].includes(name)) return true;
+  if (name === 'browser_click') return !!(args.hover || args.dragTo || args.modifiers?.length || args.button && args.button !== 'left' || args.count && args.count !== 1);
+  if (name === 'browser_policy') return !args.default && args.action !== 'status';
+  if (name === 'devtools_storage') return ['cookies', 'clear'].includes(args.area);
+  if (name === 'devtools_sources') return args.action !== 'list' || !['frames', 'contexts'].includes(args.kind);
   return false;
 }

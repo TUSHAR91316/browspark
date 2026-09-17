@@ -14,7 +14,7 @@ const identity = (v: unknown): v is string => typeof v === 'string' && /^[a-zA-Z
 const nativeId = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) >= 0;
 const object = (v: unknown): v is Record<string, any> => !!v && typeof v === 'object' && !Array.isArray(v);
 
-export interface BridgeConnection { id: string; browser?: string; extensionVersion?: string; tabs: TabInfo[]; policy?: ToolPolicy }
+export interface BridgeConnection { id: string; browser?: string; browserEngine?: 'chromium' | 'firefox'; extensionVersion?: string; tabs: TabInfo[]; policy?: ToolPolicy }
 interface Identity { id: string; session?: string; nativeToGlobal: Map<number, number>; globalToNative: Map<number, number> }
 interface Connection { info: BridgeConnection; identity: Identity; ws: WebSocket; fresh: boolean }
 
@@ -49,7 +49,7 @@ export class Bridge extends EventEmitter {
    * reaching 127.0.0.1. Browsers always send an Origin header; extensions and native clients pass, pages do not.
    */
   private originOk(origin?: string): boolean {
-    return !origin || origin.startsWith('chrome-extension://') || origin === `http://127.0.0.1:${this.port}` || origin === `http://localhost:${this.port}`;
+    return !origin || origin.startsWith('chrome-extension://') || origin.startsWith('moz-extension://') || origin === `http://127.0.0.1:${this.port}` || origin === `http://localhost:${this.port}`;
   }
 
   listen(): Promise<void> {
@@ -103,7 +103,7 @@ export class Bridge extends EventEmitter {
 
   private updateTabs(c: Connection, value: unknown): TabInfo[] {
     if (!Array.isArray(value) || value.some((t) => !object(t) || !nativeId(t.id) || typeof t.url !== 'string' || typeof t.title !== 'string' || typeof t.shared !== 'boolean' || typeof t.attached !== 'boolean' || !nativeId(t.windowId)) || new Set(value.map((t) => t.id)).size !== value.length) throw new Error('invalid extension tabs');
-    c.info.tabs = value.map((t) => ({ id: this.tabId(c, t.id), url: t.url, title: t.title, shared: t.shared, attached: t.attached, windowId: t.windowId, agent: typeof t.agent === 'boolean' ? t.agent : undefined, favIconUrl: typeof t.favIconUrl === 'string' ? t.favIconUrl : undefined, unsupported: typeof t.unsupported === 'string' ? t.unsupported : undefined, browserId: c.info.id, browserName: c.info.browser }));
+    c.info.tabs = value.map((t) => ({ id: this.tabId(c, t.id), url: t.url, title: t.title, shared: t.shared, attached: t.attached, windowId: t.windowId, agent: typeof t.agent === 'boolean' ? t.agent : undefined, favIconUrl: typeof t.favIconUrl === 'string' ? t.favIconUrl : undefined, unsupported: typeof t.unsupported === 'string' ? t.unsupported : undefined, browserId: c.info.id, browserName: c.info.browser, browserEngine: c.info.browserEngine }));
     c.fresh = true;
     this.emit('tabs', this.tabs);
     return c.info.tabs;
@@ -128,8 +128,9 @@ export class Bridge extends EventEmitter {
         if (!isEvt(msg) || msg.event !== 'hello') return ws.close(4001, 'hello required');
         const p = msg.params as HelloParams;
         if (p?.version !== PROTOCOL_VERSION) return ws.close(4002, `protocol ${PROTOCOL_VERSION} required`);
-        if (!object(p) || typeof p.extensionVersion !== 'string' || p.extensionVersion.length > 128 || (p.browser !== undefined && (typeof p.browser !== 'string' || p.browser.length > 256)) || (p.userAgent !== undefined && (typeof p.userAgent !== 'string' || p.userAgent.length > 4096)) || (p.instanceId !== undefined && !identity(p.instanceId)) || (p.browserSessionId !== undefined && (!identity(p.browserSessionId) || !p.instanceId))) return ws.close(1003, 'invalid hello');
-        const key = p.instanceId ?? crypto.randomUUID();
+        if ((p.browserEngine !== undefined && !['chromium', 'firefox'].includes(p.browserEngine)) || !object(p) || typeof p.extensionVersion !== 'string' || p.extensionVersion.length > 128 || (p.browser !== undefined && (typeof p.browser !== 'string' || p.browser.length > 256)) || (p.userAgent !== undefined && (typeof p.userAgent !== 'string' || p.userAgent.length > 4096)) || (p.instanceId !== undefined && !identity(p.instanceId)) || (p.browserSessionId !== undefined && (!identity(p.browserSessionId) || !p.instanceId))) return ws.close(1003, 'invalid hello');
+        // Imported profiles can share local storage, but each running browser has its own session storage.
+        const key = p.instanceId ? JSON.stringify([p.instanceId, p.browserSessionId]) : crypto.randomUUID();
         let known = this.identities.get(key);
         const previous = known && this.active.get(known.id);
         if (previous) { this.disconnect(previous, 'extension disconnected: connection replaced'); previous.ws.close(1000, 'replaced by same browser'); }
@@ -137,7 +138,7 @@ export class Bridge extends EventEmitter {
         if (!p.browserSessionId || known.session !== p.browserSessionId) { known.nativeToGlobal.clear(); known.globalToNative.clear(); }
         known.session = p.browserSessionId;
         const browser = p.browser ?? (p.userAgent && /Chrome\/(\d+)/.exec(p.userAgent) ? `Chromium-based ${/Chrome\/(\d+)/.exec(p.userAgent)![1]}` : undefined);
-        connection = { info: { id: known.id, browser, extensionVersion: p.extensionVersion, tabs: [] }, identity: known, ws, fresh: false };
+        connection = { info: { id: known.id, browser, browserEngine: p.browserEngine ?? 'chromium', extensionVersion: p.extensionVersion, tabs: [] }, identity: known, ws, fresh: false };
         this.active.set(known.id, connection);
         this.emit('connected', connection.info);
         return;
@@ -192,8 +193,8 @@ export class Bridge extends EventEmitter {
       case 'ping': break;
       case 'tools.policy': {
         const p = msg.params;
-        if (!object(p) || !Array.isArray(p.disabled) || p.disabled.some((n) => typeof n !== 'string') || (p.devMode !== undefined && !['auto', 'always', 'never'].includes(p.devMode)) || (p.overlay !== undefined && typeof p.overlay !== 'boolean') || (p.haveCatalog !== undefined && typeof p.haveCatalog !== 'boolean')) throw new Error('invalid tool policy');
-        c.info.policy = { disabled: p.disabled, devMode: p.devMode, overlay: p.overlay, haveCatalog: p.haveCatalog };
+        if (!object(p) || !Array.isArray(p.disabled) || p.disabled.some((n) => typeof n !== 'string') || (p.devMode !== undefined && !['auto', 'always', 'never'].includes(p.devMode)) || (p.overlay !== undefined && typeof p.overlay !== 'boolean') || (p.haveCatalog !== undefined && typeof p.haveCatalog !== 'boolean') || (p.graph !== undefined && typeof p.graph !== 'boolean')) throw new Error('invalid tool policy');
+        c.info.policy = { disabled: p.disabled, devMode: p.devMode, overlay: p.overlay, haveCatalog: p.haveCatalog, graph: p.graph };
         this.emit('tools.policy', c.info.policy, c.info); break;
       }
     }

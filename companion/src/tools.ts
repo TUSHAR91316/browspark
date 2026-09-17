@@ -16,8 +16,8 @@ export function registerBrowserTools(ctx: Ctx) {
   tool(ctx, 'browser_status', 'Connection status for both modes, how to get the extension connected, shared tabs across all windows, and open dialogs. Select a listed tabId to target a tab. Call this first if anything fails.', {}, async () => {
     const b = sessions.bridge;
     const lines = [`Companion bridge: ws://127.0.0.1:${b.port}`, `You are agent "${ctx.client.name}"${(await import('./context.ts')).clients.size > 1 ? `; other agents connected: ${[...(await import('./context.ts')).clients.values()].filter((c) => c !== ctx.client).map((c) => c.name).join(', ')}` : ''}.`];
-    if (b.connected) for (const c of b.connections()) lines.push(`Extension mode: connected to ${c.browser ?? 'an unknown Chromium browser'} (extension v${c.extensionVersion}, browserId ${c.id}). Use browserId to open a tab in this browser; existing tabs use tabId. The user can open DevTools (F12) on shared tabs.`);
-    else lines.push('Extension mode: NOT CONNECTED (shared Chromium tabs only)', `  To use shared Chromium tabs, open the Browspark extension dashboard (click its toolbar icon). It connects to port ${b.port} on its own; if the dashboard shows a different port, set it under Settings. Then share tabs.`, `    port:  ${b.port}`);
+    if (b.connected) for (const c of b.connections()) lines.push(`Extension mode: connected to ${c.browser ?? 'an unknown browser'} (extension v${c.extensionVersion}, browserId ${c.id}). Use browserId to open a tab in this browser; existing tabs use tabId. The user can open DevTools (F12) on shared tabs.`);
+    else lines.push('Extension mode: NOT CONNECTED (shared browser tabs)', `  To use shared browser tabs, open the Browspark extension dashboard (click its toolbar icon). It connects to port ${b.port} on its own; if the dashboard shows a different port, set it under Settings. Then share tabs.`, `    port:  ${b.port}`);
     const devs = sessions.runningDevs();
     if (!devs.length) lines.push('Developer mode: not running. Only launch it (browser_session) if the user asks for a separate browser or a tool says an operation needs it; otherwise work in the user\'s shared tabs.');
     for (const d of devs) lines.push(`Developer mode [${d.name}] (${d.browserName}): ${d.version}, pid ${d.pid}${d.headless ? ', headless' : ''}, profile ${d.profileDir}, downloads ${d.downloadDir}${d.proxy ? `, proxy ${d.proxy}` : ''}\n  ${d.browserType === 'firefox' ? 'WebDriver BiDi endpoint' : 'CDP endpoint for Playwright/Puppeteer connectOverCDP'}: ${d.wsEndpoint}${d.browserType === 'firefox' ? '\n  Firefox/Zen: use devtools_capabilities for supported operations; live screencast, raw CDP and Lighthouse are unavailable.' : `\n  Live view: http://127.0.0.1:${b.port}/live/<tabId>`}`);
@@ -27,7 +27,7 @@ export function registerBrowserTools(ctx: Ctx) {
     return lines.join('\n');
   });
 
-  tool(ctx, 'browser_session', 'Developer-mode browsers: launch Chrome, Brave, Firefox, or Zen without the user\'s logins. Only launch when the user explicitly asks (pass userRequested: true, never on your own initiative), or a tool reported it needs developer mode. For everyday work use shared tabs. Each named context has its own persistent profile; use different context names to run browsers simultaneously. chromium preserves automatic Chrome/Chromium discovery. Firefox and Zen use WebDriver BiDi with documented exceptions; extension sharing remains Chromium-only. launch/close take a context (default "default"); status lists running browsers; contexts lists saved profiles; delete removes a stopped profile.', {
+  tool(ctx, 'browser_session', 'Developer-mode browsers: launch Chrome, Brave, Firefox, or Zen without the user\'s logins. Only launch when the user explicitly asks (pass userRequested: true, never on your own initiative), or a tool reported it needs developer mode. For everyday work use shared tabs. Each named context has its own persistent profile; use different context names to run browsers simultaneously. chromium preserves automatic Chrome/Chromium discovery. Firefox and Zen use WebDriver BiDi with documented exceptions; Firefox/Zen extension sharing uses its own package and has additional documented exceptions. launch/close take a context (default "default"); status lists running browsers; contexts lists saved profiles; delete removes a stopped profile.', {
     action: z.enum(['launch', 'status', 'close', 'contexts', 'delete']),
     context: z.string().optional().describe('Context name, e.g. "work" or "personal" (default "default")'), all: z.boolean().optional().describe('close: close every running context'),
     url: z.string().optional().describe('Initial URL for launch'),
@@ -184,7 +184,7 @@ export function registerBrowserTools(ctx: Ctx) {
     limit: z.number().int().optional(),
   }, async ({ tabId, ...spec }) => page.extract(await tab(tabId), spec));
 
-  tool(ctx, 'browser_click', 'Click an element by ref with real mouse events. Also hover (hover:true) and drag (dragTo).', {
+  tool(ctx, 'browser_click', 'Click an element by ref. Chromium and Firefox developer sessions use native mouse input; the Firefox extension simulates ordinary left clicks. Hover (hover:true), drag (dragTo), modified and multiple clicks are unavailable in the Firefox extension.', {
     tabId: tabArg, ref: refArg, button: z.enum(['left', 'right', 'middle']).optional(), count: z.number().int().min(1).max(3).optional().describe('2 for double-click'),
     modifiers: z.array(z.enum(['Shift', 'Control', 'Alt', 'Meta'])).optional(), hover: z.boolean().optional().describe('Only move the mouse over the element'), dragTo: refArg.optional().describe('Drag from ref to this ref'),
   }, async ({ tabId, ref, hover, dragTo, ...opts }) => {

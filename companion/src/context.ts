@@ -9,7 +9,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Sessions } from './session.ts';
 import type { Page } from './page.ts';
 import type { Capture } from './devtools/capture.ts';
-import { firefoxUnsupportedTool } from './firefox-support.ts';
+import { firefoxUnsupportedTool, firefoxExtensionUnsupportedTool } from './firefox-support.ts';
 
 export type Result = { content: ({ type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string })[]; isError?: boolean };
 export const text = (t: string): Result => ({ content: [{ type: 'text', text: t }] });
@@ -24,7 +24,7 @@ export const refArg = z.string().describe('Element ref from browser_snapshot, e.
 export const pageArgs = { offset: z.number().int().min(0).optional().describe('Pagination offset, default 0'), limit: z.number().int().min(1).max(500).optional().describe('Page size, default 50') };
 
 /** One connected agent (one MCP transport). Everything that must not leak between agents hangs off this. */
-export interface ClientState { id: string; name: string; ownedTabs: Set<number>; recording?: { tabId: number; name: string; steps: import('./devtools/recorder.ts').Step[]; startedAt: number } }
+export interface ClientState { id: string; name: string; initialized?: boolean; ownedTabs: Set<number>; recording?: { tabId: number; name: string; steps: import('./devtools/recorder.ts').Step[]; startedAt: number } }
 export const clients = new Map<string, ClientState>();
 export const clientStore = new AsyncLocalStorage<ClientState>();
 /** The agent whose tool call is currently executing (undefined outside a tool call). */
@@ -63,6 +63,7 @@ export function tool<S extends z.ZodRawShape>(ctx: Ctx, name: string, descriptio
     if (!global && !browserSelection && 'tabId' in schema) args = { ...args, tabId: await ctx.sessions.resolve(args.tabId, name === 'browser_navigate' && args.action === 'goto') };
     const connection = global ? undefined : browserSelection ? ctx.sessions.bridge?.connections().find(c => c.id === args.browserId) : ctx.sessions.bridge?.connectionForTab(args.tabId);
     if (connection?.policy ? connection.policy.disabled.includes(name) : disabledTools.has(name)) return disabledResult(name);
+    if (firefoxExtensionUnsupportedTool(name, args) && ctx.sessions.bridge?.connectionForTab(args.tabId)?.browserEngine === 'firefox') throw new Error(`${name}${args.action ? ` action:${args.action}` : ''} is unsupported in the Firefox extension. See the Firefox support guide for extension capabilities and developer-session alternatives.`);
     if (firefoxUnsupportedTool(name, args)) {
       const id = await ctx.sessions.resolve(args.tabId);
       if (ctx.sessions.devOfTab(id)?.browserType === 'firefox') throw new Error(`${name}${args.action ? ` action:${args.action}` : ''} is unsupported in Firefox. See the Firefox support guide for available operations.`);

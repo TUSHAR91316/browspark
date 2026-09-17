@@ -13,6 +13,7 @@ import { Sessions } from './session.ts';
 import { Page } from './page.ts';
 import { Capture } from './devtools/capture.ts';
 import { installLiveView } from './live.ts';
+import { installConnectionGraph } from './graph.ts';
 import { type Ctx, type ClientState, clients, toolCatalog, setDisabledTools, disabledTools, devGate, combinedPolicy } from './context.ts';
 import { version as VERSION } from '../../package.json';
 import type { ToolPolicy } from '../../shared/protocol.ts';
@@ -63,12 +64,13 @@ function buildServer(label: string): McpServer {
   const ctx: Ctx = { server, sessions, page, capture, client, registry: new Map() };
   for (const reg of [registerBrowserTools, registerSessionTools, registerConsoleTools, registerNetworkTools, registerSourcesTools, registerDebuggerTools, registerElementsTools, registerProfilingTools, registerApplicationTools, registerEnvironmentTools, registerLighthouseTools, registerRecorderTools]) reg(ctx);
   // Name the agent after what the MCP client calls itself (opencode, claude-code, gemini…); a relay passes the real name through.
-  server.server.oninitialized = () => { const v = server.server.getClientVersion(); if (v?.name) client.name = v.name.replace(/^relay:/, ''); console.error(`browspark: agent connected: ${client.name}`); };
+  server.server.oninitialized = () => { const v = server.server.getClientVersion(); if (v?.name) client.name = v.name.replace(/^relay:/, ''); client.initialized = true; console.error(`browspark: agent connected: ${client.name}`); };
   server.server.onclose = () => { clients.delete(client.id); void capture.release(client.id).catch((e) => console.error(`browspark: inspection cleanup failed for ${client.name}: ${e.message}`)); console.error(`browspark: agent disconnected: ${client.name}`); };
   return server;
 }
 installFetchHandler({ sessions, capture });
 installLiveView(bridge, sessions);
+const stopGraph = installConnectionGraph(bridge, sessions);
 
 // MCP over Streamable HTTP for clients that take a URL (web agents, hosted assistants). Localhost only; the bridge
 // refuses requests that carry a web page's Origin.
@@ -92,7 +94,7 @@ const shutdown = async () => {
   if (closing) return; closing = true;
   setTimeout(() => process.exit(0), 5000).unref();
   await relayTransport?.terminateSession().catch(() => {});
-  bridge.close(); await sessions.closeAll();
+  stopGraph(); bridge.close(); await sessions.closeAll();
   process.exit(0);
 };
 process.on('SIGINT', shutdown); process.on('SIGTERM', shutdown);

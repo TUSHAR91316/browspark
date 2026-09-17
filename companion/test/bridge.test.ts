@@ -20,6 +20,8 @@ test('bridge connects, routes requests, rejects pending on disconnect', async ()
   assert.notEqual(refused.readyState, WebSocket.OPEN, 'browser origin must not get a socket');
   assert.equal((await fetch(`http://127.0.0.1:${port}/mcp`, { method: 'POST', body: '{}', headers: { origin: 'https://evil.example' } })).status, 403);
   assert.equal((await fetch(`http://127.0.0.1:${port}/`, { headers: { origin: 'chrome-extension://abc' } })).status, 200);
+  assert.equal((await fetch(`http://127.0.0.1:${port}/`, { headers: { origin: 'moz-extension://abc' } })).status, 200);
+  assert.equal((await fetch(`http://127.0.0.1:${port}/`, { headers: { origin: 'https://moz-extension.example' } })).status, 403);
 
   // hello connects; request/response round-trips; tab events land
   const ws = new WebSocket(`ws://127.0.0.1:${port}`);
@@ -68,9 +70,13 @@ test('unsupportedReason flags internal pages', () => {
   assert.equal(unsupportedReason('https://example.com'), undefined);
   assert.equal(unsupportedReason('about:blank'), undefined);
   assert.ok(unsupportedReason('chrome://newtab/'));
+  assert.ok(unsupportedReason('moz-extension://example/app.html', 'firefox'));
+  assert.ok(unsupportedReason('https://addons.mozilla.org/firefox/', 'firefox'));
+  assert.ok(unsupportedReason('file:///private/example.html', 'firefox'));
+  assert.equal(unsupportedReason('https://example.com', 'firefox'), undefined);
 });
 
-test('isNewTab recognizes only native Chrome New Tab URLs', () => {
+test('isNewTab recognizes native Chromium and Firefox New Tab URLs', () => {
   for (const host of ['newtab', 'new-tab-page']) {
     for (const suffix of ['', '/', '?source=test', '/?source=test#section', '#section']) {
       const url = `chrome://${host}${suffix}`;
@@ -78,7 +84,8 @@ test('isNewTab recognizes only native Chrome New Tab URLs', () => {
       assert.ok(unsupportedReason(url), 'New Tab is still unavailable for direct CDP inspection');
     }
   }
-  for (const url of ['', 'newtab', 'chrome:newtab', 'chrome:/newtab', 'about:newtab', 'about:blank', 'https://newtab/', 'chrome://settings/', 'chrome://newtab.example/', 'chrome://newtab-extra/', 'chrome://newtab/path', 'chrome://newtab//', 'chrome://new-tab-page-extra/', 'chrome://new-tab-page/path', 'chrome://user@newtab/', 'chrome://newtab:123/', 'chrome://settings/?next=chrome://newtab/']) {
+  for (const url of ['about:newtab', 'about:home', 'about:newtab#section', 'brave://newtab/', 'edge://newtab/']) assert.equal(isNewTab(url), true, url);
+  for (const url of ['', 'newtab', 'chrome:newtab', 'chrome:/newtab', 'about:newtab/path', 'about:newtab-extra', 'about:blank', 'https://newtab/', 'chrome://settings/', 'chrome://newtab.example/', 'chrome://newtab-extra/', 'chrome://newtab/path', 'chrome://newtab//', 'chrome://new-tab-page-extra/', 'chrome://new-tab-page/path', 'chrome://user@newtab/', 'chrome://newtab:123/', 'chrome://settings/?next=chrome://newtab/']) {
     assert.equal(isNewTab(url), false, url);
   }
 });
@@ -195,6 +202,38 @@ test('refresh and disconnect of one extension leave other browsers and pending r
   } finally { bridge.close(); }
 });
 
+test('copied installation identities keep separate browser sessions connected through reconnects', async () => {
+  const bridge = new Bridge(0); await bridge.listen();
+  try {
+    const a = await connectBrowser(bridge, 'copied-profile', 'chrome-session', 'Chrome');
+    await publishTabs(bridge, a.ws);
+    const aTab = a.info.tabs[0].id;
+    const b = await connectBrowser(bridge, 'copied-profile', 'brave-session', 'Brave');
+    await publishTabs(bridge, b.ws);
+    const bTab = b.info.tabs[0].id;
+    assert.equal(bridge.connections().length, 2, 'a copied installation ID must not evict the other browser session');
+    assert.notEqual(a.info.id, b.info.id);
+    assert.notEqual(aTab, bTab);
+
+    const received = nextRequest(a.ws), pending = bridge.cdp(aTab, 'Page.enable');
+    const request = await received;
+    const replacement = await connectBrowser(bridge, 'copied-profile', 'brave-session', 'Brave');
+    await publishTabs(bridge, replacement.ws);
+    assert.equal(replacement.info.id, b.info.id);
+    assert.equal(replacement.info.tabs[0].id, bTab);
+    assert.equal(bridge.connections().length, 2);
+    a.ws.send(JSON.stringify({ id: request.id, result: { source: 'Chrome' } }));
+    assert.deepEqual(await pending, { source: 'Chrome' }, 'the other session keeps its in-flight commands');
+
+    const aReplacement = await connectBrowser(bridge, 'copied-profile', 'chrome-session', 'Chrome');
+    await publishTabs(bridge, aReplacement.ws);
+    assert.equal(aReplacement.info.id, a.info.id);
+    assert.equal(aReplacement.info.tabs[0].id, aTab);
+    assert.equal(bridge.connectionForTab(bTab)?.id, b.info.id);
+    assert.equal(bridge.connections().length, 2);
+  } finally { bridge.close(); }
+});
+
 test('reconnect replaces only its browser, preserves session ids, and ignores stale sockets', async () => {
   const bridge = new Bridge(0); await bridge.listen();
   try {
@@ -222,9 +261,11 @@ test('reconnect replaces only its browser, preserves session ids, and ignores st
     assert.deepEqual(await pending, { fresh: true });
     assert.equal(replacement.info.tabs[0].id, aTab);
 
+    const disconnected = new Promise<void>((resolve) => bridge.once('disconnected', () => resolve()));
+    replacement.ws.close(); await disconnected;
     const restarted = await connectBrowser(bridge, 'chrome', 'new-browser-session');
     await publishTabs(bridge, restarted.ws);
-    assert.equal(restarted.info.id, a.info.id);
+    assert.notEqual(restarted.info.id, a.info.id);
     assert.notEqual(restarted.info.tabs[0].id, aTab);
     assert.equal(bridge.connectionForTab(aTab), undefined);
     assert.equal(bridge.connectionForTab(bTab)?.id, b.info.id);
