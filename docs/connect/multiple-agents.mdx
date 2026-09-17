@@ -11,16 +11,16 @@ The dashboard's [Graph page](/dashboard/graph) shows established agent sessions,
 
 The first companion process to start owns port `9223`. Every companion started afterwards, by any other client, finds the port taken and becomes a **relay**: a thin stdio server that forwards `tools/list` and `tools/call` to the owner over the HTTP endpoint. From the client's point of view nothing changes. Each extension profile connects once to that owner, regardless of how many agents are using it.
 
-```mermaid
-flowchart LR
-  A["First stdio client"] --> C["Companion on port 9223"]
-  B["Other stdio clients"] --> R["Relays"]
-  R -->|"HTTP"| C
-  H["HTTP clients"] --> C
-  C -->|"WebSocket"| E["Chromium and Firefox profiles"]
-  C -->|"CDP"| D["Chromium developer contexts"]
-  C -->|"WebDriver BiDi"| F["Firefox and Zen contexts"]
-```
+<picture className="block dark:hidden">
+  <source media="(prefers-reduced-motion: reduce)" srcSet="/images/multiple-agents-light.svg" />
+  <img src="/images/multiple-agents-light.gif" alt="Stdio clients, HTTP clients and relays reach one companion, which connects multiple Chromium and Firefox profiles and separate developer browsers" />
+</picture>
+<picture className="hidden dark:block">
+  <source media="(prefers-reduced-motion: reduce)" srcSet="/images/multiple-agents-dark.svg" />
+  <img src="/images/multiple-agents-dark.gif" alt="Stdio clients, HTTP clients and relays reach one companion, which connects multiple Chromium and Firefox profiles and separate developer browsers" />
+</picture>
+
+The diagram shows transport routing. Moving dots illustrate the connections; they do not display live activity. Reduced-motion settings show a still diagram.
 
 The relay passes the downstream client's name through, so the owner still knows which agent is calling. When the owner stops (its client quit or it was killed), the first relay to notice takes the port over and keeps serving its own client; the other relays reconnect to it on their next call, and each extension reconnects on its own. Inspection sessions and developer browsers of the old owner do not survive the hand-over. Call `browser_status` again to get current browser and tab IDs.
 

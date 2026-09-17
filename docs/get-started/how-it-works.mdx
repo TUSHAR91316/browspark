@@ -5,14 +5,16 @@ description: "The three pieces, how they talk, and what happens on a single tool
 
 ## The pieces
 
-```mermaid
-flowchart LR
-  A["MCP clients"] -->|"stdio or HTTP"| C["One local companion"]
-  C -->|"WebSocket"| E["Chromium and Firefox extensions"]
-  E -->|"Sharing enforced per profile"| T["Shared tabs"]
-  C -->|"CDP"| D["Chrome and Brave developer contexts"]
-  C -->|"WebDriver BiDi"| F["Firefox and Zen developer contexts"]
-```
+<picture className="block dark:hidden">
+  <source media="(prefers-reduced-motion: reduce)" srcSet="/images/how-it-works-light.svg" />
+  <img src="/images/how-it-works-light.gif" alt="MCP clients reach one companion over stdio or HTTP; it connects Chromium and Firefox extensions to shared tabs, and separate developer browsers over CDP or WebDriver BiDi" />
+</picture>
+<picture className="hidden dark:block">
+  <source media="(prefers-reduced-motion: reduce)" srcSet="/images/how-it-works-dark.svg" />
+  <img src="/images/how-it-works-dark.gif" alt="MCP clients reach one companion over stdio or HTTP; it connects Chromium and Firefox extensions to shared tabs, and separate developer browsers over CDP or WebDriver BiDi" />
+</picture>
+
+The diagram shows transport routing. Moving dots illustrate the connections; they do not display live activity. Reduced-motion settings show a still diagram.
 
 - **Companion** (`companion/`): the MCP server. Registers 43 tools, keeps per-tab capture state (console, network, scripts, paused frames, issues), holds artifacts, and routes each command to the selected extension or developer browser. Connected browsers share one local port and have unique public tab IDs.
 - **Extension** (`extension/`): a Manifest V3 background process that connects each browser profile to the companion. Chromium uses the debugger API; Firefox uses WebExtension APIs and sandboxed user scripts. Its full-page dashboard controls sharing, tool switches and the activity log. Several profiles can connect simultaneously.
