@@ -1,8 +1,9 @@
 import { isNewTab, type TabInfo } from '../../shared/protocol.ts';
 import type { PopupMsg, State } from './state.ts';
+import { api, FIREFOX_PERMISSIONS } from './browser.ts';
 
 // ---------- helpers ----------
-const ask = (m: PopupMsg) => chrome.runtime.sendMessage(m) as Promise<State>;
+const ask = (m: PopupMsg) => api.runtime.sendMessage(m) as Promise<State>;
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 type Props = Record<string, unknown>;
 const h = (tag: string, attrs: Record<string, unknown> = {}, ...kids: (Node | string | null | undefined | false)[]) => {
@@ -49,6 +50,7 @@ const I = {
   home: '<path d="M3 11l9-8 9 8v9a2 2 0 0 1-2 2h-4v-6H9v6H5a2 2 0 0 1-2-2z"/>',
   tabs: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 4v5"/>',
   activity: '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
+  graph: '<rect x="9" y="9" width="6" height="6" rx="1.5"/><circle cx="4" cy="4" r="2"/><circle cx="20" cy="4" r="2"/><circle cx="4" cy="20" r="2"/><circle cx="20" cy="20" r="2"/><path d="m6 6 3 3m6 0 3-3M6 18l3-3m6 0 3 3"/>',
   settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
   search: '<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>',
   copy: '<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
@@ -74,7 +76,7 @@ const host = (u: string) => { try { return new URL(u).host; } catch { return '';
 const initial = (t: TabInfo) => (host(t.url).replace(/^www\./, '') || t.title || '?')[0]?.toUpperCase() ?? '?';
 const time = (t: number) => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' });
 const ago = (t: number) => { const s = Math.max(0, (Date.now() - t) / 1000); return s < 60 ? `${Math.floor(s)}s` : s < 3600 ? `${Math.floor(s / 60)}m` : `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`; };
-const OWN = chrome.runtime.getURL('');
+const OWN = api.runtime.getURL('');
 const isOwn = (t: TabInfo) => t.url.startsWith(OWN);
 const canShare = (t: TabInfo) => !t.unsupported || isNewTab(t.url);
 
@@ -114,7 +116,7 @@ const connectionBusy = (s: State) => s.connecting || !!connectionAction;
 const spinner = () => h('span', { class: 'spinner', 'aria-hidden': 'true' });
 
 // ---------- shell ----------
-const NAV: [string, keyof typeof I, string][] = [['overview', 'home', 'Overview'], ['tabs', 'tabs', 'Tabs'], ['tools', 'tools', 'Tools'], ['activity', 'activity', 'Activity'], ['settings', 'settings', 'Settings']];
+const NAV: [string, keyof typeof I, string][] = [['overview', 'home', 'Overview'], ['tabs', 'tabs', 'Tabs'], ['graph', 'graph', 'Graph'], ['tools', 'tools', 'Tools'], ['activity', 'activity', 'Activity'], ['settings', 'settings', 'Settings']];
 function renderShell(s: State) {
   $('ver').textContent = `v${s.extensionVersion}`;
   $('crumb').textContent = NAV.find(([r]) => r === route)?.[2] ?? 'Overview';
@@ -122,7 +124,7 @@ function renderShell(s: State) {
   $('session-status').setAttribute('role', 'status');
   $('session-status').setAttribute('aria-busy', String(s.connecting));
   patch($('session-status'), s.connecting ? spinner() : h('span', { class: 'dot' }), h('span', {}, s.connecting ? 'Reconnecting…' : s.connected ? 'Connected' : s.lastError ? 'Disconnected' : s.stopped ? 'Access paused' : 'Disconnected'));
-  patch($('nav'), ...NAV.map(([r, ic, label]) => {
+  patch($('nav'), ...NAV.filter(([r]) => r !== 'graph' || s.graphEnabled).map(([r, ic, label]) => {
     const n = r === 'tabs' ? s.tabs.filter((t) => t.shared && canShare(t)).length : r === 'tools' ? s.toolCatalog.length : 0;
     return h('a', { href: `#/${r}`, class: route === r ? 'on' : '', 'aria-current': route === r ? 'page' : undefined, 'data-key': r }, icon(ic), h('span', { class: 'nav-text' }, label), n ? h('span', { class: 'n' }, String(n)) : null);
   }));
@@ -147,6 +149,23 @@ function copyBtn(text: string, label = 'Copy') {
 }
 const inputValue = (id: string) => $<HTMLInputElement>(id)?.value ?? '';
 const checked = (e: Event) => (e.currentTarget as HTMLInputElement).checked;
+let firefoxPermissionError = '';
+function firefoxAccess(s: State) {
+  if (s.browserEngine !== 'firefox') return null;
+  return h('div', { class: 'callout', style: 'margin-bottom:16px' }, icon('shield'),
+    h('div', { class: 'body' }, h('b', {}, s.automationReady ? 'Firefox shared-tab automation' : 'Enable Firefox automation'),
+      h('p', { class: 'muted' }, s.automationReady ? 'Only tabs you share are controlled. Firefox uses simulated input and an isolated script environment. Stop access here in the dashboard; the page overlay is unavailable.' : 'Allow website access and user scripts, then choose tabs to share. Firefox asks for these permissions separately.'),
+      h('a', { href: 'https://docs.browspark.krishm.dev/reference/firefox', target: '_blank', rel: 'noreferrer' }, 'Firefox capabilities and exceptions'),
+      !s.automationReady ? h('button', { id: 'enable-firefox', class: 'btn primary', style: 'margin-top:12px', onclick: async () => {
+        try {
+          // Firefox requires the userScripts opt-in to be requested on its own, from a user gesture.
+          const granted = await api.permissions.request(s.firefoxHostAccess ? { permissions: FIREFOX_PERMISSIONS.permissions } : { origins: FIREFOX_PERMISSIONS.origins });
+          firefoxPermissionError = granted ? '' : 'Permission was not granted. Shared-tab automation stays disabled.';
+          paint(await ask({ type: 'getState' })); repaint();
+        } catch (error) { firefoxPermissionError = (error as Error).message; repaint(); }
+      } }, s.firefoxHostAccess ? 'Enable Firefox automation' : 'Allow website access') : null,
+      firefoxPermissionError ? h('p', { role: 'alert', class: 'err-text' }, firefoxPermissionError) : null));
+}
 
 function connectForm(s: State) {
   const port = h('input', { id: 'port', type: 'number', min: 1, max: 65535, 'aria-label': 'Bridge port', value: String(s.port), class: 'mono' }) as HTMLInputElement;
@@ -244,9 +263,7 @@ function viewOverview(s: State) {
   return h('div', { class: 'page' },
     pageHeader('Overview', 'Sharing, connection and activity for this browser profile.', ready ? h('a', { class: 'btn primary', href: '#/tabs' }, icon('tabs'), 'Manage tabs') : null, stopResume(s)),
     s.stopped && !s.lastError ? h('div', { class: 'notice warn', style: 'margin-bottom:16px' }, icon('alert'), 'Access to this profile is stopped. Resume, then share tabs again. Other browsers and developer sessions remain available.', h('button', { class: 'btn sm', disabled: connectionBusy(s), 'aria-busy': String(connectionBusy(s)), onclick: () => changeConnection({ type: 'connect' }) }, 'Resume')) : null,
-    onboarding,
-    h('div', { class: 'callout', style: 'margin-bottom:16px' }, icon('globe'),
-      h('div', { class: 'body' }, h('b', {}, 'Use browsers together'), h('div', { class: 'muted' }, 'Connect the extension in each Chrome or Brave profile. Firefox and Zen use separate developer sessions launched by your agent, with the same tool names and documented exceptions. ', h('a', { href: 'https://docs.browspark.krishm.dev/reference/multiple-browsers', target: '_blank', rel: 'noreferrer' }, 'Multi-browser guide')))),
+    firefoxAccess(s), onboarding,
     ready ? h('div', { class: 'card connection-panel', 'aria-busy': String(s.connecting) },
       h('div', { class: 'connection-icon' }, s.connecting ? spinner() : icon('plug')),
       h('div', { class: 'connection-copy' }, h('h2', {}, s.connecting ? 'Reconnecting…' : s.connected ? 'Your browser is connected' : 'Disconnected'), h('p', {}, s.connecting ? 'Waiting for the companion to confirm the connection.' : s.connected ? shared.length ? 'Your agent can work in the tabs you’ve shared.' : 'Share a tab to start working with your agent.' : s.lastError ?? 'Start the companion, then reconnect.')),
@@ -266,6 +283,54 @@ function viewOverview(s: State) {
           h('div', { class: 'recent-copy' }, h('code', {}, r.method), h('span', {}, r.tabLabel)),
           h('div', { class: 'recent-time' }, h('span', {}, time(r.at)), h('small', {}, `${r.ms} ms`)))))
           : empty('inbox', 'No commands yet', s.connected ? 'Your agent’s commands will appear here.' : 'Connect the companion to start a session.'))));
+}
+
+function viewGraph(s: State) {
+  const header = pageHeader('Graph', 'See the agents and browsers connected through your local companion.',
+    h('a', { class: 'btn', href: '#/settings' }, icon('settings'), 'Settings'));
+  if (!s.graphEnabled) return h('div', { class: 'page' }, header,
+    h('div', { class: 'card' }, empty('graph', 'Connection graph is off', 'Enable Connection graph in Settings to show this page in the sidebar.', h('a', { class: 'btn primary', href: '#/settings' }, 'Open Settings'))));
+  if (!s.connected) return h('div', { class: 'page' }, header,
+    h('div', { class: 'card', id: 'graph-status', role: 'status' }, empty('plug', 'Connect to see your browsers', s.stopped ? 'Access to this profile is paused. Resume to see live connections.' : 'Connect this profile to the companion to see its agents and browsers.',
+      h('button', { class: 'btn primary', disabled: connectionBusy(s), onclick: () => changeConnection({ type: 'connect' }) }, s.connecting ? spinner() : icon('plug'), s.connecting ? 'Reconnecting…' : s.stopped ? 'Resume access' : 'Connect'))));
+  if (!s.graph) return h('div', { class: 'page' }, header,
+    h('div', { class: 'card', id: 'graph-status', role: 'status' }, empty('graph', 'Waiting for connection data', 'Connections will appear here shortly. Restart the companion if this view stays empty.')));
+
+  const { agents, browsers, thisBrowserId } = s.graph;
+  const height = Math.max(276, Math.max(agents.length, browsers.length) * 96 - 12);
+  const count = (n: number, label: string) => `${n} ${label}${n === 1 ? '' : 's'}`;
+  const links = (n: number, fromAgents: boolean) => {
+    const centers = Array.from({ length: n }, (_, i) => (height - (n * 96 - 12)) / 2 + 42 + i * 96);
+    const paths = centers.map((y) => `<path d="M0 ${fromAgents ? y : height / 2} C50 ${fromAgents ? y : height / 2} 50 ${fromAgents ? height / 2 : y} 100 ${fromAgents ? height / 2 : y}"/>`).join('');
+    return h('div', { class: `graph-links ${n ? '' : 'empty-links'}`, 'aria-hidden': 'true', html: `<svg viewBox="0 0 100 ${height}" preserveAspectRatio="none">${paths}</svg>` });
+  };
+  const columnTitle = (title: string, n?: number) => h('h2', { class: 'graph-column-title' }, title, n === undefined ? null : h('span', { class: 'pill' }, String(n)));
+  return h('div', { class: 'page graph-page' }, header,
+    h('section', { class: 'card connection-graph', id: 'connection-graph', 'aria-label': 'Live connection graph', 'aria-describedby': 'graph-description' },
+      h('div', { class: 'graph-toolbar' },
+        h('span', { class: 'graph-live', id: 'graph-status', role: 'status' }, h('span', { class: 'dot', 'aria-hidden': 'true' }), 'Live connections'),
+        h('span', { class: 'graph-summary' }, count(agents.length, 'agent'), h('span', { 'aria-hidden': 'true' }, ' / '), count(browsers.length, 'browser'))),
+      h('div', { class: 'graph-flow', style: `--graph-height:${height}px` },
+        h('div', { class: 'graph-column' }, columnTitle('Agents', agents.length),
+          h('ul', { class: 'graph-nodes', 'aria-label': 'Connected agents' }, ...agents.map((agent) =>
+            h('li', { class: 'graph-node graph-agent', 'data-key': agent.id, 'data-agent-id': agent.id },
+              h('span', { class: 'graph-node-icon' }, icon('tools')),
+              h('div', { class: 'graph-node-copy' }, h('h3', { title: agent.name }, agent.name), h('p', {}, 'MCP client'), h('code', { title: agent.id }, agent.id)))),
+          agents.length ? null : h('li', { class: 'graph-placeholder' }, icon('monitor'), h('b', {}, 'No agents connected'), h('span', {}, 'Connect an MCP client to get started.')))),
+        links(agents.length, true),
+        h('div', { class: 'graph-column graph-hub-column' }, columnTitle('Companion'),
+          h('div', { class: 'graph-nodes' },
+            h('div', { class: 'graph-hub' }, h('span', { class: 'graph-hub-icon' }, icon('graph')), h('h3', {}, 'Browspark'), h('p', {}, 'One shared connection'), h('code', {}, `127.0.0.1:${s.port}`)))),
+        links(browsers.length, false),
+        h('div', { class: 'graph-column' }, columnTitle('Browsers', browsers.length),
+          h('ul', { class: 'graph-nodes', 'aria-label': 'Connected browsers' }, ...browsers.map((browser) =>
+            h('li', { class: `graph-node graph-browser${browser.id === thisBrowserId ? ' current' : ''}`, 'data-key': browser.id, 'data-browser-id': browser.id, 'data-current-browser': String(browser.id === thisBrowserId) },
+              h('span', { class: 'graph-node-icon' }, icon('globe')),
+              h('div', { class: 'graph-node-copy' }, h('div', { class: 'graph-node-title' }, h('h3', { title: browser.name }, browser.name), browser.id === thisBrowserId ? h('span', { class: 'pill ok' }, 'This browser') : null),
+                h('p', {}, browser.mode === 'dev' ? 'Developer session' : 'Shared profile', ' · ', count(browser.sharedTabs, 'tab'), browser.mode === 'dev' ? '' : ' shared'),
+                h('code', { title: browser.context ?? browser.id }, browser.context ?? browser.id)))),
+          browsers.length ? null : h('li', { class: 'graph-placeholder' }, icon('globe'), h('b', {}, 'No browsers connected'), h('span', {}, 'Connected profiles appear here.'))))),
+      h('p', { class: 'graph-caption', id: 'graph-description' }, icon('shield'), h('span', {}, 'Every agent connects through Browspark. Each browser profile controls which tabs are shared.'))));
 }
 
 function viewTabs(s: State) {
@@ -290,7 +355,7 @@ function viewTabs(s: State) {
       h('div', { class: 'badges' },
         t.agent ? h('span', { class: 'pill accent' }, 'agent') : null,
         t.shared && eligible ? h('span', { class: 'pill ok' }, 'Shared') : null,
-        t.attached ? h('span', { class: 'pill ok', title: 'The debugger is attached: the browser shows its debugging indicator. It detaches after 30s of inactivity unless an inspection session is running.' }, 'debugging') : null,
+        t.attached ? h('span', { class: 'pill ok', title: s.browserEngine === 'firefox' ? 'The agent is using this shared tab through Firefox extension APIs.' : 'The debugger is attached. It detaches after 30s of inactivity unless an inspection session is running.' }, s.browserEngine === 'firefox' ? 'active' : 'debugging') : null,
         isNewTab(t.url) ? h('span', { class: 'pill', title: 'Share this tab to let the agent navigate it to a website. The browser’s New Tab content cannot be inspected directly.' }, 'New tab') : t.unsupported ? h('span', { class: 'pill' }, t.unsupported) : null),
       h('label', { class: 'switch' }, cb));
   };
@@ -301,6 +366,7 @@ function viewTabs(s: State) {
       h('button', { class: 'btn', disabled: !shareable.some((t) => !t.shared), onclick: () => setMany(shareable.filter((t) => !t.shared).map((t) => t.id), true) }, `Share ${q || ui.tabFilter !== 'all' ? 'matching' : 'listed'}`),
       h('button', { class: 'btn', disabled: !list.some((t) => t.shared), onclick: () => setMany(list.filter((t) => t.shared).map((t) => t.id), false) }, 'Unshare'),
       stopResume(s)),
+    firefoxAccess(s),
     h('div', { class: `callout ${s.shareAll ? 'sharing-all' : ''}`, style: 'margin-bottom:16px' },
       icon(s.shareAll ? 'globe' : 'shield'),
       h('div', { class: 'body' }, h('b', {}, 'Share everything'), h('div', { class: 'muted' }, s.shareAll ? 'Supported tabs in this profile are shared across every window, including new tabs. Stopped or unshared tabs stay private until you share them again.' : 'Allow access to supported tabs in this profile across every window, including new tabs. Explicitly stopped or unshared tabs stay private.')),
@@ -383,10 +449,15 @@ function viewSettings(s: State) {
   const save = () => changeConnection({ type: 'setConfig', port: Number(inputValue('port')) || 9223 });
   return h('div', { class: 'page' },
     pageHeader('Settings', 'Connection, privacy and agent access for this browser profile.'),
+    firefoxAccess(s),
     h('div', { class: 'card', style: 'margin-bottom:16px' },
       h('div', { class: 'card-h' }, h('h2', {}, 'Companion')),
       h('div', { class: 'setting' }, h('div', {}, h('h3', {}, 'Bridge port'), h('p', {}, 'Use the same port in each browser profile to connect to one companion. Change it if you run the companion with ', h('code', {}, '--port'), '.')), h('div', { class: 'ctl' }, h('label', { class: 'field narrow' }, port))),
       h('div', { class: 'setting' }, h('div', {}, h('h3', {}, 'Connection'), h('p', s.connected ? { 'data-ago': String(s.connectedAt), 'data-ago-fmt': 'Connected for {ago}.' } : {}, s.connecting ? 'Reconnecting… Waiting for the companion.' : s.connected ? `Connected for ${ago(s.connectedAt!)}.` : `Disconnected.${s.lastError ? ' ' + s.lastError : ''}`)), h('div', { class: 'ctl' }, h('button', { id: 'reconnect', class: 'btn ghost', 'aria-label': 'Reconnect', disabled: connectionBusy(s), 'aria-busy': String(connectionBusy(s)), onclick: () => changeConnection({ type: 'connect' }) }, s.connecting ? spinner() : icon('refresh'), s.connecting ? 'Reconnecting…' : 'Reconnect'), h('button', { class: 'btn primary', disabled: connectionBusy(s), 'aria-busy': String(connectionBusy(s)), onclick: save }, 'Save')))),
+    h('div', { class: 'card', style: 'margin-bottom:16px' },
+      h('div', { class: 'card-h' }, h('h2', {}, 'Dashboard')),
+      h('div', { class: 'setting' }, h('div', {}, h('h3', {}, 'Connection graph'), h('p', {}, 'Show Graph in the sidebar to see connected agents, browser profiles and developer sessions. This preference only changes this dashboard.')),
+        h('div', { class: 'ctl' }, h('label', { class: 'switch' }, h('input', { id: 'graph-enabled', type: 'checkbox', checked: s.graphEnabled, 'aria-label': 'Connection graph', onchange: (e: Event) => ask({ type: 'setGraphEnabled', on: checked(e) }).then(paint) }))))),
     h('div', { class: 'card', style: 'margin-bottom:16px' },
       h('div', { class: 'card-h' }, h('h2', {}, 'Other clients')),
       h('div', { class: 'setting' }, h('div', {}, h('h3', {}, 'HTTP endpoint'), h('p', {}, 'Local MCP clients that take a URL can connect here while the companion runs. The endpoint is available only on this machine; web pages are refused.'),
@@ -403,19 +474,19 @@ function viewSettings(s: State) {
         h('div', { class: 'ctl' }, h('label', { class: 'switch' }, h('input', { type: 'checkbox', checked: s.backgroundMode, 'aria-label': 'Work in background', onchange: (e: Event) => ask({ type: 'setBackgroundMode', on: checked(e) }).then(paint) }), h('span', {}))))),
     h('div', { class: 'card', style: 'margin-bottom:16px' },
       h('div', { class: 'card-h' }, h('h2', {}, 'Agent overlay')),
-      h('div', { class: 'setting' }, h('div', {}, h('h3', {}, 'Show the agent at work'), h('p', {}, 'Show a cyan halo, moving cursor and Stop button on this profile’s tabs. Stop revokes only that tab. Developer sessions show the overlay only if every connected profile enables it.')),
-        h('div', { class: 'ctl' }, h('label', { class: 'switch' }, h('input', { type: 'checkbox', checked: s.overlay, 'aria-label': 'Agent overlay', onchange: (e: Event) => ask({ type: 'setOverlay', on: (e.target as HTMLInputElement).checked }).then(paint) }), h('span', {}))))),
+      h('div', { class: 'setting' }, h('div', {}, h('h3', {}, 'Show the agent at work'), h('p', {}, s.browserEngine === 'firefox' ? 'The page overlay is unavailable in the Firefox extension. Use Stop access or unshare a tab in this dashboard.' : 'Show a cyan halo, moving cursor and Stop button on this profile’s tabs. Stop revokes only that tab. Developer sessions show the overlay only if every connected profile enables it.')),
+        h('div', { class: 'ctl' }, h('label', { class: 'switch' }, h('input', { type: 'checkbox', checked: s.browserEngine !== 'firefox' && s.overlay, disabled: s.browserEngine === 'firefox', 'aria-label': 'Agent overlay', onchange: (e: Event) => ask({ type: 'setOverlay', on: (e.target as HTMLInputElement).checked }).then(paint) }), h('span', {}))))),
     h('div', { class: 'card', style: 'margin-bottom:16px' },
       h('div', { class: 'card-h' }, h('h2', {}, 'Privacy')),
       h('div', { class: 'setting' }, h('div', {}, h('h3', {}, 'Activity log'), h('p', {}, s.activityLog ? 'Keeps the last 200 commands in memory for this session.' : 'Off. No command history is kept. Operations and Errors are hidden on Overview.')), h('div', { class: 'ctl' }, h('label', { class: 'switch' }, h('input', { type: 'checkbox', checked: s.activityLog, 'aria-label': 'Activity log', onchange: (e: Event) => ask({ type: 'setActivityLog', on: checked(e) }).then(paint) }))))),
     h('div', { class: 'card danger-card' },
       h('div', { class: 'card-h' }, h('h2', {}, 'Emergency stop')),
       h('div', { class: 'setting' }, h('div', {}, h('h3', {}, s.stopped ? 'This profile’s access is stopped' : 'Stop access to this profile'), h('p', {}, 'Detaches this profile’s tabs, clears sharing, turns off Share everything and disconnects this extension. Other browser profiles and developer sessions remain available. Resume reconnects; share tabs again to restore access.')), h('div', { class: 'ctl' }, stopResume(s)))),
-    h('p', { style: 'color:var(--fg-3);font-size:12px;margin-top:24px' }, `Browspark extension v${s.extensionVersion} · Chromium browsers restrict automation on browser-internal pages and extension stores.`));
+    h('p', { style: 'color:var(--fg-3);font-size:12px;margin-top:24px' }, `Browspark extension v${s.extensionVersion} · Browsers restrict automation on internal pages and extension stores.`));
 }
 
 // ---------- paint loop ----------
-const VIEWS: Record<string, (s: State) => HTMLElement> = { overview: viewOverview, tabs: viewTabs, tools: viewTools, activity: viewActivity, settings: viewSettings };
+const VIEWS: Record<string, (s: State) => HTMLElement> = { overview: viewOverview, tabs: viewTabs, graph: viewGraph, tools: viewTools, activity: viewActivity, settings: viewSettings };
 let lastKey = '', lastRoute = '';
 /** Everything that should trigger a re-render; timers are updated in place by tick(). */
 const fingerprint = (s: State) => JSON.stringify(s);
@@ -426,7 +497,7 @@ function tick() {
 /** Older workers (before an extension reload) omit newer fields; never let that blank the page. */
 function normalize(s: Partial<State> | undefined): State {
   const x = (s ?? {}) as Partial<State>;
-  const defaults: State = { connected: false, connecting: false, stopped: false, shareAll: false, activityLog: false, overlay: true, backgroundMode: true, port: 9223, extensionVersion: '?', windows: [], tabs: [], recent: [], totals: { ops: 0, errors: 0 }, toolCatalog: [], disabledTools: [], devMode: 'auto' };
+  const defaults: State = { connected: false, connecting: false, stopped: false, shareAll: false, activityLog: false, overlay: true, backgroundMode: true, graphEnabled: true, port: 9223, extensionVersion: '?', windows: [], tabs: [], recent: [], totals: { ops: 0, errors: 0 }, toolCatalog: [], disabledTools: [], devMode: 'auto' };
   const out: State = { ...defaults, ...x } as State;
   for (const k of ['windows', 'tabs', 'recent', 'toolCatalog', 'disabledTools'] as const) if (!Array.isArray(out[k])) (out as any)[k] = [];
   if (!out.totals) out.totals = { ops: 0, errors: 0 };
@@ -441,7 +512,7 @@ function paint(raw: State) {
   try { paintInner(s); }
   catch (e) {
     // a rendering bug must never leave a blank page
-    $('main').replaceChildren(h('div', { class: 'notice bad', style: 'margin:16px' }, icon('alert'), h('span', {}, `The dashboard failed to render: ${(e as Error).message}. Try reloading the extension from your browser’s extensions page and reopening this dashboard.`), h('button', { class: 'btn sm', onclick: () => chrome.runtime.reload() }, 'Reload extension')));
+    $('main').replaceChildren(h('div', { class: 'notice bad', style: 'margin:16px' }, icon('alert'), h('span', {}, `The dashboard failed to render: ${(e as Error).message}. Try reloading the extension from your browser’s extensions page and reopening this dashboard.`), h('button', { class: 'btn sm', onclick: () => api.runtime.reload() }, 'Reload extension')));
   }
 }
 function paintInner(s: State) {
@@ -458,11 +529,11 @@ function paintInner(s: State) {
   renderShell(s);
   document.title = `${NAV.find((n) => n[0] === route)?.[2] ?? 'Browspark'} · Browspark`;
   // The worker only picks up new code when the extension is reloaded; this page reloads on its own. Detect the mismatch.
-  const onDisk = chrome.runtime.getManifest().version;
-  const stale = !rawState || rawState.disabledTools === undefined || rawState.shareAll === undefined || rawState.connecting === undefined || s.extensionVersion !== onDisk;
+  const onDisk = api.runtime.getManifest().version;
+  const stale = !rawState || rawState.disabledTools === undefined || rawState.shareAll === undefined || rawState.connecting === undefined || rawState.graphEnabled === undefined || s.extensionVersion !== onDisk;
   const view = (VIEWS[route] ?? viewOverview)(s);
   if (!sameRoute) view.classList.add('enter');
-  const banner = stale ? h('div', { class: 'notice warn', style: 'margin:16px 16px 0' }, icon('alert'), h('span', {}, `The extension was updated on disk (worker v${s.extensionVersion ?? '?'}, files v${onDisk}). Reload it to pick up the new background code, then reopen this page.`), h('button', { class: 'btn sm', onclick: () => chrome.runtime.reload() }, icon('refresh'), 'Reload extension')) : null;
+  const banner = stale ? h('div', { class: 'notice warn', style: 'margin:16px 16px 0' }, icon('alert'), h('span', {}, `The extension was updated on disk (worker v${s.extensionVersion ?? '?'}, files v${onDisk}). Reload it to pick up the new background code, then reopen this page.`), h('button', { class: 'btn sm', onclick: () => api.runtime.reload() }, icon('refresh'), 'Reload extension')) : null;
   if (sameRoute) patch(main, banner, view); else { main.replaceChildren(...[banner, view].filter((x): x is HTMLElement => !!x)); main.scrollTop = 0; }
   for (const draft of drafts) { const el = $<HTMLInputElement>(draft.id); if (el) el.value = draft.value; }
   if (keep) { const el = $<HTMLInputElement>(keep.id); if (el) { el.value = keep.value; el.focus(); try { el.setSelectionRange(keep.s, keep.e); } catch {} } }
