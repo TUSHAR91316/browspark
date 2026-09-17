@@ -1,6 +1,6 @@
 {
   "name": "browspark-mcp",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "license": "MIT",
   "type": "module",
   "files": [
@@ -11,11 +11,11 @@
     "browspark-mcp": "companion/src/index.ts"
   },
   "scripts": {
-    "build": "bun build extension/src/background.ts extension/src/app.ts --outdir extension/dist --target browser",
+    "build": "bun scripts/extension.ts",
     "typecheck": "tsc --noEmit -p companion && tsc --noEmit -p extension",
     "test": "bun test --timeout 120000",
     "start": "bun companion/src/index.ts",
-    "package": "bun run build && mkdir -p dist && rm -f dist/browspark-extension.zip && cd extension && zip -qr ../dist/browspark-extension.zip manifest.json app.html app.css assets dist && cd .. && ls -la dist/browspark-extension.zip",
+    "package": "bun scripts/extension.ts --package",
     "capabilities": "bun companion/test/capabilities.ts",
     "docs:tools": "bun companion/test/docs.ts",
     "test:e2e": "E2E=1 bun test --timeout 120000",
