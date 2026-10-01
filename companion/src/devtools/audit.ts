@@ -18,7 +18,8 @@ const AUDIT_SCRIPT = String(function auditPage(this: unknown) {
     const view = el.ownerDocument.defaultView || window;
     const style = typeof view.getComputedStyle === 'function' ? view.getComputedStyle(el) : null;
     if (!style) return true;
-    return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
+    const opacity = Number(style.opacity);
+    return style.display !== 'none' && style.visibility !== 'hidden' && (isNaN(opacity) || opacity > 0);
   };
 
   const out: {
@@ -90,15 +91,17 @@ const AUDIT_SCRIPT = String(function auditPage(this: unknown) {
     }
   }
 
-  // Broken images
+  // Broken images (capped at 5)
   const imgs = document.querySelectorAll('img');
   for (let j = 0; j < imgs.length; j++) {
     const img = imgs[j];
     const src = img.getAttribute('src') || '';
     if (!src) {
       out.brokenAssets.push({ type: 'image', url: '', ref: getRef(img), detail: 'Image missing src attribute' });
+      if (out.brokenAssets.length >= 5) break;
     } else if (img.complete && img.naturalWidth === 0) {
       out.brokenAssets.push({ type: 'image', url: src, ref: getRef(img), detail: `Image failed to load: ${src.slice(0, 80)}` });
+      if (out.brokenAssets.length >= 5) break;
     }
   }
 
@@ -159,20 +162,32 @@ const AUDIT_SCRIPT = String(function auditPage(this: unknown) {
     }
   }
 
+  // Duplicate IDs (capped at 5)
   const idCounts: Record<string, number> = {};
   const allIds = document.querySelectorAll('[id]');
   for (let j = 0; j < allIds.length; j++) {
     const id = allIds[j].id;
     if (id) idCounts[id] = (idCounts[id] || 0) + 1;
   }
+  let dupFound = 0;
   for (const [id, count] of Object.entries(idCounts)) {
     if (count > 1) {
-      out.accessibility.push({
-        rule: 'duplicate-id',
-        detail: `Duplicate ID #${id} found ${count} times in DOM`,
-        severity: 'error'
-      });
+      dupFound++;
+      if (dupFound <= 5) {
+        out.accessibility.push({
+          rule: 'duplicate-id',
+          detail: `Duplicate ID #${id} found ${count} times in DOM`,
+          severity: 'error'
+        });
+      }
     }
+  }
+  if (dupFound > 5) {
+    out.accessibility.push({
+      rule: 'duplicate-id',
+      detail: `...and ${dupFound - 5} more duplicate IDs (total ${dupFound})`,
+      severity: 'error'
+    });
   }
 
   // --- SEO & DOCUMENT SEMANTICS ---
@@ -210,13 +225,17 @@ const AUDIT_SCRIPT = String(function auditPage(this: unknown) {
     });
   }
 
-  let maxDepth = 0;
-  const findDepth = (el: Element, depth: number) => {
-    if (depth > maxDepth) maxDepth = depth;
-    const children = el.children;
-    for (let k = 0; k < children.length; k++) findDepth(children[k], depth + 1);
-  };
-  findDepth(document.documentElement, 1);
+  // Iterative DOM depth to prevent stack overflow on deep DOMs
+  let maxDepth = 1;
+  const stack: Array<{ el: Element; depth: number }> = [{ el: document.documentElement, depth: 1 }];
+  while (stack.length > 0) {
+    const curr = stack.pop()!;
+    if (curr.depth > maxDepth) maxDepth = curr.depth;
+    const children = curr.el.children;
+    for (let k = 0; k < children.length; k++) {
+      stack.push({ el: children[k], depth: curr.depth + 1 });
+    }
+  }
   out.performance.domDepth = maxDepth;
   if (maxDepth > 32) {
     out.performance.issues.push({
@@ -235,7 +254,20 @@ const AUDIT_SCRIPT = String(function auditPage(this: unknown) {
 
   // --- SECURITY ---
   const isHttps = location.protocol === 'https:';
-  if (!isHttps && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+  if (isHttps) {
+    const mixed = document.querySelectorAll('img[src^="http://"], script[src^="http://"], link[href^="http://"], iframe[src^="http://"]');
+    for (let j = 0; j < mixed.length; j++) {
+      const m = mixed[j];
+      const src = m.getAttribute('src') || m.getAttribute('href') || '';
+      out.security.push({
+        rule: 'mixed-content',
+        ref: getRef(m),
+        detail: `Insecure HTTP resource loaded over HTTPS: ${src.slice(0, 100)}`,
+        severity: 'error'
+      });
+      if (out.security.length >= 5) break;
+    }
+  } else if (location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
     const pwd = document.querySelector('input[type=password]');
     if (pwd) {
       out.security.push({
@@ -254,10 +286,10 @@ export function registerAuditTools(ctx: Ctx) {
   const { sessions, capture, page } = ctx;
   const tab = (id?: number) => sessions.resolve(id);
 
-  tool(ctx, 'devtools_audit', 'Instant 360-degree page health check: evaluates console runtime errors, failed network requests, horizontal layout overflow (scrollbars), broken images, WCAG 2.1 AA accessibility (unlabelled buttons/inputs, duplicate IDs), Core Web Vitals, and SEO. Works in both Extension and Developer modes without external dependencies. Returns a health score (0-100), letter grade, and actionable element refs [ref=e12].', {
+  tool(ctx, 'devtools_audit', 'Instant 360-degree page health check: evaluates console runtime errors, failed network requests, horizontal layout overflow (scrollbars), broken images, WCAG 2.1 AA accessibility (unlabelled buttons/inputs, duplicate IDs), Core Web Vitals, and SEO. In-page DOM audits work across Chromium and Firefox in both modes; console and network capture require active DevTools capture sessions. Returns a health score (0-100), letter grade, and actionable element refs [ref=e12].', {
     tabId: tabArg,
     categories: z.array(z.enum(['errors', 'network', 'layout', 'accessibility', 'performance', 'security', 'seo'])).optional().describe('Categories to audit (default: all)'),
-    threshold: z.enum(['all', 'warnings', 'errors']).optional().default('all').describe('Filter findings: "all", "warnings", or "errors" only'),
+    threshold: z.enum(['all', 'warnings', 'errors']).optional().default('all').describe('Filter findings: "all" (all items), "warnings" (warnings and errors), or "errors" (errors only)'),
     summaryOnly: z.boolean().optional().describe('Return scores and counts without individual item details'),
     saveReport: z.boolean().optional().default(true).describe('Save diagnostic report artifact (default: true)'),
   }, async ({ tabId, categories, threshold = 'all', summaryOnly, saveReport = true }) => {
@@ -378,7 +410,7 @@ export function registerAuditTools(ctx: Ctx) {
     score = Math.max(0, Math.min(100, score));
 
     const grade = score >= 90 ? 'A' : score >= 80 ? 'B' : score >= 70 ? 'C' : score >= 60 ? 'D' : 'F';
-    const status = score >= 90 && errorCount === 0 ? 'pass' : score >= 70 && errorCount === 0 ? 'warn' : 'fail';
+    const status = score >= 90 ? 'pass' : score >= 70 ? 'warn' : 'fail';
 
     // 5. Category breakdown
     const selectedCategories = new Set(categories ?? ['errors', 'network', 'layout', 'accessibility', 'performance', 'security', 'seo']);
@@ -390,11 +422,11 @@ export function registerAuditTools(ctx: Ctx) {
       };
     }
 
-    // 6. Filter findings
+    // 6. Filter findings: threshold 'warnings' keeps both errors and warnings; 'errors' keeps only errors
     const filteredFindings = allFindings.filter(f => {
       if (!selectedCategories.has(f.category)) return false;
       if (threshold === 'errors' && f.severity !== 'error') return false;
-      if (threshold === 'warnings' && f.severity !== 'warning') return false;
+      if (threshold === 'warnings' && f.severity !== 'error' && f.severity !== 'warning') return false;
       return true;
     });
 

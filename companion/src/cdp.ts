@@ -245,8 +245,8 @@ export class DirectChrome extends EventEmitter {
       proc.once('exit', finish);
       // Windows: kill() ends only the parent and orphans Chrome's children, and taskkill /T cannot walk the tree of a
       // parent that is already gone, so end the whole tree first. A failed spawn reports through 'error', not a throw.
-      if (platform() === 'win32' && proc.pid) spawn('taskkill', ['/pid', String(proc.pid), '/T', '/F'], { stdio: 'ignore' }).once('error', () => {});
-      proc.kill();
+      if (platform() === 'win32' && proc.pid) spawn('taskkill', ['/pid', String(proc.pid), '/T', '/F'], { stdio: 'ignore' }).once('error', () => proc.kill());
+      else proc.kill();
     }).finally(() => { this.stopping = undefined; });
     return this.stopping;
   }
